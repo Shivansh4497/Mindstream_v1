@@ -13,8 +13,8 @@ import { createClient } from '@supabase/supabase-js';
 // 1. Get your URL and Anon Key from your Supabase project dashboard:
 //    Settings > API > Project API keys
 // ====================================================================================
-const supabaseUrl = 'YOUR_SUPABASE_URL_HERE'; // e.g., 'https://your-project-id.supabase.co'
-const supabaseAnonKey = 'import { createClient } from '@supabase/supabase-js';
+const supabaseUrl = 'https://keaqaxoyfoeepgsriwqq.supabase.co'; // e.g., 'https://your-project-id.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlYXFheG95Zm9lZXBnc3Jpd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODczMjMsImV4cCI6MjA3ODQ2MzMyM30.GOc6tF79xMWhCxf6-Hbx7IE8YbffRBGowr0E5PN-aAo';
 
 // ====================================================================================
 // DEVELOPER ACTION REQUIRED:
@@ -29,8 +29,8 @@ const supabaseAnonKey = 'import { createClient } from '@supabase/supabase-js';
 // 1. Get your URL and Anon Key from your Supabase project dashboard:
 //    Settings > API > Project API keys
 // ====================================================================================
-const supabaseUrl = 'YOUR_SUPABASE_URL_HERE'; // e.g., 'https://your-project-id.supabase.co'
-const supabaseAnonKey = 'import { createClient } from '@supabase/supabase-js';
+const supabaseUrl = 'https://keaqaxoyfoeepgsriwqq.supabase.co'; // e.g., 'https://your-project-id.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlYXFheG95Zm9lZXBnc3Jpd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODczMjMsImV4cCI6MjA3ODQ2MzMyM30.GOc6tF79xMWhCxf6-Hbx7IE8YbffRBGowr0E5PN-aAo';
 
 // ====================================================================================
 // DEVELOPER ACTION REQUIRED:
@@ -45,8 +45,8 @@ const supabaseAnonKey = 'import { createClient } from '@supabase/supabase-js';
 // 1. Get your URL and Anon Key from your Supabase project dashboard:
 //    Settings > API > Project API keys
 // ====================================================================================
-const supabaseUrl = 'YOUR_SUPABASE_URL_HERE'; // e.g., 'https://your-project-id.supabase.co'
-const supabaseAnonKey = 'YOUR_SUPABASimport { createClient } from '@supabase/supabase-js';
+const supabaseUrl = 'https://keaqaxoyfoeepgsriwqq.supabase.co'; // e.g., 'https://your-project-id.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlYXFheG95Zm9lZXBnc3Jpd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODczMjMsImV4cCI6MjA3ODQ2MzMyM30.GOc6tF79xMWhCxf6-Hbx7IE8YbffRBGowr0E5PN-aAo';
 
 // ====================================================================================
 // DEVELOPER ACTION REQUIRED:
