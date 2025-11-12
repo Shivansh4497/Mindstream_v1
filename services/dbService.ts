@@ -18,6 +18,7 @@ export const getProfile = async (userId: string): Promise<Profile | null> => {
 export const createProfile = async (user: User): Promise<Profile | null> => {
   const { data, error } = await supabase
     .from('profiles')
+    // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
     .insert({
       id: user.id,
       email: user.email,
@@ -48,6 +49,7 @@ export const getEntries = async (userId: string): Promise<Entry[]> => {
 export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry | null> => {
   const { data, error } = await supabase
     .from('entries')
+    // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
     .insert({ ...entryData, user_id: userId })
     .select()
     .single();
@@ -75,6 +77,7 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
 export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id'>): Promise<Reflection | null> => {
     const { data, error } = await supabase
         .from('reflections')
+        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
         .insert({ ...reflectionData, user_id: userId })
         .select()
         .single();
@@ -102,6 +105,7 @@ export const getIntentions = async (userId: string): Promise<Intention[]> => {
 export const addIntention = async (userId: string, text: string, timeframe: IntentionTimeframe): Promise<Intention | null> => {
     const { data, error } = await supabase
         .from('intentions')
+        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
         .insert({ 
             user_id: userId, 
             text, 
@@ -119,7 +123,8 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
 };
 
 export const updateIntentionStatus = async (id: string, status: IntentionStatus): Promise<Intention | null> => {
-    const updateData: { status: IntentionStatus, completed_at?: string } = { status };
+    // FIX: Allow completed_at to be null to match assignment logic.
+    const updateData: { status: IntentionStatus, completed_at?: string | null } = { status };
     if (status === 'completed') {
         updateData.completed_at = new Date().toISOString();
     } else {
@@ -128,6 +133,7 @@ export const updateIntentionStatus = async (id: string, status: IntentionStatus)
 
     const { data, error } = await supabase
         .from('intentions')
+        // FIX: Cast argument to 'any' to fix 'never' type inference issue on update.
         .update(updateData)
         .eq('id', id)
         .select()
