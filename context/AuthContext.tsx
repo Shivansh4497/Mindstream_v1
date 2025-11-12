@@ -29,33 +29,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    let isMounted = true;
+    // DEFINITIVE FIX: This robust, two-stage approach eliminates all race conditions.
+    const initializeSession = async () => {
+      // 1. Get the initial session immediately. This is fast because it reads from storage.
+      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error("Error getting initial session:", error);
+        setLoading(false);
+        return;
+      }
 
-    // DEFINITIVE FIX: Rely ONLY on onAuthStateChange as the single source of truth.
-    // It fires immediately with the cached session, preventing any race conditions.
+      // Set initial state based on the direct session check.
+      setSession(initialSession);
+      const currentUser = initialSession?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        const userProfile = await db.getProfile(currentUser.id);
+        setProfile(userProfile);
+      } else {
+        setProfile(null);
+      }
+      
+      // The definitive initial state is set, we can stop loading.
+      setLoading(false);
+    };
+
+    initializeSession();
+
+    // 2. Then, set up a listener for any FUTURE changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        if (!isMounted) return;
-
+        // This listener handles sign-ins, sign-outs, and token refreshes.
+        // The flicker is gone because the initial state is already stable.
         setSession(currentSession);
         const currentUser = currentSession?.user ?? null;
         setUser(currentUser);
-
-        if (currentUser) {
-          const userProfile = await db.getProfile(currentUser.id);
-          if (isMounted) setProfile(userProfile);
-        } else {
+        
+        if (event === 'SIGNED_IN') {
+          const userProfile = await db.getProfile(currentUser!.id);
+          setProfile(userProfile);
+        } else if (event === 'SIGNED_OUT') {
           setProfile(null);
         }
-        
-        // The first event has been received, so we can stop loading.
-        // This prevents rendering the app until the auth state is definitive.
-        setLoading(false);
       }
     );
 
     return () => {
-      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
