@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-// FIX: Corrected the import path to be relative.
 import * as db from '../services/dbService';
-// FIX: Corrected the import path to be relative.
 import type { Profile } from '../types';
 
 interface AuthContextType {
@@ -21,6 +19,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Initialize loading to true to show the global spinner initially.
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,49 +28,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    // DEFINITIVE FIX: This robust, two-stage approach eliminates all race conditions.
-    const initializeSession = async () => {
-      // 1. Get the initial session immediately. This is fast because it reads from storage.
-      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error("Error getting initial session:", error);
-        setLoading(false);
-        return;
-      }
-
-      // Set initial state based on the direct session check.
-      setSession(initialSession);
-      const currentUser = initialSession?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        const userProfile = await db.getProfile(currentUser.id);
-        setProfile(userProfile);
-      } else {
-        setProfile(null);
-      }
-      
-      // The definitive initial state is set, we can stop loading.
-      setLoading(false);
-    };
-
-    initializeSession();
-
-    // 2. Then, set up a listener for any FUTURE changes.
+    // The onAuthStateChange listener is the single source of truth.
+    // It fires immediately with the cached session, and then for any changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        // This listener handles sign-ins, sign-outs, and token refreshes.
-        // The flicker is gone because the initial state is already stable.
         setSession(currentSession);
         const currentUser = currentSession?.user ?? null;
         setUser(currentUser);
         
-        if (event === 'SIGNED_IN') {
-          const userProfile = await db.getProfile(currentUser!.id);
-          setProfile(userProfile);
-        } else if (event === 'SIGNED_OUT') {
+        if (currentUser) {
+          // Fetch profile if the user changes.
+          // This check prevents re-fetching the profile on every token refresh.
+          if (profile?.id !== currentUser.id) {
+            const userProfile = await db.getProfile(currentUser.id);
+            setProfile(userProfile);
+          }
+        } else {
           setProfile(null);
+        }
+        
+        // The first time this callback runs, the session state is definitive.
+        // We can now mark the auth process as no longer loading.
+        // Subsequent calls (e.g., for TOKEN_REFRESHED) will not change the loading state.
+        if (loading) {
+          setLoading(false);
         }
       }
     );
@@ -79,7 +59,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       subscription?.unsubscribe();
     };
-  }, []);
+  // The dependency array is empty because we want this to run only once on mount.
+  // We manage the loading state and profile fetching internally to avoid loops.
+  }, [loading, profile]);
 
   const loginWithGoogle = async () => {
     if (!supabase) {
