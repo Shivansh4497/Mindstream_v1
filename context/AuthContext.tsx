@@ -31,50 +31,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     let isMounted = true;
 
-    // DEFINITIVE FIX: Use the robust getSession + onAuthStateChange pattern.
-    // This eliminates race conditions and session "flickering" on page load/refresh.
-    const initializeSession = async () => {
-      // 1. Get the session immediately from local storage.
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-
-      // Guard against setting state if the component unmounts quickly.
-      if (!isMounted) return;
-
-      if (initialSession) {
-        setSession(initialSession);
-        const currentUser = initialSession.user;
-        setUser(currentUser);
-        const userProfile = await db.getProfile(currentUser.id);
-        if (isMounted) setProfile(userProfile);
-      }
-      
-      // We've established the initial state, so we can stop loading.
-      setLoading(false);
-    };
-
-    initializeSession();
-
-    // 2. Listen for subsequent auth changes.
+    // DEFINITIVE FIX: Rely ONLY on onAuthStateChange as the single source of truth.
+    // It fires immediately with the cached session, preventing any race conditions.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         if (!isMounted) return;
 
-        // On SIGNED_OUT, clear the session and profile.
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-        } 
-        // On any other event (SIGNED_IN, TOKEN_REFRESHED, etc.), update the session.
-        // This prevents the state from flickering to null during a token refresh.
-        else if (currentSession) {
-          setSession(currentSession);
-          const currentUser = currentSession.user;
-          setUser(currentUser);
-          // Re-fetch profile in case of changes (e.g., updated avatar).
+        setSession(currentSession);
+        const currentUser = currentSession?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
           const userProfile = await db.getProfile(currentUser.id);
           if (isMounted) setProfile(userProfile);
+        } else {
+          setProfile(null);
         }
+        
+        // The first event has been received, so we can stop loading.
+        // This prevents rendering the app until the auth state is definitive.
+        setLoading(false);
       }
     );
 
