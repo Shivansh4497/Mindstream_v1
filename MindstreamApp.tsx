@@ -64,7 +64,7 @@ export const MindstreamApp: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchData();
