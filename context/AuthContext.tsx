@@ -24,32 +24,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
 
-        if (currentUser) {
-          let userProfile = await db.getProfile(currentUser.id);
-          if (!userProfile) {
-            // This might happen if the profile creation trigger hasn't run yet
-            // or for existing users.
-            userProfile = await db.createProfile(currentUser);
-          }
-          setProfile(userProfile);
-        } else {
-          setProfile(null);
-        }
-      } catch (e) {
-        console.error("Error fetching initial session:", e);
-      } finally {
-         setLoading(false);
-      }
-    };
-    
-    fetchSession();
+    // Use a flag to ensure the loading state is only set to false once,
+    // after the initial session state has been determined.
+    let isInitialLoad = true;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
@@ -65,22 +47,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             setProfile(userProfile);
           } catch (e) {
-              console.error("Error handling auth state change:", e)
+              console.error("Error handling auth state change:", e);
+              setProfile(null);
           }
         } else {
           setProfile(null);
         }
-        // Only set loading to false here if you want to wait for the first auth event.
-        // But we do it in fetchSession to unblock UI faster.
+        
+        // After the first event (typically 'INITIAL_SESSION'), the initial
+        // loading is complete.
+        if (isInitialLoad) {
+          setLoading(false);
+          isInitialLoad = false;
+        }
       }
     );
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
   const loginWithGoogle = async () => {
+    if (!supabase) {
+      console.error("Supabase client not initialized. Cannot log in.");
+      return;
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -91,6 +83,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    if (!supabase) {
+      console.error("Supabase client not initialized. Cannot log out.");
+      return;
+    }
     const { error } = await supabase.auth.signOut();
     if (error) console.error('Error logging out:', error);
   };
