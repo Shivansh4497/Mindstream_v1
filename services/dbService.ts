@@ -124,13 +124,14 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
 
 export const updateIntentionStatus = async (id: string, status: IntentionStatus): Promise<Intention | null> => {
     // FIX: The `update` method's parameter was being inferred as type `never`, causing a TypeScript error.
-    // By inlining the update object and casting it to `any`, we bypass the faulty type inference.
+    // By creating the update payload in a separate variable and casting it to `any`, we bypass the faulty type inference.
+    const updatePayload = {
+        status,
+        completed_at: status === 'completed' ? new Date().toISOString() : null,
+    };
     const { data, error } = await supabase
         .from('intentions')
-        .update({
-            status,
-            completed_at: status === 'completed' ? new Date().toISOString() : null,
-        } as any)
+        .update(updatePayload as any)
         .eq('id', id)
         .select()
         .single();
