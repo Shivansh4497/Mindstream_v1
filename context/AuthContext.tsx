@@ -29,33 +29,57 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    setLoading(true);
+    let isMounted = true;
 
-    // onAuthStateChange is the single source of truth for the session.
-    // It handles the initial session, logins, logouts, and token refreshes.
-    // This avoids race conditions with a separate getSession() call.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        const currentUser = session?.user ?? null;
+    // DEFINITIVE FIX: Use the robust getSession + onAuthStateChange pattern.
+    // This eliminates race conditions and session "flickering" on page load/refresh.
+    const initializeSession = async () => {
+      // 1. Get the session immediately from local storage.
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+
+      // Guard against setting state if the component unmounts quickly.
+      if (!isMounted) return;
+
+      if (initialSession) {
+        setSession(initialSession);
+        const currentUser = initialSession.user;
         setUser(currentUser);
+        const userProfile = await db.getProfile(currentUser.id);
+        if (isMounted) setProfile(userProfile);
+      }
+      
+      // We've established the initial state, so we can stop loading.
+      setLoading(false);
+    };
 
-        if (currentUser) {
-          // If there's a user, fetch their profile. A profile might have just been
-          // created on signup, so we fetch it fresh.
-          const userProfile = await db.getProfile(currentUser.id);
-          setProfile(userProfile);
-        } else {
-          // If there's no user (e.g., after logout), clear the profile.
+    initializeSession();
+
+    // 2. Listen for subsequent auth changes.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        if (!isMounted) return;
+
+        // On SIGNED_OUT, clear the session and profile.
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
           setProfile(null);
+        } 
+        // On any other event (SIGNED_IN, TOKEN_REFRESHED, etc.), update the session.
+        // This prevents the state from flickering to null during a token refresh.
+        else if (currentSession) {
+          setSession(currentSession);
+          const currentUser = currentSession.user;
+          setUser(currentUser);
+          // Re-fetch profile in case of changes (e.g., updated avatar).
+          const userProfile = await db.getProfile(currentUser.id);
+          if (isMounted) setProfile(userProfile);
         }
-
-        // The first auth event has been handled, so we can stop loading.
-        setLoading(false);
       }
     );
 
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
