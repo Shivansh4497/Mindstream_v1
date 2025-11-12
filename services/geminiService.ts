@@ -1,12 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 
-// FIX: Lazily initialize the AI client inside each function.
-// This prevents the entire app from crashing on load if `process.env.API_KEY` is not available.
+// The build process in this environment appears to inject environment variables without a prefix.
 const getAI = () => {
+  // The API key is expected to be available in the execution context as process.env.API_KEY.
   const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
   if (!apiKey) {
-    throw new Error("API_KEY environment variable not set");
+    // This will cause an error screen to show if the key is missing.
+    throw new Error("API_KEY environment variable not set. Please configure it in your deployment settings.");
   }
   return new GoogleGenAI({ apiKey });
 }
