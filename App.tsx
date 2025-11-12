@@ -14,15 +14,12 @@ const App: React.FC = () => {
       </div>
     );
   }
-
   if (!session) {
     return <Login />;
   }
 
-  // DEFINITIVE FIX: Add a key based on the user's ID.
-  // This prevents the component from unmounting and remounting during session refreshes
-  // on page load, which was the root cause of the freezing race condition.
-  return <MindstreamApp key={session.user.id} />;
+  // The 'key' prop is removed as the flicker is fixed in AuthContext.
+  return <MindstreamApp />;
 };
 
 export default App;
