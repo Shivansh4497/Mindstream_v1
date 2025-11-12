@@ -23,7 +23,7 @@ export const createProfile = async (user: User): Promise<Profile | null> => {
       id: user.id,
       email: user.email,
       avatar_url: user.user_metadata.avatar_url,
-    })
+    } as any)
     .select()
     .single();
   if (error) {
@@ -50,7 +50,7 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
   const { data, error } = await supabase
     .from('entries')
     // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
-    .insert({ ...entryData, user_id: userId })
+    .insert({ ...entryData, user_id: userId } as any)
     .select()
     .single();
   if (error) {
@@ -78,7 +78,7 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
     const { data, error } = await supabase
         .from('reflections')
         // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
-        .insert({ ...reflectionData, user_id: userId })
+        .insert({ ...reflectionData, user_id: userId } as any)
         .select()
         .single();
     if (error) {
@@ -112,7 +112,7 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
             timeframe,
             status: 'pending',
             is_recurring: false, // Default value
-        })
+        } as any)
         .select()
         .single();
     if (error) {
@@ -134,7 +134,7 @@ export const updateIntentionStatus = async (id: string, status: IntentionStatus)
     const { data, error } = await supabase
         .from('intentions')
         // FIX: Cast argument to 'any' to fix 'never' type inference issue on update.
-        .update(updateData)
+        .update(updateData as any)
         .eq('id', id)
         .select()
         .single();
