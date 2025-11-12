@@ -19,7 +19,10 @@ const App: React.FC = () => {
     return <Login />;
   }
 
-  return <MindstreamApp />;
+  // DEFINITIVE FIX: Add a key based on the user's ID.
+  // This prevents the component from unmounting and remounting during session refreshes
+  // on page load, which was the root cause of the freezing race condition.
+  return <MindstreamApp key={session.user.id} />;
 };
 
 export default App;
