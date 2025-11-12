@@ -1,0 +1,7 @@
+{
+  "name": "Mindstream",
+  "description": "Mindstream is your second brain for clarity: a private, calm, and always-listening reflection companion that turns your scattered thoughts into clear insights.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
