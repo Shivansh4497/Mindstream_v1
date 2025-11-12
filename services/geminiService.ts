@@ -1,14 +1,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 
-// Follow guideline: Always use new GoogleGenAI({apiKey: process.env.API_KEY});
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// FIX: Lazily initialize the AI client inside each function.
+// This prevents the entire app from crashing on load if `process.env.API_KEY` is not available.
+const getAI = () => {
+  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+  if (!apiKey) {
+    throw new Error("API_KEY environment variable not set");
+  }
+  return new GoogleGenAI({ apiKey });
+}
 
 /**
  * Generates a summary reflection based on a day's entries and intentions.
  */
 export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
   try {
+    const ai = getAI();
     const model = 'gemini-2.5-flash';
 
     const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
@@ -42,6 +50,7 @@ Your holistic reflection on how our actions and feelings connected to our goals:
  */
 export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
   try {
+    const ai = getAI();
     const model = 'gemini-2.5-flash';
 
     const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words) and 2-4 relevant tags that capture the topics and emotions.
@@ -92,6 +101,7 @@ Respond with only a JSON object.`;
  */
 export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<string> => {
     try {
+        const ai = getAI();
         const model = 'gemini-2.5-flash';
 
         // Prepare context from recent entries
