@@ -31,43 +31,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setLoading(true);
 
-    // Get the initial session from Supabase. This might be from localStorage,
-    // making it faster than waiting for the onAuthStateChange event.
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        const userProfile = await db.getProfile(currentUser.id);
-        setProfile(userProfile);
-      }
-      setLoading(false);
-    });
-
-    // Set up a listener for auth events.
+    // onAuthStateChange is the single source of truth for the session.
+    // It handles the initial session, logins, logouts, and token refreshes.
+    // This avoids race conditions with a separate getSession() call.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // Only clear the user session on an explicit SIGNED_OUT event.
-        // This prevents the user state from flickering to null during background
-        // token refreshes when the user returns to the tab.
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setUser(null);
+      async (_event, session) => {
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          // If there's a user, fetch their profile. A profile might have just been
+          // created on signup, so we fetch it fresh.
+          const userProfile = await db.getProfile(currentUser.id);
+          setProfile(userProfile);
+        } else {
+          // If there's no user (e.g., after logout), clear the profile.
           setProfile(null);
-        } else if (session) {
-          setSession(session);
-          const currentUser = session.user;
-          setUser(currentUser);
-          // Re-fetch profile in case it was updated (e.g., avatar).
-          // This also handles the case where the profile was created just now.
-          if (currentUser) {
-            let userProfile = await db.getProfile(currentUser.id);
-            if (!userProfile) {
-                userProfile = await db.createProfile(currentUser);
-            }
-            setProfile(userProfile);
-          }
         }
+
+        // The first auth event has been handled, so we can stop loading.
+        setLoading(false);
       }
     );
 
