@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+// FIX: Safely access process.env to prevent "process is not defined" ReferenceError in browser environments.
+const supabaseUrl = typeof process !== 'undefined' ? process.env.SUPABASE_URL : undefined;
+const supabaseAnonKey = typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : undefined;
+
 
 let supabase: ReturnType<typeof createClient> | null = null;
 let credentialsAvailable = false;
