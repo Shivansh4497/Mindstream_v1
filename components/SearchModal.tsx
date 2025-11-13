@@ -9,6 +9,7 @@ interface SearchModalProps {
   entries: Entry[];
   reflections: Reflection[];
   onClose: () => void;
+  initialQuery?: string;
 }
 
 type SearchResult = 
@@ -16,8 +17,8 @@ type SearchResult =
   | { type: 'reflection'; data: Reflection };
 
 
-export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, onClose }) => {
-  const [query, setQuery] = useState('');
+export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, onClose, initialQuery = '' }) => {
+  const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<'all' | 'entries' | 'reflections'>('all');
   
   // Add keyboard listener for Esc key
