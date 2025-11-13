@@ -2,8 +2,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-// The Gemini API key is now sourced from the environment variables.
-const GEMINI_API_KEY = process.env.API_KEY;
+// The Gemini API key is now sourced from the environment variables with the VITE_ prefix.
+const GEMINI_API_KEY = process.env.VITE_API_KEY;
 
 
 let ai: GoogleGenAI | null = null;
@@ -21,7 +21,7 @@ if (GEMINI_API_KEY) {
 }
 
 if (!apiKeyAvailable) {
-    console.error("Gemini API Key is not configured. AI features will be disabled.");
+    console.log("Gemini API Key is not configured. AI features will be disabled.");
 }
 
 export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
