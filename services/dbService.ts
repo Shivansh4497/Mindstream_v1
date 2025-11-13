@@ -74,9 +74,26 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
   }
   if (!data) return [];
 
+  // This is a workaround for a likely schema mismatch. If the `entry_ids` column in the database
+  // is a `text` field, it will store a JSON string. We parse it back into an array here.
+  // FIX: Explicitly type `reflection` as `any` to prevent TypeScript from inferring it as `never`, which happens with Supabase's client without generated types.
+  const parsedData = data.map((reflection: any) => {
+    if (reflection && typeof reflection.entry_ids === 'string') {
+      try {
+        // Create a new object to avoid mutating the original `data` array items
+        return { ...reflection, entry_ids: JSON.parse(reflection.entry_ids) };
+      } catch (e) {
+        console.error(`Failed to parse entry_ids for reflection ${reflection.id}:`, e);
+        // Return with empty array on parse failure to prevent app crash
+        return { ...reflection, entry_ids: [] };
+      }
+    }
+    return reflection;
+  });
+
   // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
   const latestReflections = new Map<string, Reflection>();
-  for (const reflection of data) {
+  for (const reflection of parsedData) {
     // FIX: Cast reflection to the 'Reflection' type to address Supabase client's type inference issue, which can incorrectly infer 'never'.
     const typedReflection = reflection as Reflection;
     // The key is the unique period identifier (e.g., '2024-07-29-daily' or '2024-W31-weekly')
@@ -90,21 +107,42 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
 };
 
 export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
+    // This is a workaround for a likely schema mismatch. If the `entry_ids` column in the database
+    // is a `text` field instead of an array type, we must serialize the array into a JSON string.
+    const dataToInsert = {
+        ...reflectionData,
+        entry_ids: JSON.stringify(reflectionData.entry_ids)
+    };
+    
     const { data, error } = await supabase
         .from('reflections')
-        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
         .insert({ 
-            ...reflectionData, 
+            ...dataToInsert,
             user_id: userId,
             timestamp: new Date().toISOString()
         } as any)
         .select()
         .single();
+
     if (error) {
         console.error('Error adding reflection:', error);
         return null;
     }
-    return data;
+
+    // After a successful insert, we parse the entry_ids string from the DB response
+    // back into an array so the returned object matches our `Reflection` type.
+    // FIX: Cast `data` to `any` to handle parsing of `entry_ids` without TypeScript `never` type errors.
+    const reflection = data as any;
+    if (reflection && typeof reflection.entry_ids === 'string') {
+        try {
+            reflection.entry_ids = JSON.parse(reflection.entry_ids);
+        } catch (e) {
+            console.error('Failed to parse entry_ids from newly created reflection:', e);
+            reflection.entry_ids = []; // Fallback
+        }
+    }
+    
+    return reflection as Reflection | null;
 };
 
 // Intention Functions
