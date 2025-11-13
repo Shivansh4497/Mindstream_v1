@@ -2,9 +2,10 @@ import React from 'react';
 
 interface ConfigurationErrorProps {
   missingServices: string[];
+  requiredVariables: string[];
 }
 
-export const ConfigurationError: React.FC<ConfigurationErrorProps> = ({ missingServices }) => {
+export const ConfigurationError: React.FC<ConfigurationErrorProps> = ({ missingServices, requiredVariables }) => {
   return (
     <div className="h-screen w-screen bg-brand-indigo text-white flex flex-col items-center justify-center p-4 text-center">
       <div className="max-w-xl">
@@ -21,7 +22,7 @@ export const ConfigurationError: React.FC<ConfigurationErrorProps> = ({ missingS
           To fix this, please set the required environment variables in your deployment environment (e.g., Vercel, Netlify, or a local <code>.env</code> file).
         </p>
          <p className="text-gray-500 text-xs mt-2">
-          Required variables: <code>API_KEY</code>, <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>.
+          Required variables: <code>{requiredVariables.join(', ')}</code>.
         </p>
       </div>
     </div>
