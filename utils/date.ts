@@ -70,3 +70,67 @@ export const isDateInCurrentMonth = (date: Date): boolean => {
 export const isDateInCurrentYear = (date: Date): boolean => {
     return date.getFullYear() === new Date().getFullYear();
 }
+
+/**
+ * Gets the ISO week number for a date.
+ */
+const getWeekNumber = (d: Date): [number, number] => {
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return [d.getUTCFullYear(), weekNo];
+}
+
+/**
+ * Returns a unique string identifier for the week a date belongs to.
+ * e.g., "2024-W28"
+ */
+export const getWeekId = (date: Date): string => {
+  const [year, weekNo] = getWeekNumber(date);
+  return `${year}-W${weekNo.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Returns a unique string identifier for the month a date belongs to.
+ * e.g., "2024-07"
+ */
+export const getMonthId = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+/**
+ * Converts a week ID string back to a Date object (start of that week).
+ */
+export const getDateFromWeekId = (weekId: string): Date => {
+    const [year, week] = weekId.split('-W').map(Number);
+    const simple = new Date(year, 0, 1 + (week - 1) * 7);
+    const dow = simple.getDay();
+    const isoWeekStart = simple;
+    if (dow <= 4)
+        isoWeekStart.setDate(simple.getDate() - simple.getDay() + 1);
+    else
+        isoWeekStart.setDate(simple.getDate() + 8 - simple.getDay());
+    return isoWeekStart;
+}
+
+/**
+ * Returns a display string for a week ID.
+ * e.g., "Week of July 15, 2024"
+ */
+export const getWeekDisplay = (weekId: string): string => {
+    const startDate = getDateFromWeekId(weekId);
+    return `Week of ${startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+}
+
+/**
+ * Returns a display string for a month ID.
+ * e.g., "July 2024"
+ */
+export const getMonthDisplay = (monthId: string): string => {
+    const [year, month] = monthId.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
