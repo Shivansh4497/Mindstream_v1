@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import type { Reflection } from '../types';
-import { ReflectionList } from './ReflectionList';
+import type { Entry, Intention, Reflection } from '../types';
+import { DailyReflections } from './DailyReflections';
 import { WeeklyReflections } from './WeeklyReflections';
 import { MonthlyReflections } from './MonthlyReflections';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly';
 
 interface ReflectionsViewProps {
+  entries: Entry[];
+  intentions: Intention[];
   reflections: Reflection[];
+  onGenerateDaily: (date: string, entriesForDay: Entry[]) => void;
   onGenerateWeekly: (weekId: string, dailyReflections: Reflection[]) => void;
   onGenerateMonthly: (monthId: string, dailyReflections: Reflection[]) => void;
   isGenerating: string | null;
@@ -19,7 +22,7 @@ const timeframes: { id: ReflectionTimeframe; label: string }[] = [
     { id: 'monthly', label: 'Monthly' },
 ];
 
-export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ reflections, onGenerateWeekly, onGenerateMonthly, isGenerating }) => {
+export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, isGenerating }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
 
   const { daily, weekly, monthly } = useMemo(() => {
@@ -37,7 +40,13 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ reflections, o
   const renderContent = () => {
     switch(activeTimeframe) {
       case 'daily':
-        return <ReflectionList reflections={daily} />;
+        return <DailyReflections 
+            entries={entries}
+            intentions={intentions}
+            dailyReflections={daily} 
+            onGenerate={onGenerateDaily}
+            isGenerating={isGenerating}
+        />;
       case 'weekly':
         return <WeeklyReflections dailyReflections={daily} weeklyReflections={weekly} onGenerate={onGenerateWeekly} isGenerating={isGenerating} />;
       case 'monthly':
