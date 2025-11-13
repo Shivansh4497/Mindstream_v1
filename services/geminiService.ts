@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-const GEMINI_API_KEY = process.env.API_KEY;
+const GEMINI_API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 if (GEMINI_API_KEY) {
