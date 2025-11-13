@@ -66,19 +66,38 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
     .from('reflections')
     .select('*')
     .eq('user_id', userId)
-    .order('date', { ascending: false });
+    .order('timestamp', { ascending: false });
+
   if (error) {
     console.error('Error fetching reflections:', error);
     return [];
   }
-  return data || [];
+  if (!data) return [];
+
+  // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
+  const latestReflections = new Map<string, Reflection>();
+  for (const reflection of data) {
+    // FIX: Cast reflection to the 'Reflection' type to address Supabase client's type inference issue, which can incorrectly infer 'never'.
+    const typedReflection = reflection as Reflection;
+    // The key is the unique period identifier (e.g., '2024-07-29-daily' or '2024-W31-weekly')
+    const key = `${typedReflection.date}-${typedReflection.type}`;
+    if (!latestReflections.has(key)) {
+      latestReflections.set(key, typedReflection);
+    }
+  }
+
+  return Array.from(latestReflections.values());
 };
 
-export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id'>): Promise<Reflection | null> => {
+export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
     const { data, error } = await supabase
         .from('reflections')
         // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
-        .insert({ ...reflectionData, user_id: userId } as any)
+        .insert({ 
+            ...reflectionData, 
+            user_id: userId,
+            timestamp: new Date().toISOString()
+        } as any)
         .select()
         .single();
     if (error) {
@@ -123,15 +142,16 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
 };
 
 export const updateIntentionStatus = async (id: string, status: IntentionStatus): Promise<Intention | null> => {
-    // FIX: The `update` method's parameter was being inferred as type `never`, causing a TypeScript error.
-    // By creating the update payload in a separate variable and casting it to `any`, we bypass the faulty type inference.
     const updatePayload = {
         status,
         completed_at: status === 'completed' ? new Date().toISOString() : null,
     };
     const { data, error } = await supabase
         .from('intentions')
-        .update(updatePayload as any)
+        // FIX: Supabase client without generated types infers `never` for update.
+        // @ts-ignore is used to bypass this typing issue.
+        // @ts-ignore
+        .update(updatePayload)
         .eq('id', id)
         .select()
         .single();
