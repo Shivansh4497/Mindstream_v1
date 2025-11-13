@@ -65,15 +65,6 @@ export const MindstreamApp: React.FC = () => {
     fetchData();
   }, [user]);
 
-  const dailyReflectionsMap = useMemo(() => {
-    return reflections
-        .filter(r => r.type === 'daily')
-        .reduce((acc, r) => {
-            acc[r.date] = r;
-            return acc;
-        }, {} as Record<string, Reflection>);
-  }, [reflections]);
-
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
     setIsProcessing(true);
@@ -110,7 +101,9 @@ export const MindstreamApp: React.FC = () => {
         };
         const newReflection = await db.addReflection(user.id, reflectionData);
         if (newReflection) {
-            setReflections(prev => [newReflection, ...prev]);
+            // Fetch all reflections again to get the new "latest" one
+            const userReflections = await db.getReflections(user.id);
+            setReflections(userReflections);
         }
       } catch (error) {
           console.error("Error generating reflection:", error);
@@ -132,7 +125,8 @@ export const MindstreamApp: React.FC = () => {
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
-        setReflections(prev => [newReflection, ...prev]);
+        const userReflections = await db.getReflections(user.id);
+        setReflections(userReflections);
       }
     } catch (error) {
       console.error("Error generating weekly reflection:", error);
@@ -154,7 +148,8 @@ export const MindstreamApp: React.FC = () => {
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
-        setReflections(prev => [newReflection, ...prev]);
+        const userReflections = await db.getReflections(user.id);
+        setReflections(userReflections);
       }
     } catch (error) {
       console.error("Error generating monthly reflection:", error);
@@ -218,10 +213,13 @@ export const MindstreamApp: React.FC = () => {
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} reflections={dailyReflectionsMap} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
+              return <Stream entries={entries} />;
           case 'reflections':
               return <ReflectionsView 
-                        reflections={reflections} 
+                        entries={entries}
+                        intentions={intentions}
+                        reflections={reflections}
+                        onGenerateDaily={handleGenerateReflection}
                         onGenerateWeekly={handleGenerateWeeklyReflection}
                         onGenerateMonthly={handleGenerateMonthlyReflection}
                         isGenerating={isGeneratingReflection}
@@ -231,7 +229,7 @@ export const MindstreamApp: React.FC = () => {
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} reflections={dailyReflectionsMap} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
+              return <Stream entries={entries} />;
       }
   };
 
