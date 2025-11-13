@@ -30,7 +30,6 @@ export const MindstreamApp: React.FC = () => {
   ]);
   
   const [view, setView] = useState<View>('stream');
-  const [appLoading, setAppLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -46,7 +45,6 @@ export const MindstreamApp: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      setAppLoading(true);
       try {
         // FIX: Removed profile fetching logic, as it's now handled in AuthContext.
         const [userEntries, userReflections, userIntentions] = await Promise.all([
@@ -65,8 +63,6 @@ export const MindstreamApp: React.FC = () => {
 
       } catch (error) {
         console.error("Error fetching data:", error);
-      } finally {
-        setAppLoading(false);
       }
     };
 
@@ -195,14 +191,6 @@ export const MindstreamApp: React.FC = () => {
         default:
             return null; // No action bar for reflections
     }
-  }
-  
-  if (appLoading) {
-    return (
-      <div className="h-screen w-screen bg-brand-indigo flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
   }
 
   return (
