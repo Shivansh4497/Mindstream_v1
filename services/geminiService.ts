@@ -1,30 +1,26 @@
+
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
+const GEMINI_API_KEY = process.env.API_KEY;
+
 let ai: GoogleGenAI | null = null;
-let apiKeyAvailable = false;
-
-// FIX: Reverted to VITE_ prefix as required by the Vite build tool for client-side exposure.
-const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
-
 if (GEMINI_API_KEY) {
   try {
     ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    apiKeyAvailable = true;
   } catch (e) {
     console.error("Error initializing Gemini client. Please check your API key.", e);
     ai = null;
-    apiKeyAvailable = false;
   }
 }
 
-if (!apiKeyAvailable) {
-    console.log("Gemini API Key is not configured. AI features will be disabled.");
+if (!ai) {
+    console.log("Gemini API Key is not configured or is invalid. AI features will be disabled.");
 }
 
-export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
+export const GEMINI_API_KEY_AVAILABLE = !!ai;
 
 
 /**
