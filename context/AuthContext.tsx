@@ -28,6 +28,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
+    // This variable helps us ensure setLoading(false) is only called once.
+    let initialLoadComplete = false;
+
     // The onAuthStateChange listener is the single source of truth.
     // It fires immediately with the cached session, and then for any changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -37,8 +40,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(currentUser);
         
         if (currentUser) {
-          // Fetch profile if the user changes.
-          // This check prevents re-fetching the profile on every token refresh.
+          // Fetch profile only if the user has actually changed.
+          // This prevents re-fetching on background token refreshes.
           if (profile?.id !== currentUser.id) {
             const userProfile = await db.getProfile(currentUser.id);
             setProfile(userProfile);
@@ -49,9 +52,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         // The first time this callback runs, the session state is definitive.
         // We can now mark the auth process as no longer loading.
-        // Subsequent calls (e.g., for TOKEN_REFRESHED) will not change the loading state.
-        if (loading) {
+        if (!initialLoadComplete) {
           setLoading(false);
+          initialLoadComplete = true;
         }
       }
     );
@@ -59,9 +62,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       subscription?.unsubscribe();
     };
-  // The dependency array is empty because we want this to run only once on mount.
-  // We manage the loading state and profile fetching internally to avoid loops.
-  }, [loading, profile]);
+  // The dependency array MUST be empty. This effect should run exactly ONCE
+  // to set up the listener, and the listener should only be torn down when
+  // the provider unmounts. This is the root cause fix.
+  }, []);
 
   const loginWithGoogle = async () => {
     if (!supabase) {
