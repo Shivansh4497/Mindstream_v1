@@ -62,22 +62,22 @@ Your holistic reflection on how our actions and feelings connected to our goals:
 
 
 /**
- * Generates a weekly summary reflection based on a week's daily reflections.
+ * Generates a weekly summary reflection based on a week's journal entries.
  */
-export const generateWeeklyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
+export const generateWeeklyReflection = async (entries: Entry[]): Promise<string> => {
   if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
-    const reflectionsText = dailyReflections
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map(r => `- ${getDisplayDate(r.date)}: ${r.summary}`)
+    const entriesText = entries
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .map(e => `- ${getDisplayDate(e.timestamp)} at ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`)
       .join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my daily reflections from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, overall mood, and progress towards goals that emerged during the week. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with all my journal entries from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, overall mood, and progress towards goals that emerged during the week. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
 
-Here are our daily reflections from this week:
-${reflectionsText}
+Here are our journal entries from this week:
+${entriesText}
 
 Your holistic weekly reflection on our patterns and themes:`;
 
@@ -94,22 +94,22 @@ Your holistic weekly reflection on our patterns and themes:`;
 
 
 /**
- * Generates a monthly summary reflection based on a month's daily reflections.
+ * Generates a monthly summary reflection based on a month's journal entries.
  */
-export const generateMonthlyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
+export const generateMonthlyReflection = async (entries: Entry[]): Promise<string> => {
   if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
-    const reflectionsText = dailyReflections
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map(r => `- ${getDisplayDate(r.date)}: ${r.summary}`)
+    const entriesText = entries
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .map(e => `- On ${getDisplayDate(e.timestamp)}: ${e.text}`)
       .join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my daily reflections from an entire month. Please synthesize these into a higher-level monthly summary. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries from an entire month. Please synthesize these into a higher-level monthly summary. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
 
-Here are our daily reflections from this month:
-${reflectionsText}
+Here are our journal entries from this month:
+${entriesText}
 
 Your holistic monthly reflection on our journey:`;
 
