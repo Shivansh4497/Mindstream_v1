@@ -13,6 +13,7 @@ interface ReflectionsViewProps {
   onGenerateDaily: (date: string, entriesForDay: Entry[]) => void;
   onGenerateWeekly: (weekId: string, entriesForWeek: Entry[]) => void;
   onGenerateMonthly: (monthId: string, entriesForMonth: Entry[]) => void;
+  onExploreInChat: (summary: string) => void;
   isGenerating: string | null;
 }
 
@@ -22,7 +23,7 @@ const timeframes: { id: ReflectionTimeframe; label: string }[] = [
     { id: 'monthly', label: 'Monthly' },
 ];
 
-export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, isGenerating }) => {
+export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, onExploreInChat, isGenerating }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
 
   const { daily, weekly, monthly } = useMemo(() => {
@@ -45,12 +46,13 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, inten
             intentions={intentions}
             dailyReflections={daily} 
             onGenerate={onGenerateDaily}
+            onExplore={onExploreInChat}
             isGenerating={isGenerating}
         />;
       case 'weekly':
-        return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} isGenerating={isGenerating} />;
+        return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} onExplore={onExploreInChat} isGenerating={isGenerating} />;
       case 'monthly':
-        return <MonthlyReflections entries={entries} monthlyReflections={monthly} onGenerate={onGenerateMonthly} isGenerating={isGenerating} />;
+        return <MonthlyReflections entries={entries} monthlyReflections={monthly} onGenerate={onGenerateMonthly} onExplore={onExploreInChat} isGenerating={isGenerating} />;
       default:
         return null;
     }
