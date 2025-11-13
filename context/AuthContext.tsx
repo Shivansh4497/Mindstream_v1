@@ -25,80 +25,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true); // Start as loading
 
   useEffect(() => {
-    // This effect runs once on mount to establish the initial auth state
-    // and set up a listener for subsequent changes.
+    // This effect runs once on mount. It relies exclusively on onAuthStateChange,
+    // which fires an initial event, to establish the session state. This is the
+    // single source of truth for auth and prevents race conditions.
+    console.log('[AuthContext] Setting up auth state change listener...');
+    setLoading(true); // Ensure we are in a loading state until the first auth event fires.
 
-    const initializeSession = async () => {
-      console.log('[AuthContext] Starting initial session check...');
-      try {
-        // First, check if a session already exists (e.g., from a page refresh)
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('[AuthContext] Error getting initial session:', error);
-          setLoading(false);
-          return;
-        }
-
-        if (currentSession) {
-          console.log(`[AuthContext] Active session found for user ${currentSession.user.id}.`);
-          setSession(currentSession);
-          const currentUser = currentSession.user;
-          setUser(currentUser);
-          console.log('[AuthContext] Fetching or creating profile for existing session...');
-          const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
-          setProfile(userProfile);
-          console.log('[AuthContext] Profile loaded for existing session.');
-        } else {
-          console.log('[AuthContext] No active session found on initial check.');
-          // Ensure all user-related state is null if no session
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-        }
-      } catch (err) {
-        console.error('[AuthContext] A critical error occurred during session initialization:', err);
-        // Reset state in case of failure
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        // Regardless of outcome, the initial check is done.
-        console.log('[AuthContext] Initial session check complete. Releasing loading state.');
-        setLoading(false);
-      }
-    };
-
-    initializeSession();
-
-    // Now, set up the listener for real-time auth events (login, logout, etc.)
-    console.log('[AuthContext] Setting up auth state change listener.');
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      async (event, session) => {
         console.log(`[AuthContext] Auth event received: ${event}`);
-        
-        // Update the session state immediately
-        setSession(newSession);
-        const newUser = newSession?.user ?? null;
-        setUser(newUser);
 
-        if (event === 'SIGNED_IN' && newUser) {
-          console.log(`[AuthContext] User signed in. Fetching/creating profile for ${newUser.id}...`);
-          // Set loading to true while we fetch the profile after a new login
-          setLoading(true);
+        // Set session and user based on the event
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        
+        // If there's a user, fetch their profile. Otherwise, clear it.
+        if (currentUser) {
+          console.log(`[AuthContext] User detected (${currentUser.id}). Fetching/creating profile...`);
           try {
-            const userProfile = await getProfile(newUser.id) ?? await createProfile(newUser);
+            const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
             setProfile(userProfile);
-            console.log('[AuthContext] Profile loaded after SIGNED_IN.');
-          } catch(error) {
-            console.error('[AuthContext] Error fetching profile after SIGNED_IN event:', error);
-            setProfile(null);
+            console.log('[AuthContext] Profile loaded successfully.');
+          } catch (error) {
+            console.error('[AuthContext] Error fetching profile:', error);
+            setProfile(null); // Clear profile on error
           } finally {
+            // Loading is complete once the profile fetch attempt is done.
+            console.log('[AuthContext] Profile fetch complete. Releasing loading state.');
             setLoading(false);
           }
-        } else if (event === 'SIGNED_OUT') {
-          console.log('[AuthContext] User signed out. Clearing profile.');
+        } else {
+          // If there's no session/user, clear the profile and finish loading.
+          console.log('[AuthContext] No user detected. Clearing profile and releasing loading state.');
           setProfile(null);
+          setLoading(false);
         }
       }
     );
