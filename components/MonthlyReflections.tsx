@@ -8,10 +8,11 @@ interface MonthlyReflectionsProps {
   entries: Entry[];
   monthlyReflections: Reflection[];
   onGenerate: (monthId: string, entriesForMonth: Entry[]) => void;
+  onExplore: (summary: string) => void;
   isGenerating: string | null;
 }
 
-export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, isGenerating }) => {
+export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, onExplore, isGenerating }) => {
   
   const groupedEntriesByMonth = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
@@ -61,7 +62,7 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries,
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getMonthDisplay(monthId)}</h2>
             
             {existingReflection && (
-              <ReflectionCard reflection={existingReflection} />
+              <ReflectionCard reflection={existingReflection} onExplore={onExplore} />
             )}
 
             {canGenerate && (
