@@ -25,51 +25,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     let isMounted = true;
 
-    if (!supabase) {
-      if (isMounted) setLoading(false);
-      return;
-    }
+    // This function centralizes the logic for updating session and profile state.
+    const updateUserState = async (currentSession: Session | null) => {
+      if (!isMounted) return;
+      
+      setSession(currentSession);
+      const currentUser = currentSession?.user ?? null;
+      setUser(currentUser);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, currentSession) => {
-        // If the component has been unmounted, we should not proceed.
-        if (!isMounted) {
-          return;
-        }
-
+      if (currentUser) {
         try {
-          setSession(currentSession);
-          const currentUser = currentSession?.user ?? null;
-          setUser(currentUser);
-          
-          if (currentUser) {
-              const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
-              // Check again after the async operation in case the component unmounted during the await.
-              if (isMounted) {
-                setProfile(userProfile);
-              }
-          } else {
-              if (isMounted) {
-                setProfile(null);
-              }
-          }
+          // Fetch the user's profile, or create one if it doesn't exist.
+          const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
+          if (isMounted) setProfile(userProfile);
         } catch (error) {
-            console.error("Error in onAuthStateChange callback", error);
-            if (isMounted) {
-              setSession(null);
-              setUser(null);
-              setProfile(null);
-            }
-        } finally {
-            // This is guaranteed to run, and will only set state if the component is still mounted.
-            if (isMounted) {
-              setLoading(false);
-            }
+          console.error("Error fetching or creating profile:", error);
+          if (isMounted) setProfile(null);
         }
+      } else {
+        if (isMounted) setProfile(null);
+      }
+    };
+
+    // On initial mount, get the current session to prevent a loading-state lock on page refresh.
+    const initializeSession = async () => {
+      if (!supabase) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await updateUserState(session);
+      } catch (error) {
+        console.error("Error initializing session:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    initializeSession();
+
+    if (!supabase) return;
+
+    // Listen for auth state changes (login, logout, etc.).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        await updateUserState(session);
       }
     );
 
-    // Cleanup function runs when the component unmounts.
+    // Cleanup subscription on component unmount.
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
