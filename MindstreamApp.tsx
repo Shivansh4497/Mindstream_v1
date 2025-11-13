@@ -28,7 +28,6 @@ export const MindstreamApp: React.FC = () => {
   ]);
   
   const [view, setView] = useState<View>('stream');
-  const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -64,9 +63,6 @@ export const MindstreamApp: React.FC = () => {
 
       } catch (error) {
         console.error("Error fetching data:", error);
-      } finally {
-        // Once data fetching is complete (or fails), hide the main app spinner.
-        setLoading(false);
       }
     };
 
@@ -205,13 +201,7 @@ export const MindstreamApp: React.FC = () => {
       <Header onSearchClick={() => setShowSearchModal(true)} />
 
       <main className="flex-grow overflow-y-auto">
-        {loading ? (
-            <div className="h-full flex items-center justify-center">
-                <div className="w-10 h-10 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        ) : (
-          renderCurrentView()
-        )}
+        {renderCurrentView()}
       </main>
       
       {/* DEFINITIVE FOOTER SOLUTION */}
