@@ -3,32 +3,35 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-// Correctly access environment variables in a Vite project, aligning with the project's established pattern.
-const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
-
 let ai: GoogleGenAI | null = null;
+let apiKeyAvailable = false;
+
+// FIX: Reverted to VITE_ prefix as required by the Vite build tool for client-side exposure.
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
 
 if (GEMINI_API_KEY) {
   try {
     ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    apiKeyAvailable = true;
   } catch (e) {
-    console.error("Error initializing Gemini client:", e);
+    console.error("Error initializing Gemini client. Please check your API key.", e);
     ai = null;
+    apiKeyAvailable = false;
   }
-} else {
-  console.warn("VITE_GEMINI_API_KEY is not configured. AI features will be disabled.");
 }
 
-// Export a flag that the UI can use to gracefully disable AI-related features.
-export const GEMINI_API_KEY_AVAILABLE = !!ai;
+if (!apiKeyAvailable) {
+    console.log("Gemini API Key is not configured. AI features will be disabled.");
+}
 
-const AI_DISABLED_ERROR = "AI functionality is disabled. Please configure the API key.";
+export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
+
 
 /**
  * Generates a summary reflection based on a day's entries and intentions.
  */
 export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) throw new Error(AI_DISABLED_ERROR);
+  if (!ai) return "AI functionality is disabled. Please configure the API key.";
   try {
     const model = 'gemini-2.5-flash';
 
@@ -53,7 +56,7 @@ Your holistic reflection on how our actions and feelings connected to our goals:
     return response.text;
   } catch (error) {
     console.error("Error generating reflection:", error);
-    throw new Error("I'm sorry, I couldn't generate a reflection at this time. Please try again later.");
+    return "I'm sorry, I couldn't generate a reflection at this time. Please try again later.";
   }
 };
 
@@ -62,7 +65,7 @@ Your holistic reflection on how our actions and feelings connected to our goals:
  * Generates a weekly summary reflection based on a week's daily reflections.
  */
 export const generateWeeklyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) throw new Error(AI_DISABLED_ERROR);
+  if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
@@ -85,7 +88,7 @@ Your holistic weekly reflection on our patterns and themes:`;
     return response.text;
   } catch (error) {
     console.error("Error generating weekly reflection:", error);
-    throw new Error("I'm sorry, I couldn't generate a weekly reflection at this time.");
+    return "I'm sorry, I couldn't generate a weekly reflection at this time.";
   }
 };
 
@@ -94,7 +97,7 @@ Your holistic weekly reflection on our patterns and themes:`;
  * Generates a monthly summary reflection based on a month's daily reflections.
  */
 export const generateMonthlyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) throw new Error(AI_DISABLED_ERROR);
+  if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
@@ -117,7 +120,7 @@ Your holistic monthly reflection on our journey:`;
     return response.text;
   } catch (error) {
     console.error("Error generating monthly reflection:", error);
-    throw new Error("I'm sorry, I couldn't generate a monthly reflection at this time.");
+    return "I'm sorry, I couldn't generate a monthly reflection at this time.";
   }
 };
 
@@ -126,10 +129,7 @@ Your holistic monthly reflection on our journey:`;
  * Processes a new journal entry to generate a title and tags.
  */
 export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
-  if (!ai) {
-    console.error("AI functionality is disabled. Cannot process entry.");
-    return { title: 'Journal Entry', tags: [] };
-  }
+  if (!ai) return { title: 'Journal Entry', tags: [] };
   try {
     const model = 'gemini-2.5-flash';
 
@@ -180,7 +180,7 @@ Respond with only a JSON object.`;
  * This is now a "Holistic" function that uses entries AND intentions.
  */
 export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<string> => {
-    if (!ai) throw new Error(AI_DISABLED_ERROR);
+    if (!ai) return "AI functionality is disabled. Please configure the API key.";
     try {
         const model = 'gemini-2.5-flash';
 
@@ -225,6 +225,6 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
 
     } catch (error) {
         console.error("Error in chat response:", error);
-        throw new Error("I'm sorry, something went wrong. I can't chat right now.");
+        return "I'm sorry, something went wrong. I can't chat right now.";
     }
 }
