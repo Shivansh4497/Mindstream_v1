@@ -13,17 +13,17 @@ import { InputBar } from './components/InputBar';
 import { PrivacyModal } from './components/PrivacyModal';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { SearchModal } from './components/SearchModal';
-import { ReflectionList } from './components/ReflectionList';
 import { ChatView } from './components/ChatView';
 import { ChatInputBar } from './components/ChatInputBar';
 import { IntentionsView } from './components/IntentionsView';
 import { IntentionsInputBar } from './components/IntentionsInputBar';
+import { ReflectionsView } from './components/ReflectionsView';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
   // FIX: Profile state is no longer managed here; it's now in AuthContext.
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [reflections, setReflections] = useState<Record<string, Reflection>>({});
+  const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
   const [messages, setMessages] = useState<Message[]>([
     { sender: 'ai', text: "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?" }
@@ -40,7 +40,7 @@ export const MindstreamApp: React.FC = () => {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
   
-  const allReflections = useMemo(() => Object.values(reflections), [reflections]);
+  const allReflections = reflections;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,11 +54,7 @@ export const MindstreamApp: React.FC = () => {
         ]);
         
         setEntries(userEntries);
-        const reflectionsMap = userReflections.reduce((acc, r) => {
-          acc[r.date] = r;
-          return acc;
-        }, {} as Record<string, Reflection>);
-        setReflections(reflectionsMap);
+        setReflections(userReflections);
         setIntentions(userIntentions);
 
       } catch (error) {
@@ -68,6 +64,15 @@ export const MindstreamApp: React.FC = () => {
 
     fetchData();
   }, [user]);
+
+  const dailyReflectionsMap = useMemo(() => {
+    return reflections
+        .filter(r => r.type === 'daily')
+        .reduce((acc, r) => {
+            acc[r.date] = r;
+            return acc;
+        }, {} as Record<string, Reflection>);
+  }, [reflections]);
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
@@ -100,17 +105,62 @@ export const MindstreamApp: React.FC = () => {
         const reflectionData = {
             date: date,
             summary: summary,
-            entry_ids: entriesForDay.map(e => e.id)
+            entry_ids: entriesForDay.map(e => e.id),
+            type: 'daily' as const
         };
         const newReflection = await db.addReflection(user.id, reflectionData);
         if (newReflection) {
-            setReflections(prev => ({...prev, [date]: newReflection}));
+            setReflections(prev => [newReflection, ...prev]);
         }
       } catch (error) {
           console.error("Error generating reflection:", error);
       } finally {
           setIsGeneratingReflection(null);
       }
+  };
+
+  const handleGenerateWeeklyReflection = async (weekId: string, dailyReflections: Reflection[]) => {
+    if (!user || isGeneratingReflection) return;
+    setIsGeneratingReflection(weekId);
+    try {
+      const summary = await gemini.generateWeeklyReflection(dailyReflections);
+      const reflectionData = {
+        date: weekId,
+        summary: summary,
+        entry_ids: dailyReflections.flatMap(r => r.entry_ids),
+        type: 'weekly' as const,
+      };
+      const newReflection = await db.addReflection(user.id, reflectionData);
+      if (newReflection) {
+        setReflections(prev => [newReflection, ...prev]);
+      }
+    } catch (error) {
+      console.error("Error generating weekly reflection:", error);
+    } finally {
+      setIsGeneratingReflection(null);
+    }
+  };
+  
+  const handleGenerateMonthlyReflection = async (monthId: string, dailyReflections: Reflection[]) => {
+    if (!user || isGeneratingReflection) return;
+    setIsGeneratingReflection(monthId);
+    try {
+      const summary = await gemini.generateMonthlyReflection(dailyReflections);
+      const reflectionData = {
+        date: monthId,
+        summary: summary,
+        entry_ids: dailyReflections.flatMap(r => r.entry_ids),
+        type: 'monthly' as const,
+      };
+      const newReflection = await db.addReflection(user.id, reflectionData);
+      if (newReflection) {
+        setReflections(prev => [newReflection, ...prev]);
+      }
+    } catch (error) {
+      console.error("Error generating monthly reflection:", error);
+    } finally {
+      setIsGeneratingReflection(null);
+    }
   };
 
   const handleSendMessage = async (text: string) => {
@@ -168,15 +218,20 @@ export const MindstreamApp: React.FC = () => {
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} reflections={reflections} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
+              return <Stream entries={entries} reflections={dailyReflectionsMap} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
           case 'reflections':
-              return <div className="p-4"><ReflectionList reflections={reflections} /></div>;
+              return <ReflectionsView 
+                        reflections={reflections} 
+                        onGenerateWeekly={handleGenerateWeeklyReflection}
+                        onGenerateMonthly={handleGenerateMonthlyReflection}
+                        isGenerating={isGeneratingReflection}
+                     />;
           case 'chat':
               return <ChatView messages={messages} isLoading={isChatLoading} />;
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} reflections={reflections} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
+              return <Stream entries={entries} reflections={dailyReflectionsMap} onGenerateReflection={handleGenerateReflection} isGeneratingReflection={isGeneratingReflection} />;
       }
   };
 
