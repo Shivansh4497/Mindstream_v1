@@ -33,8 +33,10 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
   }, [weeklyReflections]);
 
   const sortedWeekIds = useMemo(() => {
-    return Object.keys(groupedDailies).sort().reverse();
-  }, [groupedDailies]);
+    // Also include weeks that have a reflection but maybe no underlying dailies visible anymore
+    const allWeekIds = new Set([...Object.keys(groupedDailies), ...Object.keys(existingWeekliesMap)]);
+    return Array.from(allWeekIds).sort().reverse();
+  }, [groupedDailies, existingWeekliesMap]);
 
   const currentWeekId = getWeekId(new Date());
 
@@ -53,40 +55,52 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
     <div className="p-4 animate-fade-in-up">
       {sortedWeekIds.map(weekId => {
         const existingReflection = existingWeekliesMap[weekId];
-        const dailiesForWeek = groupedDailies[weekId];
+        const dailiesForWeek = groupedDailies[weekId] || [];
         const isGeneratingForThis = isGenerating === weekId;
-        const isPastWeek = weekId !== currentWeekId; // Simple check, good enough
+        const isPastWeek = weekId < currentWeekId; // Correct check for past weeks
+
+        const canGenerate = dailiesForWeek.length > 0 && isPastWeek;
 
         return (
           <div key={weekId} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getWeekDisplay(weekId)}</h2>
-            {existingReflection ? (
+            
+            {existingReflection && (
               <ReflectionCard reflection={existingReflection} />
-            ) : isPastWeek ? (
-              <div className="mb-4">
-                <button
-                  onClick={() => onGenerate(weekId, dailiesForWeek)}
-                  disabled={isGeneratingForThis}
-                  className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-                >
-                  {isGeneratingForThis ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-                      <span>Generating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon className="w-5 h-5 text-brand-teal" />
-                      <span>Generate Weekly Reflection</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
+            )}
+
+            {(canGenerate || existingReflection) && (
+                 <div className="mt-4">
+                 <button
+                   onClick={() => onGenerate(weekId, dailiesForWeek)}
+                   disabled={isGeneratingForThis}
+                   className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                 >
+                   {isGeneratingForThis ? (
+                     <>
+                       <div className="w-5 h-5 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+                       <span>Generating...</span>
+                     </>
+                   ) : (
+                     <>
+                       <SparklesIcon className="w-5 h-5 text-brand-teal" />
+                       <span>
+                         {existingReflection
+                           ? 'Update your weekly reflection'
+                           : 'Wanna know how your week was?'}
+                        </span>
+                     </>
+                   )}
+                 </button>
+               </div>
+            )}
+
+            {!existingReflection && !isPastWeek && (
                 <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
                     This week is still in progress. Check back later to generate a reflection.
                 </div>
             )}
+            
           </div>
         );
       })}
