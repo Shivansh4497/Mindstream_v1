@@ -19,7 +19,7 @@ if (!isSupabaseConfigured) {
     <React.StrictMode>
       <ConfigurationError
         missingServices={['Supabase Database']}
-        requiredVariables={['SUPABASE_URL', 'SUPABASE_ANON_KEY']}
+        requiredVariables={['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']}
       />
     </React.StrictMode>
   );
