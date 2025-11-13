@@ -5,9 +5,10 @@ import { EntryCard } from './EntryCard';
 
 interface StreamProps {
   entries: Entry[];
+  onTagClick?: (tag: string) => void;
 }
 
-export const Stream: React.FC<StreamProps> = ({ entries }) => {
+export const Stream: React.FC<StreamProps> = ({ entries, onTagClick }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -44,7 +45,7 @@ export const Stream: React.FC<StreamProps> = ({ entries }) => {
           <div key={date} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
             {entriesForDay.map(entry => (
-              <EntryCard key={entry.id} entry={entry} />
+              <EntryCard key={entry.id} entry={entry} onTagClick={onTagClick} />
             ))}
           </div>
         );
