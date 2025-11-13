@@ -1,226 +1,281 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAuth } from './context/AuthContext';
+import * as db from './services/dbService';
+import * as gemini from './services/geminiService';
+// FIX: The Profile type is no longer needed here as it's not managed in this component's state.
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe } from './types';
+import { getFormattedDate } from './utils/date';
 
-// FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
-import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention } from '../types';
-import { getDisplayDate } from "../utils/date";
+import { Header } from './components/Header';
+import { NavBar, View } from './components/NavBar';
+import { Stream } from './components/Stream';
+import { InputBar } from './components/InputBar';
+import { PrivacyModal } from './components/PrivacyModal';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { SearchModal } from './components/SearchModal';
+import { ChatView } from './components/ChatView';
+import { ChatInputBar } from './components/ChatInputBar';
+import { IntentionsView } from './components/IntentionsView';
+import { IntentionsInputBar } from './components/IntentionsInputBar';
+import { ReflectionsView } from './components/ReflectionsView';
 
-const GEMINI_API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
+export const MindstreamApp: React.FC = () => {
+  const { user } = useAuth();
+  // FIX: Profile state is no longer managed here; it's now in AuthContext.
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [reflections, setReflections] = useState<Reflection[]>([]);
+  const [intentions, setIntentions] = useState<Intention[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    { sender: 'ai', text: "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?" }
+  ]);
+  
+  const [view, setView] = useState<View>('stream');
+  const [isProcessing, setIsProcessing] = useState(false); // For new entries
+  const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
-let ai: GoogleGenAI | null = null;
-if (GEMINI_API_KEY) {
-  try {
-    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  } catch (e) {
-    console.error("Error initializing Gemini client. Please check your API key.", e);
-    ai = null;
-  }
-}
+  const [hasSeenPrivacy, setHasSeenPrivacy] = useLocalStorage('hasSeenPrivacy', false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
+  
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
+  
+  const allReflections = reflections;
 
-if (!ai) {
-    console.log("Gemini API Key is not configured or is invalid. AI features will be disabled.");
-}
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+      try {
+        // FIX: Removed profile fetching logic, as it's now handled in AuthContext.
+        const [userEntries, userReflections, userIntentions] = await Promise.all([
+          db.getEntries(user.id),
+          db.getReflections(user.id),
+          db.getIntentions(user.id)
+        ]);
+        
+        setEntries(userEntries);
+        setReflections(userReflections);
+        setIntentions(userIntentions);
 
-export const GEMINI_API_KEY_AVAILABLE = !!ai;
-
-
-/**
- * Generates a summary reflection based on a day's entries and intentions.
- */
-export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled. Please configure the API key.";
-  try {
-    const model = 'gemini-2.5-flash';
-
-    const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
-    const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
-
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of...").
-
-Here were our intentions for today:
-${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
-
-Here are today's journal entries:
-${entriesText}
-
-Your holistic reflection on how our actions and feelings connected to our goals:`;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
-
-    return response.text;
-  } catch (error) {
-    console.error("Error generating reflection:", error);
-    return "I'm sorry, I couldn't generate a reflection at this time. Please try again later.";
-  }
-};
-
-
-/**
- * Generates a weekly summary reflection based on a week's daily reflections.
- */
-export const generateWeeklyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
-  try {
-    const model = 'gemini-2.5-flash';
-    
-    const reflectionsText = dailyReflections
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map(r => `- ${getDisplayDate(r.date)}: ${r.summary}`)
-      .join('\n');
-
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my daily reflections from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, overall mood, and progress towards goals that emerged during the week. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
-
-Here are our daily reflections from this week:
-${reflectionsText}
-
-Your holistic weekly reflection on our patterns and themes:`;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Error generating weekly reflection:", error);
-    return "I'm sorry, I couldn't generate a weekly reflection at this time.";
-  }
-};
-
-
-/**
- * Generates a monthly summary reflection based on a month's daily reflections.
- */
-export const generateMonthlyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
-  try {
-    const model = 'gemini-2.5-flash';
-    
-    const reflectionsText = dailyReflections
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map(r => `- ${getDisplayDate(r.date)}: ${r.summary}`)
-      .join('\n');
-
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my daily reflections from an entire month. Please synthesize these into a higher-level monthly summary. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
-
-Here are our daily reflections from this month:
-${reflectionsText}
-
-Your holistic monthly reflection on our journey:`;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Error generating monthly reflection:", error);
-    return "I'm sorry, I couldn't generate a monthly reflection at this time.";
-  }
-};
-
-
-/**
- * Processes a new journal entry to generate a title and tags.
- */
-export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
-  if (!ai) return { title: 'Journal Entry', tags: [] };
-  try {
-    const model = 'gemini-2.5-flash';
-
-    const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words) and 2-4 relevant tags that capture the topics and emotions.
-
-Entry: "${entryText}"
-
-Respond with only a JSON object.`;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: {
-              type: Type.STRING,
-              description: "A short, descriptive title for the journal entry (3-5 words)."
-            },
-            tags: {
-              type: Type.ARRAY,
-              description: "An array of 2-4 single-word or two-word tags that categorize the entry.",
-              items: {
-                type: Type.STRING
-              }
-            }
-          },
-          required: ['title', 'tags']
-        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
       }
-    });
-    
-    const jsonStr = response.text.trim();
-    const result = JSON.parse(jsonStr);
-    return result;
+    };
 
-  } catch (error) {
-    console.error("Error processing entry:", error);
-    return { title: 'Journal Entry', tags: [] };
-  }
-};
+    fetchData();
+  }, [user]);
 
-
-/**
- * Gets a response from the AI for the chat feature.
- * This is now a "Holistic" function that uses entries AND intentions.
- */
-export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<string> => {
-    if (!ai) return "AI functionality is disabled. Please configure the API key.";
+  const handleAddEntry = async (text: string) => {
+    if (!user || isProcessing) return;
+    setIsProcessing(true);
     try {
-        const model = 'gemini-2.5-flash';
-
-        // Prepare context from recent entries
-        const recentEntriesSummary = entries.slice(0, 15).map(e => 
-            `- On ${new Date(e.timestamp).toLocaleDateString()}, I wrote: "${e.text}"`
-        ).join('\n');
-        
-        // Prepare context from all intentions (goals)
-        const intentionsSummary = intentions.map(i => 
-            `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
-        ).join('\n');
-
-        const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
-
-CONTEXT from my recent journal entries:
-${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
-
-CONTEXT from my intentions and goals:
-${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set yet."}`;
-
-        const userPrompt = history[history.length - 1].text;
-        
-        // Construct the conversation history for the model.
-        const chatHistory = history.slice(0, -1).map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.text }],
-        }));
-        
-        const response = await ai.models.generateContent({
-            model,
-            contents: [
-                ...chatHistory,
-                { role: 'user', parts: [{ text: userPrompt }] }
-            ],
-            config: {
-                systemInstruction,
-            }
-        });
-
-        return response.text;
-
+      const { title, tags } = await gemini.processEntry(text);
+      const newEntryData = {
+        timestamp: new Date().toISOString(),
+        text,
+        title,
+        tags
+      };
+      const newEntry = await db.addEntry(user.id, newEntryData);
+      if (newEntry) {
+        setEntries(prev => [newEntry, ...prev]);
+      }
     } catch (error) {
-        console.error("Error in chat response:", error);
-        return "I'm sorry, something went wrong. I can't chat right now.";
+      console.error("Error adding entry:", error);
+    } finally {
+      setIsProcessing(false);
     }
-}
+  };
+  
+  const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
+    if (!user || isGeneratingReflection) return;
+    setIsGeneratingReflection(date);
+    try {
+      const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
+      const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
+
+      const reflectionData = {
+        date: date,
+        summary: summary,
+        entry_ids: entriesForDay.map(e => e.id),
+        type: 'daily' as const,
+      };
+      const newReflection = await db.addReflection(user.id, reflectionData);
+      if (newReflection) {
+        const userReflections = await db.getReflections(user.id);
+        setReflections(userReflections);
+      } else {
+        throw new Error("Failed to save the reflection to the database.");
+      }
+    } catch (error) {
+      console.error("Error generating reflection:", error);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating reflection.");
+    } finally {
+      setIsGeneratingReflection(null);
+    }
+  };
+
+  const handleGenerateWeeklyReflection = async (weekId: string, dailyReflections: Reflection[]) => {
+    if (!user || isGeneratingReflection) return;
+    setIsGeneratingReflection(weekId);
+    try {
+      const summary = await gemini.generateWeeklyReflection(dailyReflections);
+
+      const reflectionData = {
+        date: weekId,
+        summary: summary,
+        entry_ids: dailyReflections.flatMap(r => r.entry_ids),
+        type: 'weekly' as const,
+      };
+      const newReflection = await db.addReflection(user.id, reflectionData);
+      if (newReflection) {
+        const userReflections = await db.getReflections(user.id);
+        setReflections(userReflections);
+      } else {
+        throw new Error("Failed to save the weekly reflection to the database.");
+      }
+    } catch (error) {
+      console.error("Error generating weekly reflection:", error);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating weekly reflection.");
+    } finally {
+      setIsGeneratingReflection(null);
+    }
+  };
+  
+  const handleGenerateMonthlyReflection = async (monthId: string, dailyReflections: Reflection[]) => {
+    if (!user || isGeneratingReflection) return;
+    setIsGeneratingReflection(monthId);
+    try {
+      const summary = await gemini.generateMonthlyReflection(dailyReflections);
+      
+      const reflectionData = {
+        date: monthId,
+        summary: summary,
+        entry_ids: dailyReflections.flatMap(r => r.entry_ids),
+        type: 'monthly' as const,
+      };
+      const newReflection = await db.addReflection(user.id, reflectionData);
+      if (newReflection) {
+        const userReflections = await db.getReflections(user.id);
+        setReflections(userReflections);
+      } else {
+          throw new Error("Failed to save the monthly reflection to the database.");
+      }
+    } catch (error) {
+      console.error("Error generating monthly reflection:", error);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating monthly reflection.");
+    } finally {
+      setIsGeneratingReflection(null);
+    }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    if (isChatLoading) return;
+
+    const newUserMessage: Message = { sender: 'user', text };
+    const newHistory = [...messages, newUserMessage];
+    setMessages(newHistory);
+    setIsChatLoading(true);
+
+    try {
+        const aiResponse = await gemini.getChatResponse(newHistory, entries, intentions);
+        const newAiMessage: Message = { sender: 'ai', text: aiResponse };
+        setMessages(prev => [...prev, newAiMessage]);
+    } catch (error) {
+        console.error("Error getting chat response:", error);
+        const errorMessage: Message = { 
+            sender: 'ai', 
+            text: error instanceof Error ? error.message : "Sorry, I'm having trouble connecting right now." 
+        };
+        setMessages(prev => [...prev, errorMessage]);
+    } finally {
+        setIsChatLoading(false);
+    }
+  }
+
+  const handleAddIntention = async (text: string) => {
+    if (!user) return;
+    try {
+        const newIntention = await db.addIntention(user.id, text, activeIntentionTimeframe);
+        if (newIntention) {
+            setIntentions(prev => [newIntention, ...prev]);
+        }
+    } catch (error) {
+        console.error("Error adding intention:", error);
+    }
+  };
+
+  const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
+    const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
+    try {
+        const updatedIntention = await db.updateIntentionStatus(id, newStatus);
+        if (updatedIntention) {
+            setIntentions(prev => prev.map(i => i.id === id ? updatedIntention : i));
+        }
+    } catch (error) {
+        console.error(`Error updating intention status to ${newStatus}:`, error);
+    }
+  };
+
+  const handleDeleteIntention = async (id: string) => {
+    const wasDeleted = await db.deleteIntention(id);
+    if (wasDeleted) {
+        setIntentions(prev => prev.filter(i => i.id !== id));
+    }
+  };
+
+  const renderCurrentView = () => {
+      switch(view) {
+          case 'stream':
+              return <Stream entries={entries} />;
+          case 'reflections':
+              return <ReflectionsView 
+                        entries={entries}
+                        intentions={intentions}
+                        reflections={reflections}
+                        onGenerateDaily={handleGenerateReflection}
+                        onGenerateWeekly={handleGenerateWeeklyReflection}
+                        onGenerateMonthly={handleGenerateMonthlyReflection}
+                        isGenerating={isGeneratingReflection}
+                     />;
+          case 'chat':
+              return <ChatView messages={messages} isLoading={isChatLoading} />;
+          case 'intentions':
+              return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
+          default:
+              return <Stream entries={entries} />;
+      }
+  };
+
+  const renderActionBar = () => {
+    switch(view) {
+        case 'stream':
+            return <InputBar onAddEntry={handleAddEntry} />;
+        case 'chat':
+            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
+        case 'intentions':
+            return <IntentionsInputBar onAddIntention={handleAddIntention} activeTimeframe={activeIntentionTimeframe} />;
+        default:
+            return null; // No action bar for reflections
+    }
+  }
+
+  return (
+    <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
+      {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
+      {showSearchModal && <SearchModal entries={entries} reflections={allReflections} onClose={() => setShowSearchModal(false)} />}
+      
+      <Header onSearchClick={() => setShowSearchModal(true)} />
+
+      <main className="flex-grow overflow-y-auto">
+        {renderCurrentView()}
+      </main>
+      
+      {/* DEFINITIVE FOOTER SOLUTION */}
+      <div className="flex-shrink-0">
+        {renderActionBar()}
+        <NavBar activeView={view} onViewChange={setView} />
+      </div>
+    </div>
+  );
+};
