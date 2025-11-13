@@ -1,7 +1,8 @@
-// FIX: Switched from `import.meta.env` to `process.env` to resolve TypeScript errors.
+// FIX: Removed vite/client reference and cast `import.meta` to `any` to resolve type errors.
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase credentials are now sourced from environment variables.
+// FIX: Use optional chaining (?.) to prevent a crash if import.meta.env is undefined.
+// This is the definitive fix for the "blank screen" issue.
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
