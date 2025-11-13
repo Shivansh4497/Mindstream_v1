@@ -109,7 +109,6 @@ export const MindstreamApp: React.FC = () => {
       }
     } catch (error) {
       console.error("Error generating reflection:", error);
-      alert(error instanceof Error ? error.message : "An unknown error occurred while generating reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -136,7 +135,6 @@ export const MindstreamApp: React.FC = () => {
       }
     } catch (error) {
       console.error("Error generating weekly reflection:", error);
-      alert(error instanceof Error ? error.message : "An unknown error occurred while generating weekly reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -163,7 +161,6 @@ export const MindstreamApp: React.FC = () => {
       }
     } catch (error) {
       console.error("Error generating monthly reflection:", error);
-      alert(error instanceof Error ? error.message : "An unknown error occurred while generating monthly reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -237,6 +234,7 @@ export const MindstreamApp: React.FC = () => {
                         onGenerateWeekly={handleGenerateWeeklyReflection}
                         onGenerateMonthly={handleGenerateMonthlyReflection}
                         isGenerating={isGeneratingReflection}
+                        isAiEnabled={gemini.GEMINI_API_KEY_AVAILABLE}
                      />;
           case 'chat':
               return <ChatView messages={messages} isLoading={isChatLoading} />;
@@ -252,7 +250,7 @@ export const MindstreamApp: React.FC = () => {
         case 'stream':
             return <InputBar onAddEntry={handleAddEntry} />;
         case 'chat':
-            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
+            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} isAiEnabled={gemini.GEMINI_API_KEY_AVAILABLE} />;
         case 'intentions':
             return <IntentionsInputBar onAddIntention={handleAddIntention} activeTimeframe={activeIntentionTimeframe} />;
         default:
