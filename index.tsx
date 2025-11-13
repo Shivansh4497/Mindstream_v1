@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { SUPABASE_CREDENTIALS_AVAILABLE } from './services/supabaseClient';
-import { ConfigurationError } from './components/ConfigurationError.tsx';
+import { ConfigurationError } from './components/ConfigurationError';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
