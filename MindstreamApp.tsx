@@ -94,10 +94,6 @@ export const MindstreamApp: React.FC = () => {
       const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
       const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
 
-      if (summary.startsWith("I'm sorry") || summary.startsWith("AI functionality is disabled")) {
-        throw new Error(summary);
-      }
-
       const reflectionData = {
         date: date,
         summary: summary,
@@ -109,11 +105,11 @@ export const MindstreamApp: React.FC = () => {
         const userReflections = await db.getReflections(user.id);
         setReflections(userReflections);
       } else {
-        throw new Error("Failed to save the reflection to the database. Please check console for details.");
+        throw new Error("Failed to save the reflection to the database.");
       }
     } catch (error) {
       console.error("Error generating reflection:", error);
-      alert(`Could not generate reflection. ${error instanceof Error ? error.message : String(error)}`);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -124,10 +120,6 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(weekId);
     try {
       const summary = await gemini.generateWeeklyReflection(dailyReflections);
-
-      if (summary.startsWith("I'm sorry") || summary.startsWith("AI functionality is disabled")) {
-        throw new Error(summary);
-      }
 
       const reflectionData = {
         date: weekId,
@@ -140,11 +132,11 @@ export const MindstreamApp: React.FC = () => {
         const userReflections = await db.getReflections(user.id);
         setReflections(userReflections);
       } else {
-        throw new Error("Failed to save the reflection to the database. Please check console for details.");
+        throw new Error("Failed to save the weekly reflection to the database.");
       }
     } catch (error) {
       console.error("Error generating weekly reflection:", error);
-      alert(`Could not generate weekly reflection. ${error instanceof Error ? error.message : String(error)}`);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating weekly reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -155,10 +147,6 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(monthId);
     try {
       const summary = await gemini.generateMonthlyReflection(dailyReflections);
-      
-      if (summary.startsWith("I'm sorry") || summary.startsWith("AI functionality is disabled")) {
-        throw new Error(summary);
-      }
       
       const reflectionData = {
         date: monthId,
@@ -171,11 +159,11 @@ export const MindstreamApp: React.FC = () => {
         const userReflections = await db.getReflections(user.id);
         setReflections(userReflections);
       } else {
-          throw new Error("Failed to save the reflection to the database. Please check console for details.");
+          throw new Error("Failed to save the monthly reflection to the database.");
       }
     } catch (error) {
       console.error("Error generating monthly reflection:", error);
-      alert(`Could not generate monthly reflection. ${error instanceof Error ? error.message : String(error)}`);
+      alert(error instanceof Error ? error.message : "An unknown error occurred while generating monthly reflection.");
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -195,7 +183,10 @@ export const MindstreamApp: React.FC = () => {
         setMessages(prev => [...prev, newAiMessage]);
     } catch (error) {
         console.error("Error getting chat response:", error);
-        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
+        const errorMessage: Message = { 
+            sender: 'ai', 
+            text: error instanceof Error ? error.message : "Sorry, I'm having trouble connecting right now." 
+        };
         setMessages(prev => [...prev, errorMessage]);
     } finally {
         setIsChatLoading(false);
