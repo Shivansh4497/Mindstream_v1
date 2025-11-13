@@ -1,10 +1,9 @@
 // FIX: Removed vite/client reference and cast `import.meta` to `any` to resolve type errors.
 import { createClient } from '@supabase/supabase-js';
 
-// FIX: Use optional chaining (?.) to prevent a crash if import.meta.env is undefined.
-// This is the definitive fix for the "blank screen" issue.
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+// FIX: Reverted to VITE_ prefix as required by the Vite build tool for client-side exposure.
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
 
 
 let supabase: ReturnType<typeof createClient> | null = null;
