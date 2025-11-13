@@ -11,8 +11,8 @@ interface ReflectionsViewProps {
   intentions: Intention[];
   reflections: Reflection[];
   onGenerateDaily: (date: string, entriesForDay: Entry[]) => void;
-  onGenerateWeekly: (weekId: string, dailyReflections: Reflection[]) => void;
-  onGenerateMonthly: (monthId: string, dailyReflections: Reflection[]) => void;
+  onGenerateWeekly: (weekId: string, entriesForWeek: Entry[]) => void;
+  onGenerateMonthly: (monthId: string, entriesForMonth: Entry[]) => void;
   isGenerating: string | null;
 }
 
@@ -48,9 +48,9 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, inten
             isGenerating={isGenerating}
         />;
       case 'weekly':
-        return <WeeklyReflections dailyReflections={daily} weeklyReflections={weekly} onGenerate={onGenerateWeekly} isGenerating={isGenerating} />;
+        return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} isGenerating={isGenerating} />;
       case 'monthly':
-        return <MonthlyReflections dailyReflections={daily} monthlyReflections={monthly} onGenerate={onGenerateMonthly} isGenerating={isGenerating} />;
+        return <MonthlyReflections entries={entries} monthlyReflections={monthly} onGenerate={onGenerateMonthly} isGenerating={isGenerating} />;
       default:
         return null;
     }
