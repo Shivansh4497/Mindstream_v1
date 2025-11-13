@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { SUPABASE_CREDENTIALS_AVAILABLE } from './services/supabaseClient';
-import { GEMINI_API_KEY_AVAILABLE } from './services/geminiService';
 import { ConfigurationError } from './components/ConfigurationError';
 
 const rootElement = document.getElementById('root');
@@ -13,16 +12,15 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 
-const isConfigured = SUPABASE_CREDENTIALS_AVAILABLE && GEMINI_API_KEY_AVAILABLE;
+const isSupabaseConfigured = SUPABASE_CREDENTIALS_AVAILABLE;
 
-if (!isConfigured) {
-  const missingServices: string[] = [];
-  if (!SUPABASE_CREDENTIALS_AVAILABLE) missingServices.push('Supabase Database');
-  if (!GEMINI_API_KEY_AVAILABLE) missingServices.push('Gemini AI');
-  
+if (!isSupabaseConfigured) {
   root.render(
     <React.StrictMode>
-      <ConfigurationError missingServices={missingServices} />
+      <ConfigurationError
+        missingServices={['Supabase Database']}
+        requiredVariables={['SUPABASE_URL', 'SUPABASE_ANON_KEY']}
+      />
     </React.StrictMode>
   );
 } else {
