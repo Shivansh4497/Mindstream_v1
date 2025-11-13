@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
+// FIX: The Profile type is no longer needed here as it's not managed in this component's state.
 import type { Entry, Reflection, Intention, Message, IntentionTimeframe } from './types';
 import { getFormattedDate } from './utils/date';
 
@@ -20,6 +21,7 @@ import { IntentionsInputBar } from './components/IntentionsInputBar';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
+  // FIX: Profile state is no longer managed here; it's now in AuthContext.
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Record<string, Reflection>>({});
   const [intentions, setIntentions] = useState<Intention[]>([]);
@@ -28,6 +30,7 @@ export const MindstreamApp: React.FC = () => {
   ]);
   
   const [view, setView] = useState<View>('stream');
+  const [appLoading, setAppLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -42,17 +45,16 @@ export const MindstreamApp: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      // This effect should only run when the user object is available.
-      // The guard prevents any action if the user object is not yet populated.
       if (!user) return;
-
+      setAppLoading(true);
       try {
+        // FIX: Removed profile fetching logic, as it's now handled in AuthContext.
         const [userEntries, userReflections, userIntentions] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
           db.getIntentions(user.id)
         ]);
-
+        
         setEntries(userEntries);
         const reflectionsMap = userReflections.reduce((acc, r) => {
           acc[r.date] = r;
@@ -63,11 +65,13 @@ export const MindstreamApp: React.FC = () => {
 
       } catch (error) {
         console.error("Error fetching data:", error);
+      } finally {
+        setAppLoading(false);
       }
     };
 
     fetchData();
-  }, [user]); // The effect is now directly dependent on the user object.
+  }, [user]);
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
@@ -193,6 +197,14 @@ export const MindstreamApp: React.FC = () => {
     }
   }
   
+  if (appLoading) {
+    return (
+      <div className="h-screen w-screen bg-brand-indigo flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
       {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
