@@ -8,10 +8,11 @@ interface WeeklyReflectionsProps {
   entries: Entry[];
   weeklyReflections: Reflection[];
   onGenerate: (weekId: string, entriesForWeek: Entry[]) => void;
+  onExplore: (summary: string) => void;
   isGenerating: string | null;
 }
 
-export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, isGenerating }) => {
+export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, onExplore, isGenerating }) => {
   
   const groupedEntriesByWeek = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
@@ -61,7 +62,7 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, w
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getWeekDisplay(weekId)}</h2>
             
             {existingReflection && (
-              <ReflectionCard reflection={existingReflection} />
+              <ReflectionCard reflection={existingReflection} onExplore={onExplore} />
             )}
 
             {canGenerate && (
