@@ -33,10 +33,13 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
   }, [dailyReflections]);
 
   const sortedDates = useMemo(() => {
-    return Object.keys(groupedEntries).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  }, [groupedEntries]);
+    const entryDates = Object.keys(groupedEntries);
+    const reflectionDates = Object.keys(dailyReflectionsMap);
+    const allDates = new Set([...entryDates, ...reflectionDates]);
+    return Array.from(allDates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  }, [groupedEntries, dailyReflectionsMap]);
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && dailyReflections.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4 animate-fade-in">
         <div>
