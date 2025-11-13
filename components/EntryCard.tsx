@@ -5,9 +5,10 @@ import type { Entry } from '../types';
 
 interface EntryCardProps {
   entry: Entry;
+  onTagClick?: (tag: string) => void;
 }
 
-export const EntryCard: React.FC<EntryCardProps> = ({ entry }) => {
+export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick }) => {
   const entryTime = new Date(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -26,9 +27,13 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry }) => {
       {entry.tags && entry.tags.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {entry.tags.map((tag, index) => (
-            <span key={index} className="text-xs bg-brand-teal/20 text-brand-teal font-medium py-1 px-2 rounded-full">
+            <button
+              key={index}
+              onClick={() => onTagClick?.(tag)}
+              className="text-xs bg-brand-teal/20 text-brand-teal font-medium py-1 px-2 rounded-full hover:bg-brand-teal/40 transition-colors"
+            >
               {tag}
-            </span>
+            </button>
           ))}
         </div>
       )}
