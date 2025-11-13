@@ -2,23 +2,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-// The Gemini API key is now sourced from the environment variables with the VITE_ prefix.
-const GEMINI_API_KEY = process.env.VITE_API_KEY;
+// FIX: Correctly initialize the Gemini client according to @google/genai guidelines.
+// The API key MUST be sourced from `process.env.API_KEY`.
+// This also resolves the TypeScript error `Property 'env' does not exist on type 'ImportMeta'`.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// The existence of the API key is assumed by the guidelines, but we can check it
+// to provide graceful degradation of AI features.
+const apiKeyAvailable = !!process.env.API_KEY;
 
-let ai: GoogleGenAI | null = null;
-let apiKeyAvailable = false;
-
-if (GEMINI_API_KEY) {
-    try {
-        ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-        apiKeyAvailable = true;
-    } catch(e) {
-        console.error("Error initializing Gemini client. Please check your API key.", e);
-        ai = null;
-        apiKeyAvailable = false;
-    }
-}
 
 if (!apiKeyAvailable) {
     console.log("Gemini API Key is not configured. AI features will be disabled.");
@@ -31,7 +23,8 @@ export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
  * Generates a summary reflection based on a day's entries and intentions.
  */
 export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled. Please configure the API key.";
+  // FIX: Check for API key availability instead of a nullable `ai` instance.
+  if (!apiKeyAvailable) return "AI functionality is disabled. Please configure the API key.";
   try {
     const model = 'gemini-2.5-flash';
 
@@ -65,7 +58,8 @@ Your holistic reflection on how our actions and feelings connected to our goals:
  * Generates a weekly summary reflection based on a week's daily reflections.
  */
 export const generateWeeklyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
+  // FIX: Check for API key availability instead of a nullable `ai` instance.
+  if (!apiKeyAvailable) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
@@ -97,7 +91,8 @@ Your holistic weekly reflection on our patterns and themes:`;
  * Generates a monthly summary reflection based on a month's daily reflections.
  */
 export const generateMonthlyReflection = async (dailyReflections: Reflection[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
+  // FIX: Check for API key availability instead of a nullable `ai` instance.
+  if (!apiKeyAvailable) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
     
@@ -129,7 +124,8 @@ Your holistic monthly reflection on our journey:`;
  * Processes a new journal entry to generate a title and tags.
  */
 export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
-  if (!ai) return { title: 'Journal Entry', tags: [] };
+  // FIX: Check for API key availability instead of a nullable `ai` instance.
+  if (!apiKeyAvailable) return { title: 'Journal Entry', tags: [] };
   try {
     const model = 'gemini-2.5-flash';
 
@@ -180,7 +176,8 @@ Respond with only a JSON object.`;
  * This is now a "Holistic" function that uses entries AND intentions.
  */
 export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<string> => {
-    if (!ai) return "AI functionality is disabled. Please configure the API key.";
+    // FIX: Check for API key availability instead of a nullable `ai` instance.
+    if (!apiKeyAvailable) return "AI functionality is disabled. Please configure the API key.";
     try {
         const model = 'gemini-2.5-flash';
 
