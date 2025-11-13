@@ -22,45 +22,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true); // Start as loading
+  const [loading, setLoading] = useState(true); // Start as loading, will be set to false after the initial session check.
 
   useEffect(() => {
-    // This effect runs once on mount. It relies exclusively on onAuthStateChange,
-    // which fires an initial event, to establish the session state. This is the
-    // single source of truth for auth and prevents race conditions.
-    console.log('[AuthContext] Setting up auth state change listener...');
-    setLoading(true); // Ensure we are in a loading state until the first auth event fires.
+    // This effect runs once on mount to establish the initial session state and
+    // then listens for subsequent changes. This is the definitive fix.
+    
+    // 1. Perform an explicit, one-time check for the session.
+    // This is the most reliable way to handle the initial page load.
+    const initializeSession = async () => {
+      console.log('[AuthContext] Performing initial session check...');
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        console.log('[AuthContext] getSession() complete.');
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
+      } catch (error) {
+        console.error('[AuthContext] Error in getSession():', error);
+      } finally {
+        // This is critical: we release the loading state *after* the initial check is complete.
+        console.log('[AuthContext] Initial check finished. Releasing loading state.');
+        setLoading(false);
+      }
+    };
 
+    initializeSession();
+
+    // 2. Set up the real-time listener for any subsequent auth changes.
+    // This will handle logins, logouts, token refreshes, etc.
+    console.log('[AuthContext] Setting up auth state change listener for real-time updates...');
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log(`[AuthContext] Auth event received: ${event}`);
-
-        // Set session and user based on the event
-        setSession(session);
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        
-        // If there's a user, fetch their profile. Otherwise, clear it.
-        if (currentUser) {
-          console.log(`[AuthContext] User detected (${currentUser.id}). Fetching/creating profile...`);
-          try {
-            const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
-            setProfile(userProfile);
-            console.log('[AuthContext] Profile loaded successfully.');
-          } catch (error) {
-            console.error('[AuthContext] Error fetching profile:', error);
-            setProfile(null); // Clear profile on error
-          } finally {
-            // Loading is complete once the profile fetch attempt is done.
-            console.log('[AuthContext] Profile fetch complete. Releasing loading state.');
-            setLoading(false);
-          }
-        } else {
-          // If there's no session/user, clear the profile and finish loading.
-          console.log('[AuthContext] No user detected. Clearing profile and releasing loading state.');
-          setProfile(null);
-          setLoading(false);
-        }
+      (_event, changedSession) => {
+        console.log(`[AuthContext] Auth event received: ${_event}`);
+        setSession(changedSession);
+        setUser(changedSession?.user ?? null);
       }
     );
 
@@ -72,6 +67,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
   }, []);
+  
+  // 3. Separate effect to handle profile fetching whenever the user changes.
+  // This keeps concerns separate and the logic clean.
+  useEffect(() => {
+    // If there is a user, fetch their profile.
+    if (user) {
+      console.log(`[AuthContext] User detected (${user.id}). Fetching/creating profile...`);
+      const fetchProfile = async () => {
+          try {
+            const userProfile = await getProfile(user.id) ?? await createProfile(user);
+            setProfile(userProfile);
+            console.log('[AuthContext] Profile loaded successfully.');
+          } catch (error) {
+            console.error('[AuthContext] Error fetching profile:', error);
+            setProfile(null);
+          }
+      };
+      fetchProfile();
+    } else {
+      // If there's no user, clear the profile.
+      setProfile(null);
+    }
+  }, [user]);
+
 
   // Functions for login and logout
   const loginWithGoogle = async () => {
