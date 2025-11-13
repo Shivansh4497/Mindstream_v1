@@ -33,8 +33,9 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
   }, [monthlyReflections]);
 
   const sortedMonthIds = useMemo(() => {
-    return Object.keys(groupedDailies).sort().reverse();
-  }, [groupedDailies]);
+    const allMonthIds = new Set([...Object.keys(groupedDailies), ...Object.keys(existingMonthliesMap)]);
+    return Array.from(allMonthIds).sort().reverse();
+  }, [groupedDailies, existingMonthliesMap]);
 
   const currentMonthId = getMonthId(new Date());
 
@@ -53,17 +54,22 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
     <div className="p-4 animate-fade-in-up">
       {sortedMonthIds.map(monthId => {
         const existingReflection = existingMonthliesMap[monthId];
-        const dailiesForMonth = groupedDailies[monthId];
+        const dailiesForMonth = groupedDailies[monthId] || [];
         const isGeneratingForThis = isGenerating === monthId;
-        const isPastMonth = monthId !== currentMonthId;
+        const isPastMonth = monthId < currentMonthId;
+
+        const canGenerate = dailiesForMonth.length > 0 && isPastMonth;
 
         return (
           <div key={monthId} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getMonthDisplay(monthId)}</h2>
-            {existingReflection ? (
+            
+            {existingReflection && (
               <ReflectionCard reflection={existingReflection} />
-            ) : isPastMonth ? (
-              <div className="mb-4">
+            )}
+
+            {(canGenerate || existingReflection) && (
+              <div className="mt-4">
                 <button
                   onClick={() => onGenerate(monthId, dailiesForMonth)}
                   disabled={isGeneratingForThis}
@@ -77,12 +83,18 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
                   ) : (
                     <>
                       <SparklesIcon className="w-5 h-5 text-brand-teal" />
-                      <span>Generate Monthly Reflection</span>
+                      <span>
+                        {existingReflection
+                          ? 'Update your monthly reflection'
+                          : 'Wanna know how your month has been so far?'}
+                      </span>
                     </>
                   )}
                 </button>
               </div>
-            ) : (
+            )}
+
+            {!existingReflection && !isPastMonth && (
                 <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
                     This month is still in progress. Check back later to generate a reflection.
                 </div>
