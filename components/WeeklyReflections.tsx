@@ -1,29 +1,29 @@
 import React, { useMemo } from 'react';
-import type { Reflection } from '../types';
+import type { Entry, Reflection } from '../types';
 import { getWeekId, getWeekDisplay } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
 
 interface WeeklyReflectionsProps {
-  dailyReflections: Reflection[];
+  entries: Entry[];
   weeklyReflections: Reflection[];
-  onGenerate: (weekId: string, dailyReflections: Reflection[]) => void;
+  onGenerate: (weekId: string, entriesForWeek: Entry[]) => void;
   isGenerating: string | null;
 }
 
-export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyReflections, weeklyReflections, onGenerate, isGenerating }) => {
+export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, isGenerating }) => {
   
-  const groupedDailies = useMemo(() => {
-    const groups: Record<string, Reflection[]> = {};
-    dailyReflections.forEach(r => {
-      const weekId = getWeekId(new Date(r.date));
+  const groupedEntriesByWeek = useMemo(() => {
+    const groups: Record<string, Entry[]> = {};
+    entries.forEach(e => {
+      const weekId = getWeekId(new Date(e.timestamp));
       if (!groups[weekId]) {
         groups[weekId] = [];
       }
-      groups[weekId].push(r);
+      groups[weekId].push(e);
     });
     return groups;
-  }, [dailyReflections]);
+  }, [entries]);
 
   const existingWeekliesMap = useMemo(() => {
     return weeklyReflections.reduce((acc, r) => {
@@ -33,19 +33,16 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
   }, [weeklyReflections]);
 
   const sortedWeekIds = useMemo(() => {
-    // Also include weeks that have a reflection but maybe no underlying dailies visible anymore
-    const allWeekIds = new Set([...Object.keys(groupedDailies), ...Object.keys(existingWeekliesMap)]);
+    const allWeekIds = new Set([...Object.keys(groupedEntriesByWeek), ...Object.keys(existingWeekliesMap)]);
     return Array.from(allWeekIds).sort().reverse();
-  }, [groupedDailies, existingWeekliesMap]);
-
-  const currentWeekId = getWeekId(new Date());
+  }, [groupedEntriesByWeek, existingWeekliesMap]);
 
   if (sortedWeekIds.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">No Weekly Reflections Yet</h2>
-          <p>Generate some daily reflections first.<br/>Once a week is complete, you can summarize it here.</p>
+          <p>Write some journal entries first.<br/>Once you have entries, you can summarize your week here.</p>
         </div>
       </div>
     );
@@ -55,11 +52,9 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
     <div className="p-4 animate-fade-in-up">
       {sortedWeekIds.map(weekId => {
         const existingReflection = existingWeekliesMap[weekId];
-        const dailiesForWeek = groupedDailies[weekId] || [];
+        const entriesForWeek = groupedEntriesByWeek[weekId] || [];
         const isGeneratingForThis = isGenerating === weekId;
-        const isPastWeek = weekId < currentWeekId; // Correct check for past weeks
-
-        const canGenerate = dailiesForWeek.length > 0 && isPastWeek;
+        const canGenerate = entriesForWeek.length > 0;
 
         return (
           <div key={weekId} className="mb-8">
@@ -69,10 +64,10 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
               <ReflectionCard reflection={existingReflection} />
             )}
 
-            {(canGenerate || existingReflection) && (
+            {canGenerate && (
                  <div className="mt-4">
                  <button
-                   onClick={() => onGenerate(weekId, dailiesForWeek)}
+                   onClick={() => onGenerate(weekId, entriesForWeek)}
                    disabled={isGeneratingForThis}
                    className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                  >
@@ -86,21 +81,20 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ dailyRefle
                        <SparklesIcon className="w-5 h-5 text-brand-teal" />
                        <span>
                          {existingReflection
-                           ? 'Update your weekly reflection'
-                           : 'Wanna know how your week was?'}
+                           ? 'Update weekly reflection'
+                           : 'Generate weekly reflection'}
                         </span>
                      </>
                    )}
                  </button>
                </div>
             )}
-
-            {!existingReflection && !isPastWeek && (
+            
+            {!existingReflection && !canGenerate && (
                 <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
-                    This week is still in progress. Check back later to generate a reflection.
+                    You have no journal entries for this week.
                 </div>
             )}
-            
           </div>
         );
       })}
