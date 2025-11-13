@@ -64,7 +64,7 @@ Your holistic reflection on how our actions and feelings connected to our goals:
 /**
  * Generates a weekly summary reflection based on a week's journal entries.
  */
-export const generateWeeklyReflection = async (entries: Entry[]): Promise<string> => {
+export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
   if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
@@ -74,12 +74,17 @@ export const generateWeeklyReflection = async (entries: Entry[]): Promise<string
       .map(e => `- ${getDisplayDate(e.timestamp)} at ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`)
       .join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with all my journal entries from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, overall mood, and progress towards goals that emerged during the week. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
+    const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
+
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
+
+Here are our intentions for context:
+${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
 
 Here are our journal entries from this week:
 ${entriesText}
 
-Your holistic weekly reflection on our patterns and themes:`;
+Your holistic weekly reflection on our patterns, themes, and progress:`;
 
     const response = await ai.models.generateContent({
       model,
@@ -96,7 +101,7 @@ Your holistic weekly reflection on our patterns and themes:`;
 /**
  * Generates a monthly summary reflection based on a month's journal entries.
  */
-export const generateMonthlyReflection = async (entries: Entry[]): Promise<string> => {
+export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
   if (!ai) return "AI functionality is disabled.";
   try {
     const model = 'gemini-2.5-flash';
@@ -106,7 +111,12 @@ export const generateMonthlyReflection = async (entries: Entry[]): Promise<strin
       .map(e => `- On ${getDisplayDate(e.timestamp)}: ${e.text}`)
       .join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries from an entire month. Please synthesize these into a higher-level monthly summary. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
+    const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
+
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary. Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
+
+Here are our intentions for context:
+${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
 
 Here are our journal entries from this month:
 ${entriesText}
@@ -121,6 +131,43 @@ Your holistic monthly reflection on our journey:`;
   } catch (error) {
     console.error("Error generating monthly reflection:", error);
     return "I'm sorry, I couldn't generate a monthly reflection at this time.";
+  }
+};
+
+export const generateThematicReflection = async (tag: string, entries: Entry[]): Promise<string> => {
+  if (!ai) return "AI functionality is disabled.";
+  try {
+    const model = 'gemini-2.5-flash';
+    const relevantEntries = entries.filter(e => e.tags?.includes(tag));
+    
+    if (relevantEntries.length === 0) {
+      return "There are no entries with this tag to reflect upon.";
+    }
+
+    const entriesText = relevantEntries
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .map(e => `- On ${getDisplayDate(e.timestamp)}: ${e.title ? `(${e.title}) ` : ''}${e.text}`)
+      .join('\n');
+
+    const prompt = `You are a thoughtful journal assistant. I will provide you with all my journal entries that share a common theme or tag. Please synthesize these into a "thematic reflection" that explores how my thoughts and feelings on this topic have evolved over time. Identify key moments, shifts in perspective, or unresolved questions related to this theme. Speak in a gentle, encouraging, first-person-plural tone. Keep it to 3-4 sentences.
+
+The theme we are reflecting on is: "${tag}"
+
+Here are our journal entries related to this theme:
+${entriesText}
+
+Your holistic thematic reflection on our journey with "${tag}":`;
+    
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+    });
+
+    return response.text;
+
+  } catch (error) {
+    console.error("Error generating thematic reflection:", error);
+    return "I'm sorry, I couldn't generate a thematic reflection at this time.";
   }
 };
 
