@@ -41,34 +41,37 @@ export const MindstreamApp: React.FC = () => {
   
   const allReflections = useMemo(() => Object.values(reflections), [reflections]);
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [userEntries, userReflections, userIntentions] = await Promise.all([
-        db.getEntries(user.id),
-        db.getReflections(user.id),
-        db.getIntentions(user.id)
-      ]);
-
-      setEntries(userEntries);
-      const reflectionsMap = userReflections.reduce((acc, r) => {
-        acc[r.date] = r;
-        return acc;
-      }, {} as Record<string, Reflection>);
-      setReflections(reflectionsMap);
-      setIntentions(userIntentions);
-
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
-
   useEffect(() => {
+    const fetchData = async () => {
+      // This effect should only run when the user object is available.
+      // The guard prevents any action if the user object is not yet populated.
+      if (!user) return;
+
+      try {
+        const [userEntries, userReflections, userIntentions] = await Promise.all([
+          db.getEntries(user.id),
+          db.getReflections(user.id),
+          db.getIntentions(user.id)
+        ]);
+
+        setEntries(userEntries);
+        const reflectionsMap = userReflections.reduce((acc, r) => {
+          acc[r.date] = r;
+          return acc;
+        }, {} as Record<string, Reflection>);
+        setReflections(reflectionsMap);
+        setIntentions(userIntentions);
+
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        // Once data fetching is complete (or fails), hide the main app spinner.
+        setLoading(false);
+      }
+    };
+
     fetchData();
-  }, [fetchData]);
+  }, [user]); // The effect is now directly dependent on the user object.
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
