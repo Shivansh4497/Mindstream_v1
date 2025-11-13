@@ -4,8 +4,7 @@ import { Login } from './components/Login';
 import { MindstreamApp } from './MindstreamApp';
 
 const App: React.FC = () => {
-  // Also retrieve the user object to make the rendering condition more robust.
-  const { session, user, loading } = useAuth();
+  const { session, loading } = useAuth();
 
   if (loading) {
     return (
@@ -15,13 +14,10 @@ const App: React.FC = () => {
     );
   }
   
-  // The condition is now stricter: we need both a session and a user object
-  // to consider the user logged in. This prevents rendering MindstreamApp prematurely.
-  if (!session || !user) {
+  if (!session) {
     return <Login />;
   }
 
-  // By the time MindstreamApp is rendered, we can be confident that the user object is available.
   return <MindstreamApp />;
 };
 
