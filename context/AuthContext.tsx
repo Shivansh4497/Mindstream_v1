@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
@@ -28,34 +29,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    // This function performs a one-time check for the session on initial load.
-    // It's more deterministic than relying on the first fire of onAuthStateChange.
-    const checkInitialSession = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        
-        if (initialSession) {
-          setSession(initialSession);
-          const currentUser = initialSession.user;
-          setUser(currentUser);
-          if (currentUser) {
-            const userProfile = await db.getProfile(currentUser.id);
-            setProfile(userProfile);
-          } else {
-            setProfile(null);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking initial session:", error);
-      } finally {
-        // Once the initial check is complete, we can hide the global loader.
-        setLoading(false);
-      }
-    };
-
-    checkInitialSession();
-
-    // The onAuthStateChange listener now only handles changes *after* the initial load.
+    // The onAuthStateChange listener is the single source of truth for the user's auth state.
+    // It fires once on initial load with the cached session, and again whenever the auth state changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         setSession(currentSession);
@@ -63,17 +38,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(currentUser);
         
         if (currentUser) {
-          // Fetch profile only if the user has actually changed.
-          if (profile?.id !== currentUser.id) {
-            const userProfile = await db.getProfile(currentUser.id);
-            setProfile(userProfile);
+          // Check if a profile exists for the user.
+          let userProfile = await db.getProfile(currentUser.id);
+          
+          // If no profile exists and the user just signed in, create one.
+          if (!userProfile && event === 'SIGNED_IN') {
+            userProfile = await db.createProfile(currentUser);
           }
+          
+          setProfile(userProfile);
         } else {
+          // If there's no user, clear the profile.
           setProfile(null);
         }
+        
+        // The initial check is complete, so we can stop the loading state.
+        // This happens after the first time the listener runs.
+        setLoading(false);
       }
     );
 
+    // Cleanup the subscription when the component unmounts.
     return () => {
       subscription?.unsubscribe();
     };
