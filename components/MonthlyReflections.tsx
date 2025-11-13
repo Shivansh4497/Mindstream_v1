@@ -1,29 +1,29 @@
 import React, { useMemo } from 'react';
-import type { Reflection } from '../types';
+import type { Entry, Reflection } from '../types';
 import { getMonthId, getMonthDisplay } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
 
 interface MonthlyReflectionsProps {
-  dailyReflections: Reflection[];
+  entries: Entry[];
   monthlyReflections: Reflection[];
-  onGenerate: (monthId: string, dailyReflections: Reflection[]) => void;
+  onGenerate: (monthId: string, entriesForMonth: Entry[]) => void;
   isGenerating: string | null;
 }
 
-export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyReflections, monthlyReflections, onGenerate, isGenerating }) => {
+export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, isGenerating }) => {
   
-  const groupedDailies = useMemo(() => {
-    const groups: Record<string, Reflection[]> = {};
-    dailyReflections.forEach(r => {
-      const monthId = getMonthId(new Date(r.date));
+  const groupedEntriesByMonth = useMemo(() => {
+    const groups: Record<string, Entry[]> = {};
+    entries.forEach(e => {
+      const monthId = getMonthId(new Date(e.timestamp));
       if (!groups[monthId]) {
         groups[monthId] = [];
       }
-      groups[monthId].push(r);
+      groups[monthId].push(e);
     });
     return groups;
-  }, [dailyReflections]);
+  }, [entries]);
 
   const existingMonthliesMap = useMemo(() => {
     return monthlyReflections.reduce((acc, r) => {
@@ -33,18 +33,16 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
   }, [monthlyReflections]);
 
   const sortedMonthIds = useMemo(() => {
-    const allMonthIds = new Set([...Object.keys(groupedDailies), ...Object.keys(existingMonthliesMap)]);
+    const allMonthIds = new Set([...Object.keys(groupedEntriesByMonth), ...Object.keys(existingMonthliesMap)]);
     return Array.from(allMonthIds).sort().reverse();
-  }, [groupedDailies, existingMonthliesMap]);
-
-  const currentMonthId = getMonthId(new Date());
+  }, [groupedEntriesByMonth, existingMonthliesMap]);
 
   if (sortedMonthIds.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">No Monthly Reflections Yet</h2>
-          <p>Generate some daily reflections first.<br/>Once a month is complete, you can summarize it here.</p>
+          <p>Write some journal entries first.<br/>Once you have entries, you can summarize your month here.</p>
         </div>
       </div>
     );
@@ -54,11 +52,9 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
     <div className="p-4 animate-fade-in-up">
       {sortedMonthIds.map(monthId => {
         const existingReflection = existingMonthliesMap[monthId];
-        const dailiesForMonth = groupedDailies[monthId] || [];
+        const entriesForMonth = groupedEntriesByMonth[monthId] || [];
         const isGeneratingForThis = isGenerating === monthId;
-        const isPastMonth = monthId < currentMonthId;
-
-        const canGenerate = dailiesForMonth.length > 0 && isPastMonth;
+        const canGenerate = entriesForMonth.length > 0;
 
         return (
           <div key={monthId} className="mb-8">
@@ -68,10 +64,10 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
               <ReflectionCard reflection={existingReflection} />
             )}
 
-            {(canGenerate || existingReflection) && (
+            {canGenerate && (
               <div className="mt-4">
                 <button
-                  onClick={() => onGenerate(monthId, dailiesForMonth)}
+                  onClick={() => onGenerate(monthId, entriesForMonth)}
                   disabled={isGeneratingForThis}
                   className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
@@ -85,8 +81,8 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
                       <SparklesIcon className="w-5 h-5 text-brand-teal" />
                       <span>
                         {existingReflection
-                          ? 'Update your monthly reflection'
-                          : 'Wanna know how your month has been so far?'}
+                          ? 'Update monthly reflection'
+                          : 'Generate monthly reflection'}
                       </span>
                     </>
                   )}
@@ -94,9 +90,9 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ dailyRef
               </div>
             )}
 
-            {!existingReflection && !isPastMonth && (
+            {!existingReflection && !canGenerate && (
                 <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
-                    This month is still in progress. Check back later to generate a reflection.
+                    You have no journal entries for this month.
                 </div>
             )}
           </div>
