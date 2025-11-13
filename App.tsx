@@ -1,11 +1,11 @@
 import React from 'react';
 import { useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
-// FIX: Corrected the import path to be relative.
 import { MindstreamApp } from './MindstreamApp';
 
 const App: React.FC = () => {
-  const { session, loading } = useAuth();
+  // Also retrieve the user object to make the rendering condition more robust.
+  const { session, user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -14,11 +14,14 @@ const App: React.FC = () => {
       </div>
     );
   }
-  if (!session) {
+  
+  // The condition is now stricter: we need both a session and a user object
+  // to consider the user logged in. This prevents rendering MindstreamApp prematurely.
+  if (!session || !user) {
     return <Login />;
   }
 
-  // The 'key' prop is removed as the flicker is fixed in AuthContext.
+  // By the time MindstreamApp is rendered, we can be confident that the user object is available.
   return <MindstreamApp />;
 };
 
