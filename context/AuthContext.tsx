@@ -1,13 +1,15 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-import * as db from '../services/dbService';
-import type { Profile } from '../types';
+// FIX: Add imports for Profile type and db functions to fetch profile data.
+import { Profile } from '../types';
+import { getProfile, createProfile } from '../services/dbService';
+
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
+  // FIX: Add profile to the context type to make it available to consumers.
   profile: Profile | null;
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
@@ -19,6 +21,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  // FIX: Add state to hold the user's profile.
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,39 +34,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // The onAuthStateChange listener is the single source of truth for the user's auth state.
     // It fires once on initial load with the cached session, and again whenever the auth state changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
-        try {
-            setSession(currentSession);
-            const currentUser = currentSession?.user ?? null;
-            setUser(currentUser);
-            
-            if (currentUser) {
-              // Check if a profile exists for the user.
-              let userProfile = await db.getProfile(currentUser.id);
-              
-              // If no profile exists and the user just signed in, create one.
-              if (!userProfile && event === 'SIGNED_IN') {
-                userProfile = await db.createProfile(currentUser);
-              }
-              
-              setProfile(userProfile);
-            } else {
-              // If there's no user, clear the profile.
-              setProfile(null);
-            }
-        } catch (error) {
-            console.error("Error handling auth state change:", error);
-            // On error, reset auth state to be safe
-            setSession(null);
-            setUser(null);
+      // FIX: Make the callback async to fetch the profile when auth state changes.
+      async (_event, currentSession) => {
+        setSession(currentSession);
+        const currentUser = currentSession?.user ?? null;
+        setUser(currentUser);
+        
+        if (currentUser) {
+            const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
+            setProfile(userProfile);
+        } else {
             setProfile(null);
-        } finally {
-            // This is the crucial part. We guarantee that the loading state is
-            // set to false, which prevents the app from getting stuck on the
-            // initial spinner, even if profile fetching or another async
-            // operation within the try block fails.
-            setLoading(false);
         }
+
+        setLoading(false);
       }
     );
 
@@ -99,12 +83,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = {
     session,
     user,
+    // FIX: Provide the profile in the context value.
     profile,
     loading,
     loginWithGoogle,
     logout,
   };
 
+  // The context now provides the user's session, auth state, and profile.
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
