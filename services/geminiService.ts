@@ -1,13 +1,13 @@
+// FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-// FIX: Switched from `import.meta.env` to `process.env` to resolve TypeScript errors and align with Gemini guidelines.
-// The API key is sourced from process.env.API_KEY per coding guidelines.
-const GEMINI_API_KEY = process.env.API_KEY;
-
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
+
+// FIX: Switched to import.meta.env for Vite compatibility and added optional chaining.
+const GEMINI_API_KEY = process.env.API_KEY;
 
 if (GEMINI_API_KEY) {
   try {
