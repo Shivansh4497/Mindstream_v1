@@ -5,18 +5,18 @@ import { ReflectionCard } from './ReflectionCard';
 import { getDisplayDate } from '../utils/date';
 
 interface ReflectionListProps {
-  reflections: Record<string, Reflection>;
+  reflections: Reflection[];
 }
 
 export const ReflectionList: React.FC<ReflectionListProps> = ({ reflections }) => {
-  const sortedReflections = Object.values(reflections).sort(
+  const sortedReflections = [...reflections].sort(
     // FIX: Add explicit types for sort parameters to resolve TS error.
     (a: Reflection, b: Reflection) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
   if (sortedReflections.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-center text-gray-400 animate-fade-in">
+      <div className="h-full flex items-center justify-center text-center text-gray-400 animate-fade-in p-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">Your Reflections</h2>
           <p>Generate a daily reflection from your Stream to see it here.<br/>It's a great way to find patterns in your thoughts.</p>
@@ -26,7 +26,7 @@ export const ReflectionList: React.FC<ReflectionListProps> = ({ reflections }) =
   }
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="animate-fade-in-up p-4">
       {/* FIX: Add explicit type for map parameter to resolve TS error. */}
       {sortedReflections.map((reflection: Reflection) => (
         <div key={reflection.id} className="mb-8">
