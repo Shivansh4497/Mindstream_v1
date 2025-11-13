@@ -96,7 +96,6 @@ export const MindstreamApp: React.FC = () => {
         const reflectionData = {
             date: date,
             summary: summary,
-            entry_ids: entriesForDay.map(e => e.id),
             type: 'daily' as const
         };
         const newReflection = await db.addReflection(user.id, reflectionData);
@@ -120,7 +119,6 @@ export const MindstreamApp: React.FC = () => {
       const reflectionData = {
         date: weekId,
         summary: summary,
-        entry_ids: entriesForWeek.map(e => e.id),
         type: 'weekly' as const,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
@@ -143,7 +141,6 @@ export const MindstreamApp: React.FC = () => {
       const reflectionData = {
         date: monthId,
         summary: summary,
-        entry_ids: entriesForMonth.map(e => e.id),
         type: 'monthly' as const,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
