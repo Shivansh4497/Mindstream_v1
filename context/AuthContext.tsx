@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
@@ -19,7 +20,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  // Initialize loading to true to show the global spinner initially.
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,11 +28,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    // This variable helps us ensure setLoading(false) is only called once.
-    let initialLoadComplete = false;
+    // This function performs a one-time check for the session on initial load.
+    // It's more deterministic than relying on the first fire of onAuthStateChange.
+    const checkInitialSession = async () => {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        
+        if (initialSession) {
+          setSession(initialSession);
+          const currentUser = initialSession.user;
+          setUser(currentUser);
+          if (currentUser) {
+            const userProfile = await db.getProfile(currentUser.id);
+            setProfile(userProfile);
+          } else {
+            setProfile(null);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking initial session:", error);
+      } finally {
+        // Once the initial check is complete, we can hide the global loader.
+        setLoading(false);
+      }
+    };
 
-    // The onAuthStateChange listener is the single source of truth.
-    // It fires immediately with the cached session, and then for any changes.
+    checkInitialSession();
+
+    // The onAuthStateChange listener now only handles changes *after* the initial load.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         setSession(currentSession);
@@ -41,7 +64,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (currentUser) {
           // Fetch profile only if the user has actually changed.
-          // This prevents re-fetching on background token refreshes.
           if (profile?.id !== currentUser.id) {
             const userProfile = await db.getProfile(currentUser.id);
             setProfile(userProfile);
@@ -49,22 +71,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           setProfile(null);
         }
-        
-        // The first time this callback runs, the session state is definitive.
-        // We can now mark the auth process as no longer loading.
-        if (!initialLoadComplete) {
-          setLoading(false);
-          initialLoadComplete = true;
-        }
       }
     );
 
     return () => {
       subscription?.unsubscribe();
     };
-  // The dependency array MUST be empty. This effect should run exactly ONCE
-  // to set up the listener, and the listener should only be torn down when
-  // the provider unmounts. This is the root cause fix.
   }, []);
 
   const loginWithGoogle = async () => {
