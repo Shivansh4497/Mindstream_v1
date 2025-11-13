@@ -1,25 +1,25 @@
-
-
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention } from '../types';
 import { getDisplayDate } from "../utils/date";
 
-const GEMINI_API_KEY = process.env.API_KEY;
+// Correctly access environment variables in a Vite project, aligning with the project's established pattern.
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 
-try {
-  ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-} catch (e) {
-  console.error("Error initializing Gemini client. Please check your API key.", e);
-  ai = null;
+if (GEMINI_API_KEY) {
+  try {
+    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  } catch (e) {
+    console.error("Error initializing Gemini client:", e);
+    ai = null;
+  }
+} else {
+  console.warn("VITE_GEMINI_API_KEY is not configured. AI features will be disabled.");
 }
 
-if (!ai) {
-    console.log("Gemini API Key is not configured or is invalid. AI features will be disabled.");
-}
-
+// Export a flag that the UI can use to gracefully disable AI-related features.
 export const GEMINI_API_KEY_AVAILABLE = !!ai;
 
 const AI_DISABLED_ERROR = "AI functionality is disabled. Please configure the API key.";
