@@ -20,7 +20,6 @@ export interface Reflection {
   user_id: string;
   date: string; // YYYY-MM-DD for daily, or a week/month identifier
   summary: string;
-  entry_ids: string[];
   type: 'daily' | 'weekly' | 'monthly';
   timestamp: string;
 }
