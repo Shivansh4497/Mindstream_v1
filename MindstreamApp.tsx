@@ -4,7 +4,7 @@ import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
 // FIX: The Profile type is no longer needed here as it's not managed in this component's state.
 import type { Entry, Reflection, Intention, Message, IntentionTimeframe } from './types';
-import { getFormattedDate } from './utils/date';
+import { getFormattedDate, getWeekId, getMonthId } from './utils/date';
 
 import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
@@ -18,6 +18,7 @@ import { ChatInputBar } from './components/ChatInputBar';
 import { IntentionsView } from './components/IntentionsView';
 import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
+import { ThematicModal } from './components/ThematicModal';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
@@ -38,7 +39,15 @@ export const MindstreamApp: React.FC = () => {
   const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
   
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [initialSearchQuery, setInitialSearchQuery] = useState('');
+
   const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
+
+  // State for Thematic Reflections Modal
+  const [showThematicModal, setShowThematicModal] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [thematicReflection, setThematicReflection] = useState<string | null>(null);
+  const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
   
   const allReflections = reflections;
 
@@ -115,7 +124,8 @@ export const MindstreamApp: React.FC = () => {
     if (!user || isGeneratingReflection) return;
     setIsGeneratingReflection(weekId);
     try {
-      const summary = await gemini.generateWeeklyReflection(entriesForWeek);
+      const intentionsForWeek = intentions.filter(i => getWeekId(new Date(i.created_at)) === weekId);
+      const summary = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
       const reflectionData = {
         date: weekId,
         summary: summary,
@@ -137,7 +147,8 @@ export const MindstreamApp: React.FC = () => {
     if (!user || isGeneratingReflection) return;
     setIsGeneratingReflection(monthId);
     try {
-      const summary = await gemini.generateMonthlyReflection(entriesForMonth);
+      const intentionsForMonth = intentions.filter(i => getMonthId(new Date(i.created_at)) === monthId);
+      const summary = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
       const reflectionData = {
         date: monthId,
         summary: summary,
@@ -176,6 +187,12 @@ export const MindstreamApp: React.FC = () => {
     }
   }
 
+  const handleExploreInChat = async (summary: string) => {
+    const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
+    handleSendMessage(prompt);
+    setView('chat');
+  };
+
   const handleAddIntention = async (text: string) => {
     if (!user) return;
     try {
@@ -207,10 +224,43 @@ export const MindstreamApp: React.FC = () => {
     }
   };
 
+  const handleTagClick = (tag: string) => {
+    setSelectedTag(tag);
+    setShowThematicModal(true);
+  };
+  
+  const handleCloseThematicModal = () => {
+    setShowThematicModal(false);
+    setSelectedTag(null);
+    setThematicReflection(null);
+    setIsGeneratingThematic(false);
+  };
+  
+  const handleViewTagEntries = (tag: string) => {
+    handleCloseThematicModal();
+    setInitialSearchQuery(tag);
+    setShowSearchModal(true);
+  };
+  
+  const handleGenerateThematicReflection = async (tag: string) => {
+    if (!user || isGeneratingThematic) return;
+    setIsGeneratingThematic(true);
+    setThematicReflection(null);
+    try {
+      const summary = await gemini.generateThematicReflection(tag, entries);
+      setThematicReflection(summary);
+    } catch (error) {
+      console.error("Error generating thematic reflection:", error);
+      setThematicReflection("I'm sorry, I couldn't generate a reflection for this theme at this time.");
+    } finally {
+      setIsGeneratingThematic(false);
+    }
+  };
+
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} />;
+              return <Stream entries={entries} onTagClick={handleTagClick} />;
           case 'reflections':
               return <ReflectionsView 
                         entries={entries}
@@ -219,6 +269,7 @@ export const MindstreamApp: React.FC = () => {
                         onGenerateDaily={handleGenerateReflection}
                         onGenerateWeekly={handleGenerateWeeklyReflection}
                         onGenerateMonthly={handleGenerateMonthlyReflection}
+                        onExploreInChat={handleExploreInChat}
                         isGenerating={isGeneratingReflection}
                      />;
           case 'chat':
@@ -226,7 +277,7 @@ export const MindstreamApp: React.FC = () => {
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} />;
+              return <Stream entries={entries} onTagClick={handleTagClick} />;
       }
   };
 
@@ -246,7 +297,17 @@ export const MindstreamApp: React.FC = () => {
   return (
     <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
       {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
-      {showSearchModal && <SearchModal entries={entries} reflections={allReflections} onClose={() => setShowSearchModal(false)} />}
+      {showSearchModal && <SearchModal entries={entries} reflections={allReflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
+      {showThematicModal && selectedTag && (
+        <ThematicModal 
+          tag={selectedTag}
+          onClose={handleCloseThematicModal}
+          onViewEntries={() => handleViewTagEntries(selectedTag)}
+          onGenerateReflection={() => handleGenerateThematicReflection(selectedTag)}
+          isGenerating={isGeneratingThematic}
+          reflectionResult={thematicReflection}
+        />
+      )}
       
       <Header onSearchClick={() => setShowSearchModal(true)} />
 
