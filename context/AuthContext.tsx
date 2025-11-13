@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-// FIX: Add imports for Profile type and db functions to fetch profile data.
 import { Profile } from '../types';
 import { getProfile, createProfile } from '../services/dbService';
 
@@ -9,7 +8,6 @@ import { getProfile, createProfile } from '../services/dbService';
 interface AuthContextType {
   session: Session | null;
   user: User | null;
-  // FIX: Add profile to the context type to make it available to consumers.
   profile: Profile | null;
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
@@ -21,21 +19,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  // FIX: Add state to hold the user's profile.
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (!supabase) {
-      setLoading(false);
+      if (isMounted) setLoading(false);
       return;
     }
 
-    // The onAuthStateChange listener is the single source of truth for the user's auth state.
-    // It fires once on initial load with the cached session, and again whenever the auth state changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      // FIX: Make the callback async to fetch the profile when auth state changes.
       async (_event, currentSession) => {
+        // If the component has been unmounted, we should not proceed.
+        if (!isMounted) {
+          return;
+        }
+
         try {
           setSession(currentSession);
           const currentUser = currentSession?.user ?? null;
@@ -43,23 +44,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           if (currentUser) {
               const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
-              setProfile(userProfile);
+              // Check again after the async operation in case the component unmounted during the await.
+              if (isMounted) {
+                setProfile(userProfile);
+              }
           } else {
-              setProfile(null);
+              if (isMounted) {
+                setProfile(null);
+              }
           }
         } catch (error) {
             console.error("Error in onAuthStateChange callback", error);
-            setSession(null);
-            setUser(null);
-            setProfile(null);
+            if (isMounted) {
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+            }
         } finally {
-            setLoading(false);
+            // This is guaranteed to run, and will only set state if the component is still mounted.
+            if (isMounted) {
+              setLoading(false);
+            }
         }
       }
     );
 
-    // Cleanup the subscription when the component unmounts.
+    // Cleanup function runs when the component unmounts.
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
@@ -90,14 +102,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = {
     session,
     user,
-    // FIX: Provide the profile in the context value.
     profile,
     loading,
     loginWithGoogle,
     logout,
   };
 
-  // The context now provides the user's session, auth state, and profile.
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
