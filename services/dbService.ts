@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus } from '../types';
+import { getDateFromWeekId, getMonthId, getWeekId } from '../utils/date';
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
@@ -74,13 +75,25 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
   }
   if (!data) return [];
 
+  // Convert dates back to the ID format the app expects before de-duping.
+  const processedData = data.map((reflection: any) => {
+    const typedReflection = reflection as Reflection;
+    let finalDate = typedReflection.date;
+    
+    if (typedReflection.type === 'weekly') {
+      // Convert '2024-07-22' back to '2024-W30'
+      finalDate = getWeekId(new Date(typedReflection.date));
+    } else if (typedReflection.type === 'monthly') {
+      // Convert '2024-07-01' back to '2024-07'
+      finalDate = getMonthId(new Date(typedReflection.date));
+    }
+    return { ...typedReflection, date: finalDate };
+  });
+
   // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
   const latestReflections = new Map<string, Reflection>();
-  // Supabase returns array columns (like text[] or uuid[]) as native JavaScript arrays, so no parsing is needed.
-  for (const reflection of data) {
-    // FIX: Cast reflection to the 'Reflection' type to address Supabase client's type inference issue, which can incorrectly infer 'never'.
+  for (const reflection of processedData) {
     const typedReflection = reflection as Reflection;
-    // The key is the unique period identifier (e.g., '2024-07-29-daily' or '2024-W31-weekly')
     const key = `${typedReflection.date}-${typedReflection.type}`;
     if (!latestReflections.has(key)) {
       latestReflections.set(key, typedReflection);
@@ -91,17 +104,25 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
 };
 
 export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
-    // This function assumes the database schema is correct:
-    // - `entry_ids` is an array type (e.g., text[] or uuid[])
-    // - `date` is a text type to accommodate 'YYYY-MM-DD', 'YYYY-Www', and 'YYYY-MM' formats.
-    // The Supabase client will correctly handle the JavaScript array for `entry_ids`.
+    const dbPayload: { [key: string]: any } = {
+        ...reflectionData,
+        user_id: userId,
+        timestamp: new Date().toISOString()
+    };
+
+    // Convert date format for weekly/monthly to match 'date' column type
+    if (reflectionData.type === 'weekly') {
+        // Convert '2024-W30' to the start date of that week '2024-07-22'
+        dbPayload.date = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
+    } else if (reflectionData.type === 'monthly') {
+        // Convert '2024-07' to '2024-07-01'
+        dbPayload.date = `${reflectionData.date}-01`;
+    }
+
     const { data, error } = await supabase
         .from('reflections')
-        .insert({ 
-            ...reflectionData,
-            user_id: userId,
-            timestamp: new Date().toISOString()
-        } as any)
+        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
+        .insert(dbPayload as any)
         .select()
         .single();
 
