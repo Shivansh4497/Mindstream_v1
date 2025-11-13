@@ -1,5 +1,4 @@
 
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
@@ -33,28 +32,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // It fires once on initial load with the cached session, and again whenever the auth state changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        setSession(currentSession);
-        const currentUser = currentSession?.user ?? null;
-        setUser(currentUser);
-        
-        if (currentUser) {
-          // Check if a profile exists for the user.
-          let userProfile = await db.getProfile(currentUser.id);
-          
-          // If no profile exists and the user just signed in, create one.
-          if (!userProfile && event === 'SIGNED_IN') {
-            userProfile = await db.createProfile(currentUser);
-          }
-          
-          setProfile(userProfile);
-        } else {
-          // If there's no user, clear the profile.
-          setProfile(null);
+        try {
+            setSession(currentSession);
+            const currentUser = currentSession?.user ?? null;
+            setUser(currentUser);
+            
+            if (currentUser) {
+              // Check if a profile exists for the user.
+              let userProfile = await db.getProfile(currentUser.id);
+              
+              // If no profile exists and the user just signed in, create one.
+              if (!userProfile && event === 'SIGNED_IN') {
+                userProfile = await db.createProfile(currentUser);
+              }
+              
+              setProfile(userProfile);
+            } else {
+              // If there's no user, clear the profile.
+              setProfile(null);
+            }
+        } catch (error) {
+            console.error("Error handling auth state change:", error);
+            // On error, reset auth state to be safe
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+        } finally {
+            // This is the crucial part. We guarantee that the loading state is
+            // set to false, which prevents the app from getting stuck on the
+            // initial spinner, even if profile fetching or another async
+            // operation within the try block fails.
+            setLoading(false);
         }
-        
-        // The initial check is complete, so we can stop the loading state.
-        // This happens after the first time the listener runs.
-        setLoading(false);
       }
     );
 
