@@ -2,8 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase credentials are now sourced from environment variables.
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
 
 let supabase: ReturnType<typeof createClient> | null = null;
