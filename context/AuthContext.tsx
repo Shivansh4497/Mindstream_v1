@@ -36,18 +36,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       // FIX: Make the callback async to fetch the profile when auth state changes.
       async (_event, currentSession) => {
-        setSession(currentSession);
-        const currentUser = currentSession?.user ?? null;
-        setUser(currentUser);
-        
-        if (currentUser) {
-            const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
-            setProfile(userProfile);
-        } else {
+        try {
+          setSession(currentSession);
+          const currentUser = currentSession?.user ?? null;
+          setUser(currentUser);
+          
+          if (currentUser) {
+              const userProfile = await getProfile(currentUser.id) ?? await createProfile(currentUser);
+              setProfile(userProfile);
+          } else {
+              setProfile(null);
+          }
+        } catch (error) {
+            console.error("Error in onAuthStateChange callback", error);
+            setSession(null);
+            setUser(null);
             setProfile(null);
+        } finally {
+            setLoading(false);
         }
-
-        setLoading(false);
       }
     );
 
