@@ -88,30 +88,28 @@ export const MindstreamApp: React.FC = () => {
   };
   
   const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
-    if (!user || isGeneratingReflection) return;
-    setIsGeneratingReflection(date);
-    try {
-      const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-      const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
-
-      const reflectionData = {
-        date: date,
-        summary: summary,
-        entry_ids: entriesForDay.map(e => e.id),
-        type: 'daily' as const,
-      };
-      const newReflection = await db.addReflection(user.id, reflectionData);
-      if (newReflection) {
-        const userReflections = await db.getReflections(user.id);
-        setReflections(userReflections);
-      } else {
-        throw new Error("Failed to save the reflection to the database.");
+      if (!user || isGeneratingReflection) return;
+      setIsGeneratingReflection(date);
+      try {
+        const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
+        const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
+        const reflectionData = {
+            date: date,
+            summary: summary,
+            entry_ids: entriesForDay.map(e => e.id),
+            type: 'daily' as const
+        };
+        const newReflection = await db.addReflection(user.id, reflectionData);
+        if (newReflection) {
+            // Fetch all reflections again to get the new "latest" one
+            const userReflections = await db.getReflections(user.id);
+            setReflections(userReflections);
+        }
+      } catch (error) {
+          console.error("Error generating reflection:", error);
+      } finally {
+          setIsGeneratingReflection(null);
       }
-    } catch (error) {
-      console.error("Error generating reflection:", error);
-    } finally {
-      setIsGeneratingReflection(null);
-    }
   };
 
   const handleGenerateWeeklyReflection = async (weekId: string, dailyReflections: Reflection[]) => {
@@ -119,7 +117,6 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(weekId);
     try {
       const summary = await gemini.generateWeeklyReflection(dailyReflections);
-
       const reflectionData = {
         date: weekId,
         summary: summary,
@@ -130,8 +127,6 @@ export const MindstreamApp: React.FC = () => {
       if (newReflection) {
         const userReflections = await db.getReflections(user.id);
         setReflections(userReflections);
-      } else {
-        throw new Error("Failed to save the weekly reflection to the database.");
       }
     } catch (error) {
       console.error("Error generating weekly reflection:", error);
@@ -145,7 +140,6 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(monthId);
     try {
       const summary = await gemini.generateMonthlyReflection(dailyReflections);
-      
       const reflectionData = {
         date: monthId,
         summary: summary,
@@ -156,8 +150,6 @@ export const MindstreamApp: React.FC = () => {
       if (newReflection) {
         const userReflections = await db.getReflections(user.id);
         setReflections(userReflections);
-      } else {
-          throw new Error("Failed to save the monthly reflection to the database.");
       }
     } catch (error) {
       console.error("Error generating monthly reflection:", error);
@@ -180,10 +172,7 @@ export const MindstreamApp: React.FC = () => {
         setMessages(prev => [...prev, newAiMessage]);
     } catch (error) {
         console.error("Error getting chat response:", error);
-        const errorMessage: Message = { 
-            sender: 'ai', 
-            text: error instanceof Error ? error.message : "Sorry, I'm having trouble connecting right now." 
-        };
+        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
         setMessages(prev => [...prev, errorMessage]);
     } finally {
         setIsChatLoading(false);
@@ -234,7 +223,6 @@ export const MindstreamApp: React.FC = () => {
                         onGenerateWeekly={handleGenerateWeeklyReflection}
                         onGenerateMonthly={handleGenerateMonthlyReflection}
                         isGenerating={isGeneratingReflection}
-                        isAiEnabled={gemini.GEMINI_API_KEY_AVAILABLE}
                      />;
           case 'chat':
               return <ChatView messages={messages} isLoading={isChatLoading} />;
@@ -250,7 +238,7 @@ export const MindstreamApp: React.FC = () => {
         case 'stream':
             return <InputBar onAddEntry={handleAddEntry} />;
         case 'chat':
-            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} isAiEnabled={gemini.GEMINI_API_KEY_AVAILABLE} />;
+            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
         case 'intentions':
             return <IntentionsInputBar onAddIntention={handleAddIntention} activeTimeframe={activeIntentionTimeframe} />;
         default:
