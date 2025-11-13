@@ -9,10 +9,11 @@ interface DailyReflectionsProps {
   intentions: Intention[];
   dailyReflections: Reflection[];
   onGenerate: (date: string, entries: Entry[]) => void;
+  onExplore: (summary: string) => void;
   isGenerating: string | null;
 }
 
-export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, isGenerating }) => {
+export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -63,7 +64,7 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
             
             {reflectionForDay && (
-              <ReflectionCard reflection={reflectionForDay} />
+              <ReflectionCard reflection={reflectionForDay} onExplore={onExplore} />
             )}
             
             {hasEntries && (
