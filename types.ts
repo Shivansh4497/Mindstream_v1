@@ -22,6 +22,7 @@ export interface Reflection {
   summary: string;
   entry_ids: string[];
   type: 'daily' | 'weekly' | 'monthly';
+  timestamp: string;
 }
 
 export interface Message {
