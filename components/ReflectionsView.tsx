@@ -3,6 +3,7 @@ import type { Entry, Intention, Reflection, AISuggestion } from '../types';
 import { DailyReflections } from './DailyReflections';
 import { WeeklyReflections } from './WeeklyReflections';
 import { MonthlyReflections } from './MonthlyReflections';
+import { AIStatus } from '../MindstreamApp';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly';
 
@@ -16,6 +17,9 @@ interface ReflectionsViewProps {
   onExploreInChat: (summary: string) => void;
   isGenerating: string | null;
   onAddSuggestion: (suggestion: AISuggestion) => void;
+  aiStatus: AIStatus;
+  onDebug: () => void;
+  debugOutput: string | null;
 }
 
 const timeframes: { id: ReflectionTimeframe; label: string }[] = [
@@ -24,7 +28,20 @@ const timeframes: { id: ReflectionTimeframe; label: string }[] = [
     { id: 'monthly', label: 'Monthly' },
 ];
 
-export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, onExploreInChat, isGenerating, onAddSuggestion }) => {
+export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ 
+  entries, 
+  intentions, 
+  reflections, 
+  onGenerateDaily, 
+  onGenerateWeekly, 
+  onGenerateMonthly, 
+  onExploreInChat, 
+  isGenerating, 
+  onAddSuggestion, 
+  aiStatus,
+  onDebug,
+  debugOutput 
+}) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
 
   const { daily, weekly, monthly } = useMemo(() => {
@@ -50,6 +67,9 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, inten
             onExplore={onExploreInChat}
             isGenerating={isGenerating}
             onAddSuggestion={onAddSuggestion}
+            aiStatus={aiStatus}
+            onDebug={onDebug}
+            debugOutput={debugOutput}
         />;
       case 'weekly':
         return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} onExplore={onExploreInChat} isGenerating={isGenerating} onAddSuggestion={onAddSuggestion} />;
