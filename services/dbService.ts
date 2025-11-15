@@ -59,6 +59,24 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
   return data;
 };
 
+// Onboarding Functions
+export const addWelcomeEntry = async (userId: string): Promise<Entry | null> => {
+  const welcomeData = {
+    timestamp: new Date().toISOString(),
+    text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
+    title: "Your First Step to Clarity",
+    tags: ["welcome", "getting-started"],
+    sentiment: "positive" as const,
+    emoji: "👋"
+  };
+  return addEntry(userId, welcomeData);
+};
+
+export const addFirstIntention = async (userId: string): Promise<Intention | null> => {
+  return addIntention(userId, "Explore all four tabs of Mindstream", "daily");
+};
+
+
 // Reflection Functions
 export const getReflections = async (userId: string): Promise<Reflection[]> => {
   const { data, error } = await supabase
