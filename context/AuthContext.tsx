@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { Profile } from '../types';
-import { getProfile, createProfile } from '../services/dbService';
+import * as db from '../services/dbService';
 
 // 1. Define the shape of the context
 interface AuthContextType {
@@ -74,17 +74,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // If there is a user, fetch their profile.
     if (user) {
       console.log(`[AuthContext] User detected (${user.id}). Fetching/creating profile...`);
-      const fetchProfile = async () => {
+      const manageProfile = async () => {
           try {
-            const userProfile = await getProfile(user.id) ?? await createProfile(user);
-            setProfile(userProfile);
-            console.log('[AuthContext] Profile loaded successfully.');
+            let userProfile = await db.getProfile(user.id);
+            if (userProfile) {
+                setProfile(userProfile);
+                console.log('[AuthContext] Existing profile loaded.');
+            } else {
+                console.log('[AuthContext] No existing profile found. Creating new one...');
+                const newProfile = await db.createProfile(user);
+                if (newProfile) {
+                    setProfile(newProfile);
+                    console.log('[AuthContext] New profile created. Adding onboarding content...');
+                    // This is a new user, so add onboarding content.
+                    await db.addWelcomeEntry(user.id);
+                    await db.addFirstIntention(user.id);
+                    console.log('[AuthContext] Onboarding content added.');
+                }
+            }
           } catch (error) {
-            console.error('[AuthContext] Error fetching profile:', error);
+            console.error('[AuthContext] Error managing profile:', error);
             setProfile(null);
           }
       };
-      fetchProfile();
+      manageProfile();
     } else {
       // If there's no user, clear the profile.
       setProfile(null);
