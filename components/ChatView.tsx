@@ -5,13 +5,10 @@ import { MessageBubble } from './MessageBubble';
 interface ChatViewProps {
   messages: Message[];
   isLoading: boolean;
-  starters: string[];
-  isGeneratingStarters: boolean;
-  onStarterClick: (text: string) => void;
   onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading, starters, isGeneratingStarters, onStarterClick, onAddSuggestion }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading, onAddSuggestion }) => {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -20,9 +17,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading, starter
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, starters, isLoading]);
-
-  const showStarters = messages.length <= 1 && !isLoading;
+  }, [messages, isLoading]);
 
   return (
     <div className="h-full flex flex-col">
@@ -48,29 +43,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading, starter
                 </div>
             </div>
         )}
-        
-        {showStarters && (
-            <div className="mt-4 animate-fade-in-up">
-                {isGeneratingStarters ? (
-                     <div className="flex justify-center">
-                        <div className="w-8 h-8 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-                     </div>
-                ) : (
-                    <div className="flex flex-col items-start gap-2">
-                        {starters.map((starter, index) => (
-                            <button
-                                key={index}
-                                onClick={() => onStarterClick(starter)}
-                                className="bg-dark-surface-light hover:bg-white/10 text-white py-2 px-4 rounded-lg transition-colors text-left"
-                            >
-                                {starter}
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
-        )}
-
         <div ref={messagesEndRef} />
       </main>
     </div>
