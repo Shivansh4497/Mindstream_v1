@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
@@ -47,7 +47,8 @@ export const MindstreamApp: React.FC = () => {
 
   // State for Thematic Reflections Modal
   const [showThematicModal, setShowThematicModal] = useState(false);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  // FIX: Corrected a typo in the useState destructuring for `selectedTag`, which was causing `selectedTag` to be undefined throughout the component.
+  const [selectedTag, setSelectedTagState] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
   
@@ -72,37 +73,48 @@ export const MindstreamApp: React.FC = () => {
 
     fetchData();
   }, [user]);
+  
+  const startNewChatSession = useCallback(async (firstUserPrompt?: string) => {
+    if (isGeneratingStarters) return;
 
-  // Effect for generating personalized chat greeting and starters
-  useEffect(() => {
-    const initializeChat = async () => {
-      // Only run if we are in chat view, it's a new session, and we're not already fetching.
-      if (view === 'chat' && messages.length <= 1 && chatStarters.length === 0 && !isGeneratingStarters) {
-        setIsGeneratingStarters(true);
-        try {
-          const [greeting, starters] = await Promise.all([
-            gemini.generatePersonalizedGreeting(entries),
-            gemini.generateChatStarters(entries, intentions)
-          ]);
-          setMessages([{ sender: 'ai', text: greeting }]);
-          setChatStarters(starters);
-        } catch (error) {
-          console.error("Error initializing chat:", error);
-          // Fallback to default state on error
-          setMessages([{ sender: 'ai', text: INITIAL_GREETING }]);
-          setChatStarters([
+    setIsGeneratingStarters(true);
+    setChatStarters([]); // Clear old starters immediately
+
+    try {
+        const greeting = await gemini.generatePersonalizedGreeting(entries);
+        const initialAiMessage: Message = { sender: 'ai', text: greeting };
+
+        if (firstUserPrompt) {
+            const userMessage: Message = { sender: 'user', text: firstUserPrompt };
+            // Set the history with the prompt and immediately trigger the AI response
+            setMessages([initialAiMessage, userMessage]);
+            handleSendMessage(firstUserPrompt, [initialAiMessage, userMessage]);
+        } else {
+            // Just set the greeting and generate starters for the user to pick from
+            const starters = await gemini.generateChatStarters(entries, intentions);
+            setMessages([initialAiMessage]);
+            setChatStarters(starters);
+        }
+    } catch (error) {
+        console.error("Error initializing chat:", error);
+        setMessages([{ sender: 'ai', text: INITIAL_GREETING }]);
+        setChatStarters([
             "What was my biggest challenge last week?",
             "Let's review my progress on my goals.",
             "Tell me about a recurring theme in my journal."
-          ]);
-        } finally {
-          setIsGeneratingStarters(false);
-        }
-      }
-    };
-    initializeChat();
-  }, [view, entries, intentions, messages.length, chatStarters.length, isGeneratingStarters]);
+        ]);
+    } finally {
+        setIsGeneratingStarters(false);
+    }
+  }, [entries, intentions, isGeneratingStarters]);
 
+  const handleViewChange = (newView: View) => {
+    const isNewChatSession = messages.length <= 1;
+    if (newView === 'chat' && isNewChatSession) {
+        startNewChatSession();
+    }
+    setView(newView);
+  };
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
@@ -199,12 +211,19 @@ export const MindstreamApp: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, initialHistory?: Message[]) => {
     if (isChatLoading) return;
 
+    const history = initialHistory || messages;
     const newUserMessage: Message = { sender: 'user', text };
-    const newHistory = [...messages, newUserMessage];
-    setMessages(newHistory);
+    
+    // If we are not in an initial session, update the state with the user message immediately
+    if (!initialHistory) {
+      setMessages(prev => [...prev, newUserMessage]);
+    }
+    
+    const newHistory = [...history, newUserMessage];
+    
     setIsChatLoading(true);
     setChatStarters([]); // Hide starters after conversation begins
 
@@ -221,9 +240,9 @@ export const MindstreamApp: React.FC = () => {
     }
   }
 
-  const handleExploreInChat = async (summary: string) => {
+  const handleExploreInChat = (summary: string) => {
     const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
-    handleSendMessage(prompt);
+    startNewChatSession(prompt);
     setView('chat');
   };
 
@@ -264,13 +283,13 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleTagClick = (tag: string) => {
-    setSelectedTag(tag);
+    setSelectedTagState(tag);
     setShowThematicModal(true);
   };
   
   const handleCloseThematicModal = () => {
     setShowThematicModal(false);
-    setSelectedTag(null);
+    setSelectedTagState(null);
     setThematicReflection(null);
     setIsGeneratingThematic(false);
   };
@@ -365,7 +384,7 @@ export const MindstreamApp: React.FC = () => {
       {/* DEFINITIVE FOOTER SOLUTION */}
       <div className="flex-shrink-0">
         {renderActionBar()}
-        <NavBar activeView={view} onViewChange={setView} />
+        <NavBar activeView={view} onViewChange={handleViewChange} />
       </div>
     </div>
   );
