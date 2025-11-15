@@ -16,7 +16,7 @@ export const getProfile = async (userId: string): Promise<Profile | null> => {
   return data;
 };
 
-export const createProfile = async (user: User): Promise<Profile | null> => {
+export const createProfile = async (user: User): Promise<Profile> => {
   const { data, error } = await supabase
     .from('profiles')
     .insert({
@@ -28,6 +28,7 @@ export const createProfile = async (user: User): Promise<Profile | null> => {
     .single();
   if (error) {
     console.error('Error creating profile:', error);
+    throw error;
   }
   return data;
 };
@@ -46,7 +47,7 @@ export const getEntries = async (userId: string): Promise<Entry[]> => {
   return data || [];
 };
 
-export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry | null> => {
+export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
   const { data, error } = await supabase
     .from('entries')
     .insert({ ...entryData, user_id: userId } as any)
@@ -54,13 +55,13 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
     .single();
   if (error) {
     console.error('Error adding entry:', error);
-    return null;
+    throw error;
   }
   return data;
 };
 
 // Onboarding Functions
-export const addWelcomeEntry = async (userId: string): Promise<Entry | null> => {
+export const addWelcomeEntry = async (userId: string): Promise<Entry> => {
   const welcomeData = {
     timestamp: new Date().toISOString(),
     text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
@@ -117,7 +118,7 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
   return Array.from(latestReflections.values());
 };
 
-export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
+export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection> => {
     let dateForDb = reflectionData.date;
     if (reflectionData.type === 'weekly') {
         dateForDb = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
@@ -141,11 +142,11 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
 
     if (error) {
         console.error('Error adding reflection:', error);
-        return null;
+        throw error;
     }
     
     // The returned data should have suggestions as an object, not a string.
-    return data as Reflection | null;
+    return data as Reflection;
 };
 
 // Intention Functions
