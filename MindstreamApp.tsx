@@ -18,10 +18,12 @@ import { IntentionsView } from './components/IntentionsView';
 import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
+import { AIStatusBanner } from './components/AIStatusBanner';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
-const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. Please check your Gemini API key configuration and ensure billing is enabled. Some AI features may not work correctly.";
+const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
 
+export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
@@ -36,6 +38,8 @@ export const MindstreamApp: React.FC = () => {
   
   // App/Data loading state
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AIStatus>('initializing');
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Chat state
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -52,20 +56,26 @@ export const MindstreamApp: React.FC = () => {
 
   // State for Thematic Reflections Modal
   const [showThematicModal, setShowThematicModal] = useState(false);
-  // FIX: Corrected a typo in the useState destructuring for `selectedTag`, which was causing `selectedTag` to be undefined throughout the component.
   const [selectedTag, setSelectedTagState] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
+  
+  // State for Debugging
+  const [debugOutput, setDebugOutput] = useState<string | null>(null);
 
   const handleApiError = (error: unknown, context: string) => {
     console.error(`Error in ${context}:`, error);
-    alert(API_ERROR_MESSAGE);
+    // Don't show an alert if it's a persistent configuration error, the banner will handle it.
+    if (aiStatus !== 'error') {
+      alert(API_ERROR_MESSAGE);
+    }
   };
   
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchDataAndVerifyAI = async () => {
       if (!user) return;
       try {
+        // Fetch user data from database
         const [userEntries, userReflections, userIntentions] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
@@ -75,23 +85,45 @@ export const MindstreamApp: React.FC = () => {
         setEntries(userEntries);
         setReflections(userReflections);
         setIntentions(userIntentions);
-        setIsDataLoaded(true); // Mark data as loaded
+        setIsDataLoaded(true);
 
-      } catch (error) {
-        console.error("Error fetching data:", error);
+        // Once data is loaded, verify the AI connection
+        setAiStatus('verifying');
+        await gemini.verifyApiKey();
+        setAiStatus('ready');
+
+      } catch (error: any) {
+        // This catch block handles both data fetching and AI verification errors
+        console.error("Error during startup:", error);
+        
+        // If data fetching is what failed, we might not have set it as loaded.
+        if (!isDataLoaded) setIsDataLoaded(true);
+
+        // Check if the error is from our AI verification
+        if (aiStatus === 'verifying') {
+          setAiStatus('error');
+           let message = error.message || 'An unknown error occurred.';
+           if (message.includes('API key not valid')) {
+               message = 'The provided Gemini API key is not valid. Please check your .env configuration.';
+           } else if (message.toLowerCase().includes('billing')) {
+               message = 'The project associated with the API key does not have billing enabled. Please enable it in your Google Cloud project.';
+           } else if (message.includes('permission denied')) {
+                message = 'The API key is missing required permissions for the Gemini API.';
+           }
+           setAiError(message);
+        }
       }
     };
 
-    fetchData();
+    fetchDataAndVerifyAI();
   }, [user]);
   
   const handleSendMessage = async (text: string, initialHistory?: Message[]) => {
-    if (isChatLoading) return;
+    if (isChatLoading || aiStatus !== 'ready') return;
 
     const history = initialHistory || messages;
     const newUserMessage: Message = { sender: 'user', text };
     
-    // If we are not in an initial session, update the state with the user message immediately
     if (!initialHistory) {
       setMessages(prev => [...prev, newUserMessage]);
     }
@@ -99,7 +131,7 @@ export const MindstreamApp: React.FC = () => {
     const newHistory = [...history, newUserMessage];
     
     setIsChatLoading(true);
-    setChatStarters([]); // Hide starters after conversation begins
+    setChatStarters([]);
 
     try {
         const { text: aiResponse, suggestions } = await gemini.getChatResponse(newHistory, entries, intentions);
@@ -115,10 +147,10 @@ export const MindstreamApp: React.FC = () => {
   }
 
   const startNewChatSession = async (firstUserPrompt?: string) => {
-    if (isGeneratingStarters || !isDataLoaded) return;
+    if (isGeneratingStarters || !isDataLoaded || aiStatus !== 'ready') return;
 
     setIsGeneratingStarters(true);
-    setChatStarters([]); // Clear old starters immediately
+    setChatStarters([]);
 
     try {
         const greeting = await gemini.generatePersonalizedGreeting(entries);
@@ -126,11 +158,9 @@ export const MindstreamApp: React.FC = () => {
 
         if (firstUserPrompt) {
             const userMessage: Message = { sender: 'user', text: firstUserPrompt };
-            // Set the history with the prompt and immediately trigger the AI response
             setMessages([initialAiMessage, userMessage]);
             handleSendMessage(firstUserPrompt, [initialAiMessage, userMessage]);
         } else {
-            // Just set the greeting and generate starters for the user to pick from
             const starters = await gemini.generateChatStarters(entries, intentions);
             setMessages([initialAiMessage]);
             setChatStarters(starters);
@@ -149,8 +179,9 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleViewChange = (newView: View) => {
-    if (newView === 'chat' && !isDataLoaded) {
-        return; // Prevent switching to chat if data isn't loaded
+    const isChatDisabled = !isDataLoaded || aiStatus !== 'ready';
+    if (newView === 'chat' && isChatDisabled) {
+        return;
     }
     const isNewChatSession = messages.length <= 1;
     if (newView === 'chat' && isNewChatSession) {
@@ -160,7 +191,7 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleAddEntry = async (text: string) => {
-    if (!user || isProcessing) return;
+    if (!user || isProcessing || aiStatus !== 'ready') return;
     setIsProcessing(true);
     try {
       const { title, tags, sentiment } = await gemini.processEntry(text);
@@ -183,7 +214,7 @@ export const MindstreamApp: React.FC = () => {
   };
   
   const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
-      if (!user || isGeneratingReflection) return;
+      if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
       setIsGeneratingReflection(date);
       try {
         const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
@@ -207,7 +238,7 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleGenerateWeeklyReflection = async (weekId: string, entriesForWeek: Entry[]) => {
-    if (!user || isGeneratingReflection) return;
+    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
     setIsGeneratingReflection(weekId);
     try {
       const intentionsForWeek = intentions.filter(i => getWeekId(new Date(i.created_at)) === weekId);
@@ -231,7 +262,7 @@ export const MindstreamApp: React.FC = () => {
   };
   
   const handleGenerateMonthlyReflection = async (monthId: string, entriesForMonth: Entry[]) => {
-    if (!user || isGeneratingReflection) return;
+    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
     setIsGeneratingReflection(monthId);
     try {
       const intentionsForMonth = intentions.filter(i => getMonthId(new Date(i.created_at)) === monthId);
@@ -255,6 +286,7 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleExploreInChat = (summary: string) => {
+    if (aiStatus !== 'ready') return;
     const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
     startNewChatSession(prompt);
     setView('chat');
@@ -274,7 +306,6 @@ export const MindstreamApp: React.FC = () => {
 
   const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
     await handleAddIntention(suggestion.text, suggestion.timeframe);
-    // Optionally, give user feedback like a toast notification
   };
 
   const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
@@ -315,7 +346,7 @@ export const MindstreamApp: React.FC = () => {
   };
   
   const handleGenerateThematicReflection = async (tag: string) => {
-    if (!user || isGeneratingThematic) return;
+    if (!user || isGeneratingThematic || aiStatus !== 'ready') return;
     setIsGeneratingThematic(true);
     setThematicReflection(null);
     try {
@@ -327,6 +358,15 @@ export const MindstreamApp: React.FC = () => {
     } finally {
       setIsGeneratingThematic(false);
     }
+  };
+
+  const handleDebugAi = async () => {
+    setDebugOutput('Running debug check...');
+    const today = getFormattedDate(new Date());
+    const entriesForDay = entries.filter(e => getFormattedDate(new Date(e.timestamp)) === today);
+    const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === today);
+    const output = await gemini.getRawReflectionForDebug(entriesForDay, intentionsForDay);
+    setDebugOutput(output);
   };
 
   const renderCurrentView = () => {
@@ -344,6 +384,9 @@ export const MindstreamApp: React.FC = () => {
                         onExploreInChat={handleExploreInChat}
                         isGenerating={isGeneratingReflection}
                         onAddSuggestion={handleAddSuggestedIntention}
+                        aiStatus={aiStatus}
+                        onDebug={handleDebugAi}
+                        debugOutput={debugOutput}
                      />;
           case 'chat':
               return <ChatView 
@@ -362,15 +405,16 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const renderActionBar = () => {
+    const isAiDisabled = aiStatus !== 'ready';
     switch(view) {
         case 'stream':
             return <InputBar onAddEntry={handleAddEntry} />;
         case 'chat':
-            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
+            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading || isAiDisabled} />;
         case 'intentions':
             return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
         default:
-            return null; // No action bar for reflections
+            return null;
     }
   }
 
@@ -390,6 +434,8 @@ export const MindstreamApp: React.FC = () => {
       )}
       
       <Header onSearchClick={() => setShowSearchModal(true)} />
+      
+      <AIStatusBanner status={aiStatus} error={aiError} />
 
       <main className="flex-grow overflow-y-auto">
         {!isDataLoaded && (
@@ -400,10 +446,9 @@ export const MindstreamApp: React.FC = () => {
         {isDataLoaded && renderCurrentView()}
       </main>
       
-      {/* DEFINITIVE FOOTER SOLUTION */}
       <div className="flex-shrink-0">
         {isDataLoaded && renderActionBar()}
-        <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded} />
+        <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded || aiStatus !== 'ready'} />
       </div>
     </div>
   );
