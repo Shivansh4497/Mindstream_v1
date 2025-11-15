@@ -345,9 +345,9 @@ Respond with only a JSON object.`;
 
 /**
  * Gets a response from the AI for the chat feature.
- * Now includes actionable suggestions.
+ * This version is simplified to be more robust, returning only text.
  */
-export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<{ text: string, suggestions: AISuggestion[] }> => {
+export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<{ text: string }> => {
     if (!ai) throw new Error("AI functionality is disabled.");
 
     const model = 'gemini-2.5-flash';
@@ -360,7 +360,7 @@ export const getChatResponse = async (history: Message[], entries: Entry[], inte
         `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
     ).join('\n');
 
-    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Based on our conversation, if it feels natural, you can suggest 1-2 actionable 'daily' or 'weekly' intentions. Do not give medical advice. Keep your responses concise and conversational.
+    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
 
 CONTEXT from my recent journal entries:
 ${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
@@ -383,23 +383,10 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         ],
         config: {
             systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    text: {
-                        type: Type.STRING,
-                        description: "Your main conversational response to the user."
-                    },
-                    suggestions: generateActionableSuggestionsSchema,
-                },
-                required: ["text", "suggestions"]
-            }
         }
     });
-
-    const result = parseGeminiJson<{ text: string, suggestions: AISuggestion[] }>(response.text);
-    return result;
+    
+    return { text: response.text };
 }
 
 export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<string> => {
@@ -408,7 +395,7 @@ export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<st
     
     const model = 'gemini-2.5-flash';
     const lastEntry = entries[0];
-    const prompt = `Based on my last journal entry, create a short, personalized, one-sentence greeting. Be warm and reference the general sentiment or topic of the entry. The entry's sentiment was '${lastEntry.sentiment || 'neutral'}'.
+    const prompt = `Based on my last journal entry, create a short, warm, one-sentence greeting that acknowledges the entry's topic without being too specific.
 
 Last entry: "${lastEntry.text}"
 
@@ -417,14 +404,21 @@ Your greeting:`;
     return response.text;
 };
 
-export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<string[]> => {
+export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<{ starters: string[] }> => {
     if (!ai) throw new Error("AI is not configured.");
     
     const model = 'gemini-2.5-flash';
     const entriesText = entries.slice(0, 5).map(e => `- Entry (Sentiment: ${e.sentiment || 'neutral'}): ${e.text}`).join('\n');
     const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
 
-    const prompt = `Based on my recent entries (including their sentiment) and pending intentions, generate 3 engaging, concise, and thought-provoking conversation starters. Frame them as questions I can ask you.
+    const prompt = `You are an AI assistant helping a user start a conversation with their journal. Your goal is to provide helpful, gentle, and useful starting points.
+    
+Based on my recent entries and pending intentions, generate 3 conversation starters. They should be framed as questions I can ask you, the AI.
+    
+Follow these rules:
+1.  Generate ONE starter that is gently contextual, reflecting a high-level theme from the recent entries (e.g., "Review my thoughts on the 'new project'").
+2.  Generate TWO starters that are high-utility and not directly tied to a specific entry (e.g., "What are my pending intentions?" or "Summarize my main goals.").
+3.  Keep them short and clear.
 
 Recent Entries:
 ${entriesText.length > 0 ? entriesText : "None"}
@@ -432,7 +426,7 @@ ${entriesText.length > 0 ? entriesText : "None"}
 Pending Intentions:
 ${intentionsText.length > 0 ? intentionsText : "None"}
 
-Respond with a JSON array of 3 strings.`;
+Respond with a JSON object containing a 'starters' array with exactly 3 strings.`;
     
     const response = await ai.models.generateContent({
         model,
@@ -440,12 +434,19 @@ Respond with a JSON array of 3 strings.`;
         config: {
             responseMimeType: "application/json",
             responseSchema: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
+                type: Type.OBJECT,
+                properties: {
+                    starters: {
+                        type: Type.ARRAY,
+                        description: "An array of exactly 3 string conversation starters.",
+                        items: { type: Type.STRING }
+                    }
+                },
+                required: ['starters']
             }
         }
     });
 
-    const result = parseGeminiJson<string[]>(response.text);
+    const result = parseGeminiJson<{ starters: string[] }>(response.text);
     return result;
 };
