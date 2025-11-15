@@ -15,6 +15,7 @@ export interface Entry {
   text: string;
   title: string | null;
   tags: string[] | null;
+  sentiment: Sentiment | null;
 }
 
 export interface AISuggestion {
@@ -33,6 +34,7 @@ export interface Reflection {
 }
 
 export interface Message {
+  id?: string | number;
   sender: 'user' | 'ai';
   text: string;
   suggestions?: AISuggestion[];
