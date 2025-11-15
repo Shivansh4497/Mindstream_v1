@@ -27,6 +27,17 @@ if (!apiKeyAvailable) {
 export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
 
 /**
+ * Performs a simple, low-cost API call to verify the API key is valid and functional.
+ * Throws an error if the API call fails.
+ */
+export const verifyApiKey = async (): Promise<boolean> => {
+  if (!ai) throw new Error("AI client not initialized. API key may be missing.");
+  // This is a simple, fast, and low-token request to verify the key.
+  await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'Hi' });
+  return true;
+};
+
+/**
  * A robust JSON parser that handles markdown-wrapped JSON from Gemini.
  */
 const parseGeminiJson = <T>(jsonString: string): T => {
@@ -100,6 +111,57 @@ Respond with a JSON object.`;
 
   const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
   return result;
+};
+
+/**
+ * FOR DEBUGGING: Calls the reflection API but returns the raw, unparsed response or error.
+ */
+export const getRawReflectionForDebug = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
+  try {
+    if (!ai) return "AI client not initialized. Check if VITE_API_KEY is set.";
+    
+    // We use the same logic as the real function to ensure the test is valid.
+    const model = 'gemini-2.5-flash';
+    const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
+    const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 actionable suggestions for a new 'daily' or 'weekly' intention.
+
+Here were our intentions for today:
+${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
+
+Here are today's journal entries:
+${entriesText.length > 0 ? entriesText : "No journal entries were made."}
+
+Respond with a JSON object.`;
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                  summary: { type: Type.STRING },
+                  suggestions: generateActionableSuggestionsSchema
+              },
+              required: ['summary', 'suggestions']
+          }
+      }
+    });
+
+    return `SUCCESS! Raw AI Response:\n\n---\n${response.text}\n---`;
+  } catch (error: any) {
+    console.error("DEBUG CAPTURED ERROR:", error);
+    let errorMessage = `ERROR! The API call failed.\n\n---\n`;
+    errorMessage += `Error Type: ${error.name}\n`;
+    errorMessage += `Error Message: ${error.message}\n`;
+    if (error.stack) {
+      errorMessage += `Stack Trace:\n${error.stack}\n`;
+    }
+    errorMessage += '---\n\nThis usually means the API key is invalid or billing is not enabled for the project.';
+    return errorMessage;
+  }
 };
 
 
@@ -237,7 +299,7 @@ Your holistic thematic reflection on our journey with "${tag}":`;
  * Processes a new journal entry to generate a title, tags, and sentiment.
  */
 export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment }> => {
-  if (!ai) return { title: 'Journal Entry', tags: [], sentiment: 'neutral' };
+  if (!ai) throw new Error("AI client not initialized.");
   
   const model = 'gemini-2.5-flash';
 
