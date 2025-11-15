@@ -52,13 +52,13 @@ const parseGeminiJson = <T>(jsonString: string): T => {
 
 const generateActionableSuggestionsSchema = {
     type: Type.ARRAY,
-    description: "A list of 1-2 concise, actionable suggestions based on the reflection, framed as intentions.",
+    description: "A list of 1-2 concise, actionable suggestions based on the reflection, framed as intentions. Keep each suggestion text under 10 words and frame it as a direct, actionable command.",
     items: {
         type: Type.OBJECT,
         properties: {
             text: {
                 type: Type.STRING,
-                description: "The task or goal to be achieved."
+                description: "The task or goal to be achieved (under 10 words)."
             },
             timeframe: {
                 type: Type.STRING,
@@ -80,7 +80,7 @@ export const generateReflection = async (entries: Entry[], intentions: Intention
   const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
 
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 actionable suggestions for a new 'daily' or 'weekly' intention.
+  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 concise, actionable suggestions for a new 'daily' or 'weekly' intention. Keep each suggestion under 10 words.
 
 Here were our intentions for today:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
@@ -180,7 +180,7 @@ export const generateWeeklyReflection = async (entries: Entry[], intentions: Int
 
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
 
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary (3-4 sentences). Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Based on this, also provide 1-2 actionable 'weekly' intentions. Speak in a gentle, encouraging, and first-person-plural tone.
+  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary (3-4 sentences). Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Based on this, also provide 1-2 concise, actionable 'weekly' intentions (under 10 words each). Speak in a gentle, encouraging, and first-person-plural tone.
 
 Here are our intentions for context:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
@@ -229,7 +229,7 @@ export const generateMonthlyReflection = async (entries: Entry[], intentions: In
 
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
 
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary (4-5 sentences). Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Based on this, also provide 1-2 actionable 'weekly' or 'monthly' intentions. Speak in a gentle, encouraging, and first-person-plural tone.
+  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary (4-5 sentences). Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Based on this, also provide 1-2 concise, actionable 'weekly' or 'monthly' intentions (under 10 words each). Speak in a gentle, encouraging, and first-person-plural tone.
 
 Here are our intentions for context:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
@@ -298,12 +298,12 @@ Your holistic thematic reflection on our journey with "${tag}":`;
 /**
  * Processes a new journal entry to generate a title, tags, and sentiment.
  */
-export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment }> => {
+export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment; emoji: string; }> => {
   if (!ai) throw new Error("AI client not initialized.");
   
   const model = 'gemini-2.5-flash';
 
-  const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words), 2-4 relevant tags, and determine its overall sentiment ('positive', 'negative', or 'neutral').
+  const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words), 2-4 relevant tags, determine its overall sentiment ('positive', 'negative', or 'neutral'), and add a single, appropriate Unicode emoji that best represents the entry's core emotion or content.
 
 Entry: "${entryText}"
 
@@ -331,14 +331,18 @@ Respond with only a JSON object.`;
           sentiment: {
             type: Type.STRING,
             description: "The overall sentiment of the entry: 'positive', 'negative', or 'neutral'."
+          },
+          emoji: {
+            type: Type.STRING,
+            description: "A single Unicode emoji that best represents the entry's emotion or content."
           }
         },
-        required: ['title', 'tags', 'sentiment']
+        required: ['title', 'tags', 'sentiment', 'emoji']
       }
     }
   });
   
-  const result = parseGeminiJson<{ title: string; tags: string[]; sentiment: Sentiment }>(response.text);
+  const result = parseGeminiJson<{ title: string; tags: string[]; sentiment: Sentiment; emoji: string }>(response.text);
   return result;
 };
 
