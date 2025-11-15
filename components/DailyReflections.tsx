@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { Entry, Intention, Reflection } from '../types';
+import type { Entry, Intention, Reflection, AISuggestion } from '../types';
 import { getDisplayDate, getFormattedDate } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -11,9 +11,10 @@ interface DailyReflectionsProps {
   onGenerate: (date: string, entries: Entry[]) => void;
   onExplore: (summary: string) => void;
   isGenerating: string | null;
+  onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
-export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating }) => {
+export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -64,7 +65,9 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
             
             {reflectionForDay && (
-              <ReflectionCard reflection={reflectionForDay} onExplore={onExplore} />
+              <div className="mb-4">
+                <ReflectionCard reflection={reflectionForDay} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
+              </div>
             )}
             
             {hasEntries && (
