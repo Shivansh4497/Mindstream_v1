@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { Entry, Reflection } from '../types';
+import type { Entry, Reflection, AISuggestion } from '../types';
 import { getWeekId, getWeekDisplay } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -10,9 +10,10 @@ interface WeeklyReflectionsProps {
   onGenerate: (weekId: string, entriesForWeek: Entry[]) => void;
   onExplore: (summary: string) => void;
   isGenerating: string | null;
+  onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
-export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, onExplore, isGenerating }) => {
+export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
   
   const groupedEntriesByWeek = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
@@ -62,7 +63,9 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, w
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getWeekDisplay(weekId)}</h2>
             
             {existingReflection && (
-              <ReflectionCard reflection={existingReflection} onExplore={onExplore} />
+              <div className="mb-4">
+                <ReflectionCard reflection={existingReflection} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
+              </div>
             )}
 
             {canGenerate && (

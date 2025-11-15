@@ -3,7 +3,7 @@ import type { IntentionTimeframe } from '../types';
 import { SendIcon } from './icons/SendIcon';
 
 interface IntentionsInputBarProps {
-  onAddIntention: (text: string) => void;
+  onAddIntention: (text: string, timeframe: IntentionTimeframe) => void;
   activeTimeframe: IntentionTimeframe;
 }
 
@@ -13,7 +13,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (text.trim()) {
-      onAddIntention(text.trim());
+      onAddIntention(text.trim(), activeTimeframe);
       setText('');
     }
   };

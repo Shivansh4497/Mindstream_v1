@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Intention, IntentionTimeframe } from '../types';
 import { IntentionCard } from './IntentionCard';
-import { isSameDay, isDateInCurrentWeek, isDateInCurrentMonth, isDateInCurrentYear } from '../utils/date';
-
+import { getDisplayDate, getFormattedDate } from '../utils/date';
 
 interface IntentionsViewProps {
   intentions: Intention[];
@@ -13,11 +12,11 @@ interface IntentionsViewProps {
 }
 
 const timeframes: { id: IntentionTimeframe; label: string }[] = [
-    { id: 'daily', label: 'Daily To-dos' },
-    { id: 'weekly', label: 'Weekly To-dos' },
-    { id: 'monthly', label: 'Monthly To-dos' },
-    { id: 'yearly', label: 'Year Goals' },
-    { id: 'life', label: 'Life Goals' },
+    { id: 'daily', label: 'Daily' },
+    { id: 'weekly', label: 'Weekly' },
+    { id: 'monthly', label: 'Monthly' },
+    { id: 'yearly', label: 'Yearly' },
+    { id: 'life', label: 'Life' },
 ];
 
 export const IntentionsView: React.FC<IntentionsViewProps> = ({ 
@@ -28,26 +27,29 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     onTimeframeChange
 }) => {
     
-    const filteredIntentions = useMemo(() => {
-        const now = new Date();
-        let filtered = intentions.filter(i => i.timeframe === activeTimeframe);
+    const groupedIntentions = useMemo(() => {
+        const filtered = intentions.filter(i => i.timeframe === activeTimeframe);
+        
+        const groups: Record<string, { pending: Intention[], completed: Intention[] }> = {};
 
-        if (activeTimeframe === 'daily') {
-            filtered = filtered.filter(i => isSameDay(new Date(i.created_at), now));
-        } else if (activeTimeframe === 'weekly') {
-            filtered = filtered.filter(i => isDateInCurrentWeek(new Date(i.created_at)));
-        } else if (activeTimeframe === 'monthly') {
-            filtered = filtered.filter(i => isDateInCurrentMonth(new Date(i.created_at)));
-        } else if (activeTimeframe === 'yearly') {
-            filtered = filtered.filter(i => isDateInCurrentYear(new Date(i.created_at)));
-        }
-        // 'life' goals are not filtered by date
+        filtered.forEach(intention => {
+            const date = getFormattedDate(new Date(intention.created_at));
+            if (!groups[date]) {
+                groups[date] = { pending: [], completed: [] };
+            }
+            if (intention.status === 'pending') {
+                groups[date].pending.push(intention);
+            } else {
+                groups[date].completed.push(intention);
+            }
+        });
 
-        const pending = filtered.filter(i => i.status === 'pending');
-        const completed = filtered.filter(i => i.status === 'completed');
-        return { pending, completed };
+        return groups;
     }, [intentions, activeTimeframe]);
 
+    const sortedDates = useMemo(() => {
+        return Object.keys(groupedIntentions).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    }, [groupedIntentions]);
 
     return (
         <div className="h-full flex flex-col">
@@ -70,29 +72,37 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
             </header>
 
             <main className="flex-grow overflow-y-auto p-4">
-                {filteredIntentions.pending.length === 0 && filteredIntentions.completed.length === 0 && (
+                {sortedDates.length === 0 && (
                      <div className="h-full flex items-center justify-center text-center text-gray-400">
                         <div>
-                            <h3 className="text-2xl font-bold font-display text-white mb-2">Your Intentions</h3>
-                            <p>Set daily or weekly intentions to focus your mind.<br/>What do you want to accomplish?</p>
+                            <h3 className="text-2xl font-bold font-display text-white mb-2">No '{activeTimeframe}' Intentions Yet</h3>
+                            <p>Set a new intention using the bar below.<br/>What do you want to accomplish?</p>
                         </div>
                     </div>
                 )}
                 
-                {filteredIntentions.pending.map(intention => (
-                    <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
-                ))}
+                {sortedDates.map(date => (
+                    <div key={date} className="mb-8">
+                        <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
+                        
+                        {groupedIntentions[date].pending.length > 0 && (
+                            groupedIntentions[date].pending.map(intention => (
+                                <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
+                            ))
+                        )}
 
-                {filteredIntentions.completed.length > 0 && (
-                    <div className="mt-8">
-                        <div className="border-b border-white/10 mb-3">
-                            <h3 className="text-lg font-bold text-gray-400 font-display mb-1">Completed</h3>
-                        </div>
-                        {filteredIntentions.completed.map(intention => (
-                             <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
-                        ))}
+                        {groupedIntentions[date].completed.length > 0 && (
+                            <div className="mt-4">
+                                {groupedIntentions[date].pending.length > 0 && (
+                                     <div className="border-b border-white/10 my-3"></div>
+                                )}
+                                {groupedIntentions[date].completed.map(intention => (
+                                    <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
+                                ))}
+                            </div>
+                        )}
                     </div>
-                )}
+                ))}
             </main>
         </div>
     );

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-// FIX: The Profile type is no longer needed here as it's not managed in this component's state.
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe } from './types';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion } from './types';
 import { getFormattedDate, getWeekId, getMonthId } from './utils/date';
 
 import { Header } from './components/Header';
@@ -19,22 +18,39 @@ import { IntentionsView } from './components/IntentionsView';
 import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
+import { AIStatusBanner } from './components/AIStatusBanner';
+import { SuggestionChips } from './components/SuggestionChips';
+import { Toast } from './components/Toast';
+
+const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
+const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
+
+export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
-  // FIX: Profile state is no longer managed here; it's now in AuthContext.
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
-  const [messages, setMessages] = useState<Message[]>([
-    { sender: 'ai', text: "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?" }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
   
   const [view, setView] = useState<View>('stream');
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  
+  // App/Data loading state
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AIStatus>('initializing');
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [headerSubtitle, setHeaderSubtitle] = useState('');
+  
+  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
+  // Chat state
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatStarters, setChatStarters] = useState<string[]>([]);
+  const [isGeneratingStarters, setIsGeneratingStarters] = useState(false);
+  
   const [hasSeenPrivacy, setHasSeenPrivacy] = useLocalStorage('hasSeenPrivacy', false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
   
@@ -45,17 +61,38 @@ export const MindstreamApp: React.FC = () => {
 
   // State for Thematic Reflections Modal
   const [showThematicModal, setShowThematicModal] = useState(false);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTag, setSelectedTagState] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
   
-  const allReflections = reflections;
+  // State for Debugging
+  const [debugOutput, setDebugOutput] = useState<string | null>(null);
+
+  const handleApiError = (error: unknown, context: string) => {
+    console.error(`Error in ${context}:`, error);
+    // Don't show an alert if it's a persistent configuration error, the banner will handle it.
+    if (aiStatus !== 'error') {
+      alert(API_ERROR_MESSAGE);
+    }
+  };
+  
+  useEffect(() => {
+    const updateSubtitle = () => {
+      const hour = new Date().getHours();
+      if (hour < 12) setHeaderSubtitle('Good morning.');
+      else if (hour < 18) setHeaderSubtitle('Good afternoon.');
+      else setHeaderSubtitle('Time for evening reflection.');
+    };
+    updateSubtitle();
+    const interval = setInterval(updateSubtitle, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchDataAndVerifyAI = async () => {
       if (!user) return;
       try {
-        // FIX: Removed profile fetching logic, as it's now handled in AuthContext.
+        // Fetch user data from database
         const [userEntries, userReflections, userIntentions] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
@@ -65,71 +102,202 @@ export const MindstreamApp: React.FC = () => {
         setEntries(userEntries);
         setReflections(userReflections);
         setIntentions(userIntentions);
+        setIsDataLoaded(true);
 
-      } catch (error) {
-        console.error("Error fetching data:", error);
+        // Once data is loaded, verify the AI connection
+        setAiStatus('verifying');
+        await gemini.verifyApiKey();
+        setAiStatus('ready');
+
+      } catch (error: any) {
+        // This catch block handles both data fetching and AI verification errors
+        console.error("Error during startup:", error);
+        
+        // If data fetching is what failed, we might not have set it as loaded.
+        if (!isDataLoaded) setIsDataLoaded(true);
+
+        // Check if the error is from our AI verification
+        if (aiStatus === 'verifying') {
+          setAiStatus('error');
+           let message = error.message || 'An unknown error occurred.';
+           if (message.includes('API key not valid')) {
+               message = 'The provided Gemini API key is not valid. Please check your .env configuration.';
+           } else if (message.toLowerCase().includes('billing')) {
+               message = 'The project associated with the API key does not have billing enabled. Please enable it in your Google Cloud project.';
+           } else if (message.includes('permission denied')) {
+                message = 'The API key is missing required permissions for the Gemini API.';
+           }
+           setAiError(message);
+        }
       }
     };
 
-    fetchData();
+    fetchDataAndVerifyAI();
   }, [user]);
+  
+  const handleSendMessage = async (text: string, historyOverride?: Message[]) => {
+    if (isChatLoading || aiStatus !== 'ready') return;
+
+    const historyToUse = historyOverride || messages;
+    const newUserMessage: Message = { sender: 'user', text, id: `user-${Date.now()}` };
+    
+    const currentHistory = historyOverride ? historyToUse : [...historyToUse, newUserMessage];
+    
+    // Update UI immediately for non-continuation messages
+    if (!historyOverride) {
+      setMessages(currentHistory);
+      setChatStarters([]);
+    }
+    
+    setIsChatLoading(true);
+
+    const aiMessageId = `ai-${Date.now()}`;
+    // Add placeholder for AI response
+    setMessages(prev => [...prev, { sender: 'ai', text: '', id: aiMessageId }]);
+
+    try {
+        const streamResult = await gemini.getChatResponseStream(currentHistory, entries, intentions);
+
+        let fullText = '';
+        for await (const chunk of streamResult) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                fullText += chunkText;
+                setMessages(prev => 
+                    prev.map(msg => 
+                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+                    )
+                );
+            }
+        }
+    } catch (error) {
+        handleApiError(error, 'getting chat response');
+        setMessages(prev => 
+            prev.map(msg => 
+                msg.id === aiMessageId ? { ...msg, text: "Sorry, I'm having trouble connecting right now." } : msg
+            )
+        );
+    } finally {
+        setIsChatLoading(false);
+    }
+}
+
+const startNewChatSession = async (firstUserPrompt?: string) => {
+    if (!isDataLoaded || aiStatus !== 'ready') return;
+
+    // Clear previous starters, but don't set loading yet.
+    setChatStarters([]);
+
+    try {
+        // Step 1: Fetch and display the greeting for better perceived performance.
+        const greeting = await gemini.generatePersonalizedGreeting(entries);
+        const initialAiMessage: Message = { sender: 'ai', text: greeting, id: 'greeting' };
+
+        if (firstUserPrompt) {
+            // If starting with a prompt, set up history and immediately start streaming response.
+            const userMessage: Message = { sender: 'user', text: firstUserPrompt, id: `user-${Date.now()}` };
+            const initialHistory = [initialAiMessage, userMessage];
+            setMessages(initialHistory);
+            // This is a continuation call, so pass the history.
+            await handleSendMessage(firstUserPrompt, initialHistory);
+        } else {
+            // Normal session start: display greeting, then fetch starters in the background.
+            setMessages([initialAiMessage]);
+            setIsGeneratingStarters(true);
+            
+            gemini.generateChatStarters(entries, intentions)
+                .then(startersResult => {
+                    setChatStarters(startersResult.starters);
+                })
+                .catch(error => {
+                    handleApiError(error, 'fetching chat starters');
+                    setChatStarters([
+                        "What was my biggest challenge last week?",
+                        "Let's review my progress on my goals.",
+                        "Tell me about a recurring theme in my journal."
+                    ]);
+                })
+                .finally(() => {
+                    setIsGeneratingStarters(false);
+                });
+        }
+    } catch (error) {
+        handleApiError(error, 'initializing chat');
+        setMessages([{ sender: 'ai', text: INITIAL_GREETING, id: 'greeting' }]);
+    }
+};
+
+  const handleViewChange = (newView: View) => {
+    const isChatDisabled = !isDataLoaded || aiStatus !== 'ready';
+    if (newView === 'chat' && isChatDisabled) {
+        return;
+    }
+    const isNewChatSession = messages.length <= 1;
+    if (newView === 'chat' && isNewChatSession) {
+        startNewChatSession();
+    }
+    setView(newView);
+  };
 
   const handleAddEntry = async (text: string) => {
-    if (!user || isProcessing) return;
+    if (!user || isProcessing || aiStatus !== 'ready') return;
     setIsProcessing(true);
     try {
-      const { title, tags } = await gemini.processEntry(text);
+      const { title, tags, sentiment, emoji } = await gemini.processEntry(text);
       const newEntryData = {
         timestamp: new Date().toISOString(),
         text,
         title,
-        tags
+        tags,
+        sentiment,
+        emoji,
       };
       const newEntry = await db.addEntry(user.id, newEntryData);
       if (newEntry) {
         setEntries(prev => [newEntry, ...prev]);
       }
     } catch (error) {
-      console.error("Error adding entry:", error);
+      handleApiError(error, 'processing entry');
     } finally {
       setIsProcessing(false);
     }
   };
   
   const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
-      if (!user || isGeneratingReflection) return;
+      if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
       setIsGeneratingReflection(date);
       try {
         const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-        const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
-        const reflectionData = {
+        const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay);
+        const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
             date: date,
             summary: summary,
-            type: 'daily' as const
+            type: 'daily' as const,
+            suggestions: suggestions
         };
         const newReflection = await db.addReflection(user.id, reflectionData);
         if (newReflection) {
-            // Fetch all reflections again to get the new "latest" one
             const userReflections = await db.getReflections(user.id);
             setReflections(userReflections);
         }
       } catch (error) {
-          console.error("Error generating reflection:", error);
+          handleApiError(error, 'generating daily reflection');
       } finally {
           setIsGeneratingReflection(null);
       }
   };
 
   const handleGenerateWeeklyReflection = async (weekId: string, entriesForWeek: Entry[]) => {
-    if (!user || isGeneratingReflection) return;
+    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
     setIsGeneratingReflection(weekId);
     try {
       const intentionsForWeek = intentions.filter(i => getWeekId(new Date(i.created_at)) === weekId);
-      const summary = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
-      const reflectionData = {
+      const { summary, suggestions } = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
+      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
         date: weekId,
         summary: summary,
         type: 'weekly' as const,
+        suggestions: suggestions,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
@@ -137,22 +305,23 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
       }
     } catch (error) {
-      console.error("Error generating weekly reflection:", error);
+      handleApiError(error, 'generating weekly reflection');
     } finally {
       setIsGeneratingReflection(null);
     }
   };
   
   const handleGenerateMonthlyReflection = async (monthId: string, entriesForMonth: Entry[]) => {
-    if (!user || isGeneratingReflection) return;
+    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
     setIsGeneratingReflection(monthId);
     try {
       const intentionsForMonth = intentions.filter(i => getMonthId(new Date(i.created_at)) === monthId);
-      const summary = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
-      const reflectionData = {
+      const { summary, suggestions } = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
+      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
         date: monthId,
         summary: summary,
         type: 'monthly' as const,
+        suggestions: suggestions,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
@@ -160,49 +329,48 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
       }
     } catch (error) {
-      console.error("Error generating monthly reflection:", error);
+      handleApiError(error, 'generating monthly reflection');
     } finally {
       setIsGeneratingReflection(null);
     }
   };
 
-  const handleSendMessage = async (text: string) => {
-    if (isChatLoading) return;
-
-    const newUserMessage: Message = { sender: 'user', text };
-    const newHistory = [...messages, newUserMessage];
-    setMessages(newHistory);
-    setIsChatLoading(true);
-
-    try {
-        const aiResponse = await gemini.getChatResponse(newHistory, entries, intentions);
-        const newAiMessage: Message = { sender: 'ai', text: aiResponse };
-        setMessages(prev => [...prev, newAiMessage]);
-    } catch (error) {
-        console.error("Error getting chat response:", error);
-        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
-        setMessages(prev => [...prev, errorMessage]);
-    } finally {
-        setIsChatLoading(false);
-    }
-  }
-
-  const handleExploreInChat = async (summary: string) => {
+  const handleExploreInChat = (summary: string) => {
+    if (aiStatus !== 'ready') return;
     const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
-    handleSendMessage(prompt);
+    startNewChatSession(prompt);
     setView('chat');
   };
 
-  const handleAddIntention = async (text: string) => {
+  const handleAddIntention = async (text: string, timeframe: IntentionTimeframe) => {
     if (!user) return;
     try {
-        const newIntention = await db.addIntention(user.id, text, activeIntentionTimeframe);
+        const newIntention = await db.addIntention(user.id, text, timeframe);
         if (newIntention) {
             setIntentions(prev => [newIntention, ...prev]);
         }
     } catch (error) {
         console.error("Error adding intention:", error);
     }
+  };
+
+  const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
+    await handleAddIntention(suggestion.text, suggestion.timeframe);
+
+    // Show confirmation toast
+    setToast({ message: 'To-do locked in!', id: Date.now() });
+    setTimeout(() => setToast(null), 3000);
+
+    // Remove suggestion from the UI
+    setReflections(prev => prev.map(r => {
+        if (r.suggestions?.some(s => s.text === suggestion.text && s.timeframe === suggestion.timeframe)) {
+            return {
+                ...r,
+                suggestions: r.suggestions.filter(s => s.text !== suggestion.text || s.timeframe !== suggestion.timeframe)
+            };
+        }
+        return r;
+    }));
   };
 
   const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
@@ -225,13 +393,13 @@ export const MindstreamApp: React.FC = () => {
   };
 
   const handleTagClick = (tag: string) => {
-    setSelectedTag(tag);
+    setSelectedTagState(tag);
     setShowThematicModal(true);
   };
   
   const handleCloseThematicModal = () => {
     setShowThematicModal(false);
-    setSelectedTag(null);
+    setSelectedTagState(null);
     setThematicReflection(null);
     setIsGeneratingThematic(false);
   };
@@ -243,24 +411,33 @@ export const MindstreamApp: React.FC = () => {
   };
   
   const handleGenerateThematicReflection = async (tag: string) => {
-    if (!user || isGeneratingThematic) return;
+    if (!user || isGeneratingThematic || aiStatus !== 'ready') return;
     setIsGeneratingThematic(true);
     setThematicReflection(null);
     try {
       const summary = await gemini.generateThematicReflection(tag, entries);
       setThematicReflection(summary);
     } catch (error) {
-      console.error("Error generating thematic reflection:", error);
+      handleApiError(error, 'generating thematic reflection');
       setThematicReflection("I'm sorry, I couldn't generate a reflection for this theme at this time.");
     } finally {
       setIsGeneratingThematic(false);
     }
   };
 
+  const handleDebugAi = async () => {
+    setDebugOutput('Running debug check...');
+    const today = getFormattedDate(new Date());
+    const entriesForDay = entries.filter(e => getFormattedDate(new Date(e.timestamp)) === today);
+    const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === today);
+    const output = await gemini.getRawReflectionForDebug(entriesForDay, intentionsForDay);
+    setDebugOutput(output);
+  };
+
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} onTagClick={handleTagClick} />;
+              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
           case 'reflections':
               return <ReflectionsView 
                         entries={entries}
@@ -271,33 +448,54 @@ export const MindstreamApp: React.FC = () => {
                         onGenerateMonthly={handleGenerateMonthlyReflection}
                         onExploreInChat={handleExploreInChat}
                         isGenerating={isGeneratingReflection}
+                        onAddSuggestion={handleAddSuggestedIntention}
+                        aiStatus={aiStatus}
+                        onDebug={handleDebugAi}
+                        debugOutput={debugOutput}
                      />;
           case 'chat':
-              return <ChatView messages={messages} isLoading={isChatLoading} />;
+              return <ChatView 
+                        messages={messages} 
+                        isLoading={isChatLoading}
+                        onAddSuggestion={handleAddSuggestedIntention}
+                     />;
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} onTagClick={handleTagClick} />;
+              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
       }
   };
 
   const renderActionBar = () => {
+    const isAiDisabled = aiStatus !== 'ready';
     switch(view) {
         case 'stream':
             return <InputBar onAddEntry={handleAddEntry} />;
         case 'chat':
-            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
+            const showStarters = chatStarters.length > 0 && !isChatLoading;
+            return (
+              <div className="flex flex-col">
+                {showStarters && (
+                  <SuggestionChips
+                    starters={chatStarters}
+                    onStarterClick={handleSendMessage}
+                    isLoading={isGeneratingStarters}
+                  />
+                )}
+                <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading || isAiDisabled} />
+              </div>
+            );
         case 'intentions':
-            return <IntentionsInputBar onAddIntention={handleAddIntention} activeTimeframe={activeIntentionTimeframe} />;
+            return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
         default:
-            return null; // No action bar for reflections
+            return null;
     }
   }
 
   return (
     <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
       {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
-      {showSearchModal && <SearchModal entries={entries} reflections={allReflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
+      {showSearchModal && <SearchModal entries={entries} reflections={reflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
       {showThematicModal && selectedTag && (
         <ThematicModal 
           tag={selectedTag}
@@ -309,16 +507,23 @@ export const MindstreamApp: React.FC = () => {
         />
       )}
       
-      <Header onSearchClick={() => setShowSearchModal(true)} />
+      <Header onSearchClick={() => setShowSearchModal(true)} subtitle={headerSubtitle} />
+      
+      <AIStatusBanner status={aiStatus} error={aiError} />
 
       <main className="flex-grow overflow-y-auto">
-        {renderCurrentView()}
+        {!isDataLoaded && (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-brand-teal/50 border-t-brand-teal rounded-full animate-spin"></div>
+          </div>
+        )}
+        {isDataLoaded && renderCurrentView()}
       </main>
       
-      {/* DEFINITIVE FOOTER SOLUTION */}
-      <div className="flex-shrink-0">
-        {renderActionBar()}
-        <NavBar activeView={view} onViewChange={setView} />
+      <div className="flex-shrink-0 relative">
+        {toast && <Toast key={toast.id} message={toast.message} onDismiss={() => setToast(null)} />}
+        {isDataLoaded && renderActionBar()}
+        <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded || aiStatus !== 'ready'} />
       </div>
     </div>
   );

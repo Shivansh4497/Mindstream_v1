@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { Entry, Reflection } from '../types';
+import type { Entry, Reflection, AISuggestion } from '../types';
 import { getMonthId, getMonthDisplay } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -10,9 +10,10 @@ interface MonthlyReflectionsProps {
   onGenerate: (monthId: string, entriesForMonth: Entry[]) => void;
   onExplore: (summary: string) => void;
   isGenerating: string | null;
+  onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
-export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, onExplore, isGenerating }) => {
+export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
   
   const groupedEntriesByMonth = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
@@ -62,7 +63,9 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries,
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getMonthDisplay(monthId)}</h2>
             
             {existingReflection && (
-              <ReflectionCard reflection={existingReflection} onExplore={onExplore} />
+              <div className="mb-4">
+                <ReflectionCard reflection={existingReflection} onExplore={onExplore} onAddSuggestion={onAddSuggestion}/>
+              </div>
             )}
 
             {canGenerate && (

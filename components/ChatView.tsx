@@ -1,13 +1,14 @@
 import React, { useRef, useEffect } from 'react';
-import { Message } from '../types';
+import { Message, AISuggestion } from '../types';
 import { MessageBubble } from './MessageBubble';
 
 interface ChatViewProps {
   messages: Message[];
   isLoading: boolean;
+  onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading, onAddSuggestion }) => {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -16,15 +17,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading }) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isLoading]);
 
   return (
     <div className="h-full flex flex-col">
       <main className="flex-grow overflow-y-auto p-4">
         {messages.map((msg, index) => (
-          <MessageBubble key={index} sender={msg.sender} text={msg.text} />
+          <MessageBubble 
+            key={msg.id || index} 
+            sender={msg.sender} 
+            text={msg.text} 
+            suggestions={msg.suggestions}
+            onAddSuggestion={onAddSuggestion}
+          />
         ))}
-        {isLoading && (
+        {isLoading && messages[messages.length - 1]?.text !== '' && (
             <div className="flex items-start gap-3 my-4 justify-start animate-fade-in-up">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-800 to-indigo-900 flex-shrink-0" aria-label="AI avatar"></div>
                 <div className="max-w-md lg:max-w-2xl rounded-2xl p-4 text-white bg-dark-surface-light rounded-bl-lg">
@@ -38,7 +45,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, isLoading }) => {
         )}
         <div ref={messagesEndRef} />
       </main>
-      {/* The duplicate ChatInputBar that was here has been removed. */}
     </div>
   );
 };

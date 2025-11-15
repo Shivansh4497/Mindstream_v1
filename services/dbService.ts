@@ -16,10 +16,9 @@ export const getProfile = async (userId: string): Promise<Profile | null> => {
   return data;
 };
 
-export const createProfile = async (user: User): Promise<Profile | null> => {
+export const createProfile = async (user: User): Promise<Profile> => {
   const { data, error } = await supabase
     .from('profiles')
-    // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
     .insert({
       id: user.id,
       email: user.email,
@@ -29,6 +28,7 @@ export const createProfile = async (user: User): Promise<Profile | null> => {
     .single();
   if (error) {
     console.error('Error creating profile:', error);
+    throw error;
   }
   return data;
 };
@@ -47,19 +47,36 @@ export const getEntries = async (userId: string): Promise<Entry[]> => {
   return data || [];
 };
 
-export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry | null> => {
+export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
   const { data, error } = await supabase
     .from('entries')
-    // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
     .insert({ ...entryData, user_id: userId } as any)
     .select()
     .single();
   if (error) {
     console.error('Error adding entry:', error);
-    return null;
+    throw error;
   }
   return data;
 };
+
+// Onboarding Functions
+export const addWelcomeEntry = async (userId: string): Promise<Entry> => {
+  const welcomeData = {
+    timestamp: new Date().toISOString(),
+    text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
+    title: "Your First Step to Clarity",
+    tags: ["welcome", "getting-started"],
+    sentiment: "positive" as const,
+    emoji: "👋"
+  };
+  return addEntry(userId, welcomeData);
+};
+
+export const addFirstIntention = async (userId: string): Promise<Intention | null> => {
+  return addIntention(userId, "Explore all four tabs of Mindstream", "daily");
+};
+
 
 // Reflection Functions
 export const getReflections = async (userId: string): Promise<Reflection[]> => {
@@ -81,13 +98,11 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
     let finalDate = typedReflection.date;
     
     if (typedReflection.type === 'weekly') {
-      // Convert '2024-07-22' back to '2024-W30'
       finalDate = getWeekId(new Date(typedReflection.date));
     } else if (typedReflection.type === 'monthly') {
-      // Convert '2024-07-01' back to '2024-07'
       finalDate = getMonthId(new Date(typedReflection.date));
     }
-    return { ...typedReflection, date: finalDate };
+    return { ...typedReflection, date: finalDate, suggestions: typedReflection.suggestions || [] };
   });
 
   // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
@@ -103,35 +118,35 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
   return Array.from(latestReflections.values());
 };
 
-export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
-    const dbPayload: { [key: string]: any } = {
-        ...reflectionData,
-        user_id: userId,
-        timestamp: new Date().toISOString()
-    };
-
-    // Convert date format for weekly/monthly to match 'date' column type
+export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection> => {
+    let dateForDb = reflectionData.date;
     if (reflectionData.type === 'weekly') {
-        // Convert '2024-W30' to the start date of that week '2024-07-22'
-        dbPayload.date = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
+        dateForDb = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
     } else if (reflectionData.type === 'monthly') {
-        // Convert '2024-07' to '2024-07-01'
-        dbPayload.date = `${reflectionData.date}-01`;
+        dateForDb = `${reflectionData.date}-01`;
     }
+
+    const dbPayload = {
+        ...reflectionData,
+        date: dateForDb,
+        user_id: userId,
+        timestamp: new Date().toISOString(),
+        suggestions: reflectionData.suggestions || null, // Pass object directly to jsonb column
+    };
 
     const { data, error } = await supabase
         .from('reflections')
-        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
         .insert(dbPayload as any)
         .select()
         .single();
 
     if (error) {
         console.error('Error adding reflection:', error);
-        return null;
+        throw error;
     }
-
-    return data as Reflection | null;
+    
+    // The returned data should have suggestions as an object, not a string.
+    return data as Reflection;
 };
 
 // Intention Functions
@@ -151,7 +166,6 @@ export const getIntentions = async (userId: string): Promise<Intention[]> => {
 export const addIntention = async (userId: string, text: string, timeframe: IntentionTimeframe): Promise<Intention | null> => {
     const { data, error } = await supabase
         .from('intentions')
-        // FIX: Cast argument to 'any' to fix 'never' type inference issue on insert.
         .insert({ 
             user_id: userId, 
             text, 
@@ -175,8 +189,6 @@ export const updateIntentionStatus = async (id: string, status: IntentionStatus)
     };
     const { data, error } = await supabase
         .from('intentions')
-        // FIX: Supabase client without generated types infers `never` for update.
-        // @ts-ignore is used to bypass this typing issue.
         // @ts-ignore
         .update(updatePayload)
         .eq('id', id)
