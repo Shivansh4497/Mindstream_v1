@@ -104,18 +104,24 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
 };
 
 export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection | null> => {
+    // @ts-ignore
     const dbPayload: { [key: string]: any } = {
         ...reflectionData,
         user_id: userId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // Ensure suggestions are stored as JSON
+        suggestions: JSON.stringify(reflectionData.suggestions || []),
     };
 
     // Convert date format for weekly/monthly to match 'date' column type
+    // @ts-ignore
     if (reflectionData.type === 'weekly') {
         // Convert '2024-W30' to the start date of that week '2024-07-22'
+        // @ts-ignore
         dbPayload.date = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
     } else if (reflectionData.type === 'monthly') {
         // Convert '2024-07' to '2024-07-01'
+        // @ts-ignore
         dbPayload.date = `${reflectionData.date}-01`;
     }
 
@@ -129,6 +135,16 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
     if (error) {
         console.error('Error adding reflection:', error);
         return null;
+    }
+
+    // Parse suggestions back from JSON for the returned object
+    if (data && typeof data.suggestions === 'string') {
+        try {
+            data.suggestions = JSON.parse(data.suggestions);
+        } catch (e) {
+            console.error("Error parsing suggestions from DB:", e);
+            data.suggestions = [];
+        }
     }
 
     return data as Reflection | null;
