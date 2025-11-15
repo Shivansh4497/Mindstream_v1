@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Entry, Intention, Reflection } from '../types';
+import type { Entry, Intention, Reflection, AISuggestion } from '../types';
 import { DailyReflections } from './DailyReflections';
 import { WeeklyReflections } from './WeeklyReflections';
 import { MonthlyReflections } from './MonthlyReflections';
@@ -15,6 +15,7 @@ interface ReflectionsViewProps {
   onGenerateMonthly: (monthId: string, entriesForMonth: Entry[]) => void;
   onExploreInChat: (summary: string) => void;
   isGenerating: string | null;
+  onAddSuggestion: (suggestion: AISuggestion) => void;
 }
 
 const timeframes: { id: ReflectionTimeframe; label: string }[] = [
@@ -23,7 +24,7 @@ const timeframes: { id: ReflectionTimeframe; label: string }[] = [
     { id: 'monthly', label: 'Monthly' },
 ];
 
-export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, onExploreInChat, isGenerating }) => {
+export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, intentions, reflections, onGenerateDaily, onGenerateWeekly, onGenerateMonthly, onExploreInChat, isGenerating, onAddSuggestion }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
 
   const { daily, weekly, monthly } = useMemo(() => {
@@ -48,11 +49,12 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ entries, inten
             onGenerate={onGenerateDaily}
             onExplore={onExploreInChat}
             isGenerating={isGenerating}
+            onAddSuggestion={onAddSuggestion}
         />;
       case 'weekly':
-        return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} onExplore={onExploreInChat} isGenerating={isGenerating} />;
+        return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} onExplore={onExploreInChat} isGenerating={isGenerating} onAddSuggestion={onAddSuggestion} />;
       case 'monthly':
-        return <MonthlyReflections entries={entries} monthlyReflections={monthly} onGenerate={onGenerateMonthly} onExplore={onExploreInChat} isGenerating={isGenerating} />;
+        return <MonthlyReflections entries={entries} monthlyReflections={monthly} onGenerate={onGenerateMonthly} onExplore={onExploreInChat} isGenerating={isGenerating} onAddSuggestion={onAddSuggestion} />;
       default:
         return null;
     }
