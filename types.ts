@@ -16,6 +16,7 @@ export interface Entry {
   title: string | null;
   tags: string[] | null;
   sentiment: Sentiment | null;
+  emoji: string | null;
 }
 
 export interface AISuggestion {
