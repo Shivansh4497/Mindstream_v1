@@ -344,10 +344,9 @@ Respond with only a JSON object.`;
 
 
 /**
- * Gets a response from the AI for the chat feature.
- * This version is simplified to be more robust, returning only text.
+ * Gets a streaming response from the AI for the chat feature.
  */
-export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<{ text: string }> => {
+export const getChatResponseStream = async (history: Message[], entries: Entry[], intentions: Intention[]) => {
     if (!ai) throw new Error("AI functionality is disabled.");
 
     const model = 'gemini-2.5-flash';
@@ -375,7 +374,7 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         parts: [{ text: msg.text }],
     }));
     
-    const response = await ai.models.generateContent({
+    const streamResult = await ai.models.generateContentStream({
         model,
         contents: [
             ...chatHistory,
@@ -386,7 +385,7 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         }
     });
     
-    return { text: response.text };
+    return streamResult;
 }
 
 export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<string> => {
