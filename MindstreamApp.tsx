@@ -19,12 +19,14 @@ import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
 
+const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
+
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING }]);
   
   const [view, setView] = useState<View>('stream');
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
@@ -63,10 +65,6 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
         setIntentions(userIntentions);
 
-        // Set initial chat greeting
-        const greeting = await gemini.generatePersonalizedGreeting(userEntries);
-        setMessages([{ sender: 'ai', text: greeting }]);
-
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -75,23 +73,35 @@ export const MindstreamApp: React.FC = () => {
     fetchData();
   }, [user]);
 
-  // Effect for generating chat starters when view changes to 'chat'
+  // Effect for generating personalized chat greeting and starters
   useEffect(() => {
-    const generateStarters = async () => {
-        if (view === 'chat' && chatStarters.length === 0 && !isGeneratingStarters) {
-            setIsGeneratingStarters(true);
-            try {
-                const starters = await gemini.generateChatStarters(entries, intentions);
-                setChatStarters(starters);
-            } catch (error) {
-                console.error("Error generating chat starters:", error);
-            } finally {
-                setIsGeneratingStarters(false);
-            }
+    const initializeChat = async () => {
+      // Only run if we are in chat view, it's a new session, and we're not already fetching.
+      if (view === 'chat' && messages.length <= 1 && chatStarters.length === 0 && !isGeneratingStarters) {
+        setIsGeneratingStarters(true);
+        try {
+          const [greeting, starters] = await Promise.all([
+            gemini.generatePersonalizedGreeting(entries),
+            gemini.generateChatStarters(entries, intentions)
+          ]);
+          setMessages([{ sender: 'ai', text: greeting }]);
+          setChatStarters(starters);
+        } catch (error) {
+          console.error("Error initializing chat:", error);
+          // Fallback to default state on error
+          setMessages([{ sender: 'ai', text: INITIAL_GREETING }]);
+          setChatStarters([
+            "What was my biggest challenge last week?",
+            "Let's review my progress on my goals.",
+            "Tell me about a recurring theme in my journal."
+          ]);
+        } finally {
+          setIsGeneratingStarters(false);
         }
+      }
     };
-    generateStarters();
-  }, [view, entries, intentions, chatStarters.length, isGeneratingStarters]);
+    initializeChat();
+  }, [view, entries, intentions, messages.length, chatStarters.length, isGeneratingStarters]);
 
 
   const handleAddEntry = async (text: string) => {
