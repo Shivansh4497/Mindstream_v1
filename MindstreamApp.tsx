@@ -20,6 +20,8 @@ import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
+const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. Please check your Gemini API key configuration and ensure billing is enabled. Some AI features may not work correctly.";
+
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
@@ -54,6 +56,11 @@ export const MindstreamApp: React.FC = () => {
   const [selectedTag, setSelectedTagState] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
+
+  const handleApiError = (error: unknown, context: string) => {
+    console.error(`Error in ${context}:`, error);
+    alert(API_ERROR_MESSAGE);
+  };
   
   useEffect(() => {
     const fetchData = async () => {
@@ -99,7 +106,7 @@ export const MindstreamApp: React.FC = () => {
         const newAiMessage: Message = { sender: 'ai', text: aiResponse, suggestions };
         setMessages(prev => [...prev, newAiMessage]);
     } catch (error) {
-        console.error("Error getting chat response:", error);
+        handleApiError(error, 'getting chat response');
         const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
         setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -129,7 +136,7 @@ export const MindstreamApp: React.FC = () => {
             setChatStarters(starters);
         }
     } catch (error) {
-        console.error("Error initializing chat:", error);
+        handleApiError(error, 'initializing chat');
         setMessages([{ sender: 'ai', text: INITIAL_GREETING }]);
         setChatStarters([
             "What was my biggest challenge last week?",
@@ -169,7 +176,7 @@ export const MindstreamApp: React.FC = () => {
         setEntries(prev => [newEntry, ...prev]);
       }
     } catch (error) {
-      console.error("Error adding entry:", error);
+      handleApiError(error, 'processing entry');
     } finally {
       setIsProcessing(false);
     }
@@ -193,7 +200,7 @@ export const MindstreamApp: React.FC = () => {
             setReflections(userReflections);
         }
       } catch (error) {
-          console.error("Error generating reflection:", error);
+          handleApiError(error, 'generating daily reflection');
       } finally {
           setIsGeneratingReflection(null);
       }
@@ -217,7 +224,7 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
       }
     } catch (error) {
-      console.error("Error generating weekly reflection:", error);
+      handleApiError(error, 'generating weekly reflection');
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -241,7 +248,7 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
       }
     } catch (error) {
-      console.error("Error generating monthly reflection:", error);
+      handleApiError(error, 'generating monthly reflection');
     } finally {
       setIsGeneratingReflection(null);
     }
@@ -315,7 +322,7 @@ export const MindstreamApp: React.FC = () => {
       const summary = await gemini.generateThematicReflection(tag, entries);
       setThematicReflection(summary);
     } catch (error) {
-      console.error("Error generating thematic reflection:", error);
+      handleApiError(error, 'generating thematic reflection');
       setThematicReflection("I'm sorry, I couldn't generate a reflection for this theme at this time.");
     } finally {
       setIsGeneratingThematic(false);
