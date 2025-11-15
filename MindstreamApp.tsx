@@ -19,6 +19,7 @@ import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
 import { AIStatusBanner } from './components/AIStatusBanner';
+import { SuggestionChips } from './components/SuggestionChips';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
@@ -124,6 +125,8 @@ export const MindstreamApp: React.FC = () => {
     const history = initialHistory || messages;
     const newUserMessage: Message = { sender: 'user', text };
     
+    // Clear starters and add the user message to the history
+    setChatStarters([]);
     if (!initialHistory) {
       setMessages(prev => [...prev, newUserMessage]);
     }
@@ -131,11 +134,10 @@ export const MindstreamApp: React.FC = () => {
     const newHistory = [...history, newUserMessage];
     
     setIsChatLoading(true);
-    setChatStarters([]);
-
+    
     try {
-        const { text: aiResponse, suggestions } = await gemini.getChatResponse(newHistory, entries, intentions);
-        const newAiMessage: Message = { sender: 'ai', text: aiResponse, suggestions };
+        const { text: aiResponse } = await gemini.getChatResponse(newHistory, entries, intentions);
+        const newAiMessage: Message = { sender: 'ai', text: aiResponse };
         setMessages(prev => [...prev, newAiMessage]);
     } catch (error) {
         handleApiError(error, 'getting chat response');
@@ -153,7 +155,12 @@ export const MindstreamApp: React.FC = () => {
     setChatStarters([]);
 
     try {
-        const greeting = await gemini.generatePersonalizedGreeting(entries);
+        // Run greeting and starter generation in parallel for performance
+        const [greeting, startersResult] = await Promise.all([
+          gemini.generatePersonalizedGreeting(entries),
+          gemini.generateChatStarters(entries, intentions)
+        ]);
+
         const initialAiMessage: Message = { sender: 'ai', text: greeting };
 
         if (firstUserPrompt) {
@@ -161,9 +168,8 @@ export const MindstreamApp: React.FC = () => {
             setMessages([initialAiMessage, userMessage]);
             handleSendMessage(firstUserPrompt, [initialAiMessage, userMessage]);
         } else {
-            const starters = await gemini.generateChatStarters(entries, intentions);
             setMessages([initialAiMessage]);
-            setChatStarters(starters);
+            setChatStarters(startersResult.starters);
         }
     } catch (error) {
         handleApiError(error, 'initializing chat');
@@ -392,9 +398,6 @@ export const MindstreamApp: React.FC = () => {
               return <ChatView 
                         messages={messages} 
                         isLoading={isChatLoading}
-                        starters={chatStarters}
-                        isGeneratingStarters={isGeneratingStarters}
-                        onStarterClick={handleSendMessage}
                         onAddSuggestion={handleAddSuggestedIntention}
                      />;
           case 'intentions':
@@ -410,7 +413,19 @@ export const MindstreamApp: React.FC = () => {
         case 'stream':
             return <InputBar onAddEntry={handleAddEntry} />;
         case 'chat':
-            return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading || isAiDisabled} />;
+            const showStarters = chatStarters.length > 0 && !isChatLoading;
+            return (
+              <div className="flex flex-col">
+                {showStarters && (
+                  <SuggestionChips
+                    starters={chatStarters}
+                    onStarterClick={handleSendMessage}
+                    isLoading={isGeneratingStarters}
+                  />
+                )}
+                <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading || isAiDisabled} />
+              </div>
+            );
         case 'intentions':
             return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
         default:
