@@ -1,6 +1,6 @@
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, Sentiment } from '../types';
 import { getDisplayDate } from "../utils/date";
 
 let ai: GoogleGenAI | null = null;
@@ -26,19 +26,37 @@ if (!apiKeyAvailable) {
 
 export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
 
+const generateActionableSuggestionsSchema = {
+    type: Type.ARRAY,
+    description: "A list of 1-2 concise, actionable suggestions based on the reflection, framed as intentions.",
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            text: {
+                type: Type.STRING,
+                description: "The task or goal to be achieved."
+            },
+            timeframe: {
+                type: Type.STRING,
+                description: "The suggested timeframe, either 'daily' or 'weekly'."
+            }
+        },
+        required: ['text', 'timeframe']
+    }
+};
 
 /**
  * Generates a summary reflection based on a day's entries and intentions.
  */
-export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled. Please configure the API key.";
+export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
+  if (!ai) return { summary: "AI functionality is disabled. Please configure the API key.", suggestions: [] };
   try {
     const model = 'gemini-2.5-flash';
 
     const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
     const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of...").
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 actionable suggestions for a new 'daily' or 'weekly' intention.
 
 Here were our intentions for today:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
@@ -46,17 +64,32 @@ ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set.
 Here are today's journal entries:
 ${entriesText}
 
-Your holistic reflection on how our actions and feelings connected to our goals:`;
+Respond with a JSON object.`;
 
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
+      config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                  summary: {
+                      type: Type.STRING,
+                      description: "The 2-3 sentence holistic reflection on the day."
+                  },
+                  suggestions: generateActionableSuggestionsSchema
+              },
+              required: ['summary', 'suggestions']
+          }
+      }
     });
 
-    return response.text;
+    const result = JSON.parse(response.text.trim());
+    return result;
   } catch (error) {
     console.error("Error generating reflection:", error);
-    return "I'm sorry, I couldn't generate a reflection at this time. Please try again later.";
+    return { summary: "I'm sorry, I couldn't generate a reflection at this time. Please try again later.", suggestions: [] };
   }
 };
 
@@ -64,8 +97,8 @@ Your holistic reflection on how our actions and feelings connected to our goals:
 /**
  * Generates a weekly summary reflection based on a week's journal entries.
  */
-export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
+export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
+  if (!ai) return { summary: "AI functionality is disabled.", suggestions: [] };
   try {
     const model = 'gemini-2.5-flash';
     
@@ -76,7 +109,7 @@ export const generateWeeklyReflection = async (entries: Entry[], intentions: Int
 
     const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary. Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "This week, we saw a pattern of...", "It seems like a key theme for us was..."). Keep it to 3-4 sentences.
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary (3-4 sentences). Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Based on this, also provide 1-2 actionable 'weekly' intentions. Speak in a gentle, encouraging, and first-person-plural tone.
 
 Here are our intentions for context:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
@@ -84,16 +117,33 @@ ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set 
 Here are our journal entries from this week:
 ${entriesText}
 
-Your holistic weekly reflection on our patterns, themes, and progress:`;
+Respond with a JSON object.`;
 
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
+      config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                  summary: {
+                      type: Type.STRING,
+                      description: "The 3-4 sentence holistic reflection on the week."
+                  },
+                  suggestions: generateActionableSuggestionsSchema
+              },
+              required: ['summary', 'suggestions']
+          }
+      }
     });
-    return response.text;
+    
+    const result = JSON.parse(response.text.trim());
+    return result;
+
   } catch (error) {
     console.error("Error generating weekly reflection:", error);
-    return "I'm sorry, I couldn't generate a weekly reflection at this time.";
+    return { summary: "I'm sorry, I couldn't generate a weekly reflection at this time.", suggestions: [] };
   }
 };
 
@@ -101,8 +151,8 @@ Your holistic weekly reflection on our patterns, themes, and progress:`;
 /**
  * Generates a monthly summary reflection based on a month's journal entries.
  */
-export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  if (!ai) return "AI functionality is disabled.";
+export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
+  if (!ai) return { summary: "AI functionality is disabled.", suggestions: [] };
   try {
     const model = 'gemini-2.5-flash';
     
@@ -113,7 +163,7 @@ export const generateMonthlyReflection = async (entries: Entry[], intentions: In
 
     const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
 
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary. Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "Looking back at this month, a major theme for us was...", "We made significant progress in..."). Keep it to 4-5 sentences.
+    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary (4-5 sentences). Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Based on this, also provide 1-2 actionable 'weekly' or 'monthly' intentions. Speak in a gentle, encouraging, and first-person-plural tone.
 
 Here are our intentions for context:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
@@ -121,16 +171,33 @@ ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set 
 Here are our journal entries from this month:
 ${entriesText}
 
-Your holistic monthly reflection on our journey:`;
+Respond with a JSON object.`;
 
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
+      config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                  summary: {
+                      type: Type.STRING,
+                      description: "The 4-5 sentence holistic reflection on the month."
+                  },
+                  suggestions: generateActionableSuggestionsSchema
+              },
+              required: ['summary', 'suggestions']
+          }
+      }
     });
-    return response.text;
+    
+    const result = JSON.parse(response.text.trim());
+    return result;
+
   } catch (error) {
     console.error("Error generating monthly reflection:", error);
-    return "I'm sorry, I couldn't generate a monthly reflection at this time.";
+    return { summary: "I'm sorry, I couldn't generate a monthly reflection at this time.", suggestions: [] };
   }
 };
 
@@ -173,14 +240,14 @@ Your holistic thematic reflection on our journey with "${tag}":`;
 
 
 /**
- * Processes a new journal entry to generate a title and tags.
+ * Processes a new journal entry to generate a title, tags, and sentiment.
  */
-export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
-  if (!ai) return { title: 'Journal Entry', tags: [] };
+export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment }> => {
+  if (!ai) return { title: 'Journal Entry', tags: [], sentiment: 'neutral' };
   try {
     const model = 'gemini-2.5-flash';
 
-    const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words) and 2-4 relevant tags that capture the topics and emotions.
+    const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words), 2-4 relevant tags, and the overall sentiment ('positive', 'negative', or 'neutral').
 
 Entry: "${entryText}"
 
@@ -204,9 +271,13 @@ Respond with only a JSON object.`;
               items: {
                 type: Type.STRING
               }
+            },
+            sentiment: {
+                type: Type.STRING,
+                description: "The overall sentiment of the entry: 'positive', 'negative', or 'neutral'."
             }
           },
-          required: ['title', 'tags']
+          required: ['title', 'tags', 'sentiment']
         }
       }
     });
@@ -217,31 +288,29 @@ Respond with only a JSON object.`;
 
   } catch (error) {
     console.error("Error processing entry:", error);
-    return { title: 'Journal Entry', tags: [] };
+    return { title: 'Journal Entry', tags: [], sentiment: 'neutral' };
   }
 };
 
 
 /**
  * Gets a response from the AI for the chat feature.
- * This is now a "Holistic" function that uses entries AND intentions.
+ * Now includes actionable suggestions.
  */
-export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<string> => {
-    if (!ai) return "AI functionality is disabled. Please configure the API key.";
+export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<{ text: string, suggestions: AISuggestion[] }> => {
+    if (!ai) return { text: "AI functionality is disabled. Please configure the API key.", suggestions: [] };
     try {
         const model = 'gemini-2.5-flash';
 
-        // Prepare context from recent entries
         const recentEntriesSummary = entries.slice(0, 15).map(e => 
             `- On ${new Date(e.timestamp).toLocaleDateString()}, I wrote: "${e.text}"`
         ).join('\n');
         
-        // Prepare context from all intentions (goals)
         const intentionsSummary = intentions.map(i => 
             `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
         ).join('\n');
 
-        const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
+        const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Based on our conversation, if it feels natural, you can suggest 1-2 actionable 'daily' or 'weekly' intentions. Do not give medical advice. Keep your responses concise and conversational.
 
 CONTEXT from my recent journal entries:
 ${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
@@ -251,7 +320,6 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
 
         const userPrompt = history[history.length - 1].text;
         
-        // Construct the conversation history for the model.
         const chatHistory = history.slice(0, -1).map(msg => ({
             role: msg.sender === 'user' ? 'user' : 'model',
             parts: [{ text: msg.text }],
@@ -265,13 +333,86 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
             ],
             config: {
                 systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        text: {
+                            type: Type.STRING,
+                            description: "Your main conversational response to the user."
+                        },
+                        suggestions: generateActionableSuggestionsSchema,
+                    },
+                    required: ["text", "suggestions"]
+                }
             }
         });
 
-        return response.text;
+        const result = JSON.parse(response.text.trim());
+        return result;
 
     } catch (error) {
         console.error("Error in chat response:", error);
-        return "I'm sorry, something went wrong. I can't chat right now.";
+        return { text: "I'm sorry, something went wrong. I can't chat right now.", suggestions: [] };
     }
 }
+
+export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<string> => {
+    if (!ai || entries.length === 0) return "Hello! I'm Mindstream. How can I help you reflect today?";
+    try {
+        const model = 'gemini-2.5-flash';
+        const lastEntry = entries[0];
+        const prompt = `Based on my last journal entry, create a short, personalized, one-sentence greeting. Be warm and reference the general sentiment or topic of the entry.
+
+Last entry: "${lastEntry.text}"
+
+Your greeting:`;
+        const response = await ai.models.generateContent({ model, contents: prompt });
+        return response.text;
+    } catch (error) {
+        console.error("Error generating greeting:", error);
+        return "Hello! What's on your mind today?";
+    }
+};
+
+export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<string[]> => {
+    if (!ai) return [];
+    try {
+        const model = 'gemini-2.5-flash';
+        const entriesText = entries.slice(0, 5).map(e => `- Entry: ${e.text} (Sentiment: ${e.sentiment || 'neutral'})`).join('\n');
+        const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
+
+        const prompt = `Based on my recent entries and pending intentions, generate 3 engaging, concise, and thought-provoking conversation starters. Frame them as questions I can ask you.
+
+Recent Entries:
+${entriesText.length > 0 ? entriesText : "None"}
+
+Pending Intentions:
+${intentionsText.length > 0 ? intentionsText : "None"}
+
+Respond with a JSON array of 3 strings.`;
+        
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                }
+            }
+        });
+
+        const result = JSON.parse(response.text.trim());
+        return result;
+
+    } catch (error) {
+        console.error("Error generating chat starters:", error);
+        return [
+            "What was my biggest challenge last week?",
+            "Let's review my progress on my goals.",
+            "Tell me about a recurring theme in my journal."
+        ];
+    }
+};
