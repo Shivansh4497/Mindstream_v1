@@ -32,6 +32,9 @@ export const MindstreamApp: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   
+  // App/Data loading state
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
   // Chat state
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatStarters, setChatStarters] = useState<string[]>([]);
@@ -65,6 +68,7 @@ export const MindstreamApp: React.FC = () => {
         setEntries(userEntries);
         setReflections(userReflections);
         setIntentions(userIntentions);
+        setIsDataLoaded(true); // Mark data as loaded
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -75,7 +79,7 @@ export const MindstreamApp: React.FC = () => {
   }, [user]);
   
   const startNewChatSession = useCallback(async (firstUserPrompt?: string) => {
-    if (isGeneratingStarters) return;
+    if (isGeneratingStarters || !isDataLoaded) return;
 
     setIsGeneratingStarters(true);
     setChatStarters([]); // Clear old starters immediately
@@ -106,9 +110,12 @@ export const MindstreamApp: React.FC = () => {
     } finally {
         setIsGeneratingStarters(false);
     }
-  }, [entries, intentions, isGeneratingStarters]);
+  }, [entries, intentions, isGeneratingStarters, isDataLoaded]);
 
   const handleViewChange = (newView: View) => {
+    if (newView === 'chat' && !isDataLoaded) {
+        return; // Prevent switching to chat if data isn't loaded
+    }
     const isNewChatSession = messages.length <= 1;
     if (newView === 'chat' && isNewChatSession) {
         startNewChatSession();
@@ -120,13 +127,12 @@ export const MindstreamApp: React.FC = () => {
     if (!user || isProcessing) return;
     setIsProcessing(true);
     try {
-      const { title, tags, sentiment } = await gemini.processEntry(text);
+      const { title, tags } = await gemini.processEntry(text);
       const newEntryData = {
         timestamp: new Date().toISOString(),
         text,
         title,
         tags,
-        sentiment
       };
       const newEntry = await db.addEntry(user.id, newEntryData);
       if (newEntry) {
@@ -378,13 +384,18 @@ export const MindstreamApp: React.FC = () => {
       <Header onSearchClick={() => setShowSearchModal(true)} />
 
       <main className="flex-grow overflow-y-auto">
-        {renderCurrentView()}
+        {!isDataLoaded && (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-brand-teal/50 border-t-brand-teal rounded-full animate-spin"></div>
+          </div>
+        )}
+        {isDataLoaded && renderCurrentView()}
       </main>
       
       {/* DEFINITIVE FOOTER SOLUTION */}
       <div className="flex-shrink-0">
-        {renderActionBar()}
-        <NavBar activeView={view} onViewChange={handleViewChange} />
+        {isDataLoaded && renderActionBar()}
+        <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded} />
       </div>
     </div>
   );
