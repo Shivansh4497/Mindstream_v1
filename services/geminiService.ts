@@ -1,6 +1,6 @@
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, Sentiment } from '../types';
 import { getDisplayDate } from "../utils/date";
 
 let ai: GoogleGenAI | null = null;
@@ -26,6 +26,19 @@ if (!apiKeyAvailable) {
 
 export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
 
+/**
+ * A robust JSON parser that handles markdown-wrapped JSON from Gemini.
+ */
+const parseGeminiJson = <T>(jsonString: string): T => {
+    let cleanJsonString = jsonString.trim();
+    // A common failure mode is the LLM wrapping the JSON in markdown code blocks.
+    const match = cleanJsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match && match[1]) {
+      cleanJsonString = match[1];
+    }
+    return JSON.parse(cleanJsonString);
+};
+
 const generateActionableSuggestionsSchema = {
     type: Type.ARRAY,
     description: "A list of 1-2 concise, actionable suggestions based on the reflection, framed as intentions.",
@@ -50,7 +63,7 @@ const generateActionableSuggestionsSchema = {
  */
 export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) return { summary: "AI functionality is disabled. Please configure the API key.", suggestions: [] };
-  let response;
+  let responseText: string | undefined;
   try {
     const model = 'gemini-2.5-flash';
 
@@ -67,7 +80,7 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-    response = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
@@ -86,14 +99,15 @@ Respond with a JSON object.`;
       }
     });
 
-    const result = JSON.parse(response.text.trim());
+    responseText = response.text;
+    const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(responseText);
     return result;
   } catch (error) {
     console.error("Error generating reflection:", error);
     let summary = "I'm sorry, I couldn't generate a reflection at this time. Please try again later.";
-    if (error instanceof SyntaxError && response) {
+    if (error instanceof SyntaxError && responseText) {
         summary = "There was an issue processing the reflection from the AI. It might have been in an unexpected format. Please try again.";
-        console.error("Gemini Response (Invalid JSON):", response.text);
+        console.error("Gemini Response (Invalid JSON):", responseText);
     }
     return { summary, suggestions: [] };
   }
@@ -105,7 +119,7 @@ Respond with a JSON object.`;
  */
 export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) return { summary: "AI functionality is disabled.", suggestions: [] };
-  let response;
+  let responseText: string | undefined;
   try {
     const model = 'gemini-2.5-flash';
     
@@ -126,7 +140,7 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-    response = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
@@ -145,15 +159,16 @@ Respond with a JSON object.`;
       }
     });
     
-    const result = JSON.parse(response.text.trim());
+    responseText = response.text;
+    const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(responseText);
     return result;
 
   } catch (error) {
     console.error("Error generating weekly reflection:", error);
     let summary = "I'm sorry, I couldn't generate a weekly reflection at this time.";
-    if (error instanceof SyntaxError && response) {
+    if (error instanceof SyntaxError && responseText) {
         summary = "There was an issue processing the reflection from the AI. It might have been in an unexpected format. Please try again.";
-        console.error("Gemini Response (Invalid JSON):", response.text);
+        console.error("Gemini Response (Invalid JSON):", responseText);
     }
     return { summary, suggestions: [] };
   }
@@ -165,7 +180,7 @@ Respond with a JSON object.`;
  */
 export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) return { summary: "AI functionality is disabled.", suggestions: [] };
-  let response;
+  let responseText: string | undefined;
   try {
     const model = 'gemini-2.5-flash';
     
@@ -186,7 +201,7 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-    response = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
@@ -205,15 +220,16 @@ Respond with a JSON object.`;
       }
     });
     
-    const result = JSON.parse(response.text.trim());
+    responseText = response.text;
+    const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(responseText);
     return result;
 
   } catch (error) {
     console.error("Error generating monthly reflection:", error);
     let summary = "I'm sorry, I couldn't generate a monthly reflection at this time.";
-     if (error instanceof SyntaxError && response) {
+     if (error instanceof SyntaxError && responseText) {
         summary = "There was an issue processing the reflection from the AI. It might have been in an unexpected format. Please try again.";
-        console.error("Gemini Response (Invalid JSON):", response.text);
+        console.error("Gemini Response (Invalid JSON):", responseText);
     }
     return { summary, suggestions: [] };
   }
@@ -258,21 +274,21 @@ Your holistic thematic reflection on our journey with "${tag}":`;
 
 
 /**
- * Processes a new journal entry to generate a title and tags.
+ * Processes a new journal entry to generate a title, tags, and sentiment.
  */
-export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[] }> => {
-  if (!ai) return { title: 'Journal Entry', tags: [] };
-  let response;
+export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment }> => {
+  if (!ai) return { title: 'Journal Entry', tags: [], sentiment: 'neutral' };
+  let responseText: string | undefined;
   try {
     const model = 'gemini-2.5-flash';
 
-    const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words) and 2-4 relevant tags.
+    const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words), 2-4 relevant tags, and determine its overall sentiment ('positive', 'negative', or 'neutral').
 
 Entry: "${entryText}"
 
 Respond with only a JSON object.`;
 
-    response = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
@@ -290,23 +306,27 @@ Respond with only a JSON object.`;
               items: {
                 type: Type.STRING
               }
+            },
+            sentiment: {
+              type: Type.STRING,
+              description: "The overall sentiment of the entry: 'positive', 'negative', or 'neutral'."
             }
           },
-          required: ['title', 'tags']
+          required: ['title', 'tags', 'sentiment']
         }
       }
     });
     
-    const jsonStr = response.text.trim();
-    const result = JSON.parse(jsonStr);
+    responseText = response.text;
+    const result = parseGeminiJson<{ title: string; tags: string[]; sentiment: Sentiment }>(responseText);
     return result;
 
   } catch (error) {
     console.error("Error processing entry:", error);
-    if (error instanceof SyntaxError && response) {
-        console.error("Gemini Response (Invalid JSON):", response.text);
+    if (error instanceof SyntaxError && responseText) {
+        console.error("Gemini Response (Invalid JSON):", responseText);
     }
-    return { title: 'Journal Entry', tags: [] };
+    return { title: 'Journal Entry', tags: [], sentiment: 'neutral' };
   }
 };
 
@@ -317,7 +337,7 @@ Respond with only a JSON object.`;
  */
 export const getChatResponse = async (history: Message[], entries: Entry[], intentions: Intention[]): Promise<{ text: string, suggestions: AISuggestion[] }> => {
     if (!ai) return { text: "AI functionality is disabled. Please configure the API key.", suggestions: [] };
-    let response;
+    let responseText: string | undefined;
     try {
         const model = 'gemini-2.5-flash';
 
@@ -344,7 +364,7 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
             parts: [{ text: msg.text }],
         }));
         
-        response = await ai.models.generateContent({
+        const response = await ai.models.generateContent({
             model,
             contents: [
                 ...chatHistory,
@@ -367,13 +387,14 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
             }
         });
 
-        const result = JSON.parse(response.text.trim());
+        responseText = response.text;
+        const result = parseGeminiJson<{ text: string, suggestions: AISuggestion[] }>(responseText);
         return result;
 
     } catch (error) {
         console.error("Error in chat response:", error);
-         if (error instanceof SyntaxError && response) {
-            console.error("Gemini Response (Invalid JSON):", response.text);
+         if (error instanceof SyntaxError && responseText) {
+            console.error("Gemini Response (Invalid JSON):", responseText);
         }
         return { text: "I'm sorry, something went wrong. I can't chat right now.", suggestions: [] };
     }
@@ -384,7 +405,7 @@ export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<st
     try {
         const model = 'gemini-2.5-flash';
         const lastEntry = entries[0];
-        const prompt = `Based on my last journal entry, create a short, personalized, one-sentence greeting. Be warm and reference the general sentiment or topic of the entry.
+        const prompt = `Based on my last journal entry, create a short, personalized, one-sentence greeting. Be warm and reference the general sentiment or topic of the entry. The entry's sentiment was '${lastEntry.sentiment || 'neutral'}'.
 
 Last entry: "${lastEntry.text}"
 
@@ -399,13 +420,13 @@ Your greeting:`;
 
 export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<string[]> => {
     if (!ai) return [];
-    let response;
+    let responseText: string | undefined;
     try {
         const model = 'gemini-2.5-flash';
-        const entriesText = entries.slice(0, 5).map(e => `- Entry: ${e.text}`).join('\n');
+        const entriesText = entries.slice(0, 5).map(e => `- Entry (Sentiment: ${e.sentiment || 'neutral'}): ${e.text}`).join('\n');
         const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
 
-        const prompt = `Based on my recent entries and pending intentions, generate 3 engaging, concise, and thought-provoking conversation starters. Frame them as questions I can ask you.
+        const prompt = `Based on my recent entries (including their sentiment) and pending intentions, generate 3 engaging, concise, and thought-provoking conversation starters. Frame them as questions I can ask you.
 
 Recent Entries:
 ${entriesText.length > 0 ? entriesText : "None"}
@@ -415,7 +436,7 @@ ${intentionsText.length > 0 ? intentionsText : "None"}
 
 Respond with a JSON array of 3 strings.`;
         
-        response = await ai.models.generateContent({
+        const response = await ai.models.generateContent({
             model,
             contents: prompt,
             config: {
@@ -427,13 +448,14 @@ Respond with a JSON array of 3 strings.`;
             }
         });
 
-        const result = JSON.parse(response.text.trim());
+        responseText = response.text;
+        const result = parseGeminiJson<string[]>(responseText);
         return result;
 
     } catch (error) {
         console.error("Error generating chat starters:", error);
-        if (error instanceof SyntaxError && response) {
-            console.error("Gemini Response (Invalid JSON):", response.text);
+        if (error instanceof SyntaxError && responseText) {
+            console.error("Gemini Response (Invalid JSON):", responseText);
         }
         return [
             "What was my biggest challenge last week?",
