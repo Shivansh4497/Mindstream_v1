@@ -31,7 +31,7 @@ export const MindstreamApp: React.FC = () => {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
-  const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING }]);
+  const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
   
   const [view, setView] = useState<View>('stream');
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
@@ -119,70 +119,97 @@ export const MindstreamApp: React.FC = () => {
     fetchDataAndVerifyAI();
   }, [user]);
   
-  const handleSendMessage = async (text: string, initialHistory?: Message[]) => {
+  const handleSendMessage = async (text: string, historyOverride?: Message[]) => {
     if (isChatLoading || aiStatus !== 'ready') return;
 
-    const history = initialHistory || messages;
-    const newUserMessage: Message = { sender: 'user', text };
+    const historyToUse = historyOverride || messages;
+    const newUserMessage: Message = { sender: 'user', text, id: `user-${Date.now()}` };
     
-    // Clear starters and add the user message to the history
-    setChatStarters([]);
-    if (!initialHistory) {
-      setMessages(prev => [...prev, newUserMessage]);
+    const currentHistory = historyOverride ? historyToUse : [...historyToUse, newUserMessage];
+    
+    // Update UI immediately for non-continuation messages
+    if (!historyOverride) {
+      setMessages(currentHistory);
+      setChatStarters([]);
     }
     
-    const newHistory = [...history, newUserMessage];
-    
     setIsChatLoading(true);
-    
+
+    const aiMessageId = `ai-${Date.now()}`;
+    // Add placeholder for AI response
+    setMessages(prev => [...prev, { sender: 'ai', text: '', id: aiMessageId }]);
+
     try {
-        const { text: aiResponse } = await gemini.getChatResponse(newHistory, entries, intentions);
-        const newAiMessage: Message = { sender: 'ai', text: aiResponse };
-        setMessages(prev => [...prev, newAiMessage]);
+        const streamResult = await gemini.getChatResponseStream(currentHistory, entries, intentions);
+
+        let fullText = '';
+        for await (const chunk of streamResult) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                fullText += chunkText;
+                setMessages(prev => 
+                    prev.map(msg => 
+                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+                    )
+                );
+            }
+        }
     } catch (error) {
         handleApiError(error, 'getting chat response');
-        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
-        setMessages(prev => [...prev, errorMessage]);
+        setMessages(prev => 
+            prev.map(msg => 
+                msg.id === aiMessageId ? { ...msg, text: "Sorry, I'm having trouble connecting right now." } : msg
+            )
+        );
     } finally {
         setIsChatLoading(false);
     }
-  }
+}
 
-  const startNewChatSession = async (firstUserPrompt?: string) => {
-    if (isGeneratingStarters || !isDataLoaded || aiStatus !== 'ready') return;
+const startNewChatSession = async (firstUserPrompt?: string) => {
+    if (!isDataLoaded || aiStatus !== 'ready') return;
 
-    setIsGeneratingStarters(true);
+    // Clear previous starters, but don't set loading yet.
     setChatStarters([]);
 
     try {
-        // Run greeting and starter generation in parallel for performance
-        const [greeting, startersResult] = await Promise.all([
-          gemini.generatePersonalizedGreeting(entries),
-          gemini.generateChatStarters(entries, intentions)
-        ]);
-
-        const initialAiMessage: Message = { sender: 'ai', text: greeting };
+        // Step 1: Fetch and display the greeting for better perceived performance.
+        const greeting = await gemini.generatePersonalizedGreeting(entries);
+        const initialAiMessage: Message = { sender: 'ai', text: greeting, id: 'greeting' };
 
         if (firstUserPrompt) {
-            const userMessage: Message = { sender: 'user', text: firstUserPrompt };
-            setMessages([initialAiMessage, userMessage]);
-            handleSendMessage(firstUserPrompt, [initialAiMessage, userMessage]);
+            // If starting with a prompt, set up history and immediately start streaming response.
+            const userMessage: Message = { sender: 'user', text: firstUserPrompt, id: `user-${Date.now()}` };
+            const initialHistory = [initialAiMessage, userMessage];
+            setMessages(initialHistory);
+            // This is a continuation call, so pass the history.
+            await handleSendMessage(firstUserPrompt, initialHistory);
         } else {
+            // Normal session start: display greeting, then fetch starters in the background.
             setMessages([initialAiMessage]);
-            setChatStarters(startersResult.starters);
+            setIsGeneratingStarters(true);
+            
+            gemini.generateChatStarters(entries, intentions)
+                .then(startersResult => {
+                    setChatStarters(startersResult.starters);
+                })
+                .catch(error => {
+                    handleApiError(error, 'fetching chat starters');
+                    setChatStarters([
+                        "What was my biggest challenge last week?",
+                        "Let's review my progress on my goals.",
+                        "Tell me about a recurring theme in my journal."
+                    ]);
+                })
+                .finally(() => {
+                    setIsGeneratingStarters(false);
+                });
         }
     } catch (error) {
         handleApiError(error, 'initializing chat');
-        setMessages([{ sender: 'ai', text: INITIAL_GREETING }]);
-        setChatStarters([
-            "What was my biggest challenge last week?",
-            "Let's review my progress on my goals.",
-            "Tell me about a recurring theme in my journal."
-        ]);
-    } finally {
-        setIsGeneratingStarters(false);
+        setMessages([{ sender: 'ai', text: INITIAL_GREETING, id: 'greeting' }]);
     }
-  };
+};
 
   const handleViewChange = (newView: View) => {
     const isChatDisabled = !isDataLoaded || aiStatus !== 'ready';
