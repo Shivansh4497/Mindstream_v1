@@ -78,7 +78,36 @@ export const MindstreamApp: React.FC = () => {
     fetchData();
   }, [user]);
   
-  const startNewChatSession = useCallback(async (firstUserPrompt?: string) => {
+  const handleSendMessage = async (text: string, initialHistory?: Message[]) => {
+    if (isChatLoading) return;
+
+    const history = initialHistory || messages;
+    const newUserMessage: Message = { sender: 'user', text };
+    
+    // If we are not in an initial session, update the state with the user message immediately
+    if (!initialHistory) {
+      setMessages(prev => [...prev, newUserMessage]);
+    }
+    
+    const newHistory = [...history, newUserMessage];
+    
+    setIsChatLoading(true);
+    setChatStarters([]); // Hide starters after conversation begins
+
+    try {
+        const { text: aiResponse, suggestions } = await gemini.getChatResponse(newHistory, entries, intentions);
+        const newAiMessage: Message = { sender: 'ai', text: aiResponse, suggestions };
+        setMessages(prev => [...prev, newAiMessage]);
+    } catch (error) {
+        console.error("Error getting chat response:", error);
+        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
+        setMessages(prev => [...prev, errorMessage]);
+    } finally {
+        setIsChatLoading(false);
+    }
+  }
+
+  const startNewChatSession = async (firstUserPrompt?: string) => {
     if (isGeneratingStarters || !isDataLoaded) return;
 
     setIsGeneratingStarters(true);
@@ -110,7 +139,7 @@ export const MindstreamApp: React.FC = () => {
     } finally {
         setIsGeneratingStarters(false);
     }
-  }, [entries, intentions, isGeneratingStarters, isDataLoaded]);
+  };
 
   const handleViewChange = (newView: View) => {
     if (newView === 'chat' && !isDataLoaded) {
@@ -127,12 +156,13 @@ export const MindstreamApp: React.FC = () => {
     if (!user || isProcessing) return;
     setIsProcessing(true);
     try {
-      const { title, tags } = await gemini.processEntry(text);
+      const { title, tags, sentiment } = await gemini.processEntry(text);
       const newEntryData = {
         timestamp: new Date().toISOString(),
         text,
         title,
         tags,
+        sentiment,
       };
       const newEntry = await db.addEntry(user.id, newEntryData);
       if (newEntry) {
@@ -216,35 +246,6 @@ export const MindstreamApp: React.FC = () => {
       setIsGeneratingReflection(null);
     }
   };
-
-  const handleSendMessage = async (text: string, initialHistory?: Message[]) => {
-    if (isChatLoading) return;
-
-    const history = initialHistory || messages;
-    const newUserMessage: Message = { sender: 'user', text };
-    
-    // If we are not in an initial session, update the state with the user message immediately
-    if (!initialHistory) {
-      setMessages(prev => [...prev, newUserMessage]);
-    }
-    
-    const newHistory = [...history, newUserMessage];
-    
-    setIsChatLoading(true);
-    setChatStarters([]); // Hide starters after conversation begins
-
-    try {
-        const { text: aiResponse, suggestions } = await gemini.getChatResponse(newHistory, entries, intentions);
-        const newAiMessage: Message = { sender: 'ai', text: aiResponse, suggestions };
-        setMessages(prev => [...prev, newAiMessage]);
-    } catch (error) {
-        console.error("Error getting chat response:", error);
-        const errorMessage: Message = { sender: 'ai', text: "Sorry, I'm having trouble connecting right now." };
-        setMessages(prev => [...prev, errorMessage]);
-    } finally {
-        setIsChatLoading(false);
-    }
-  }
 
   const handleExploreInChat = (summary: string) => {
     const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
