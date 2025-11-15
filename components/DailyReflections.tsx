@@ -3,6 +3,7 @@ import type { Entry, Intention, Reflection, AISuggestion } from '../types';
 import { getDisplayDate, getFormattedDate } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
+import { AIStatus } from '../MindstreamApp';
 
 interface DailyReflectionsProps {
   entries: Entry[];
@@ -12,9 +13,12 @@ interface DailyReflectionsProps {
   onExplore: (summary: string) => void;
   isGenerating: string | null;
   onAddSuggestion: (suggestion: AISuggestion) => void;
+  aiStatus: AIStatus;
+  onDebug: () => void;
+  debugOutput: string | null;
 }
 
-export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
+export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion, aiStatus, onDebug, debugOutput }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -54,11 +58,31 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
 
   return (
     <div className="p-4 animate-fade-in-up">
+      {/* --- DEBUGGING UI --- */}
+      <div className="mb-8 p-4 bg-red-900/50 border border-red-500 rounded-lg">
+        <h3 className="font-bold text-red-300 mb-2 font-display">Developer Diagnostics</h3>
+        <p className="text-sm text-red-200 mb-3">If AI features are not working, click this button. It will attempt one API call and show the raw success or error message below, bypassing any app logic.</p>
+        <button 
+          onClick={onDebug} 
+          className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+        >
+          Debug AI Connection
+        </button>
+        {debugOutput && (
+          <div className="mt-4 p-3 bg-black/50 rounded">
+            <h4 className="text-sm font-semibold text-gray-300 mb-2">Raw AI Output:</h4>
+            <pre className="text-xs text-white whitespace-pre-wrap font-mono">{debugOutput}</pre>
+          </div>
+        )}
+      </div>
+      {/* --- END DEBUGGING UI --- */}
+
       {sortedDates.map(date => {
         const entriesForDay = groupedEntries[date];
         const reflectionForDay = dailyReflectionsMap[date];
         const isGeneratingForThis = isGenerating === date;
         const hasEntries = entriesForDay && entriesForDay.length > 0;
+        const isAiDisabled = aiStatus !== 'ready';
 
         return (
           <div key={date} className="mb-8">
@@ -74,7 +98,7 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
               <div className="mt-4">
                 <button
                   onClick={() => onGenerate(date, entriesForDay)}
-                  disabled={isGeneratingForThis}
+                  disabled={isGeneratingForThis || isAiDisabled}
                   className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
                   {isGeneratingForThis ? (
