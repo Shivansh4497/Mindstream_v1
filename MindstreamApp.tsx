@@ -19,7 +19,7 @@ import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
 import { AIStatusBanner } from './components/AIStatusBanner';
-import { SuggestionChips } from './components/SuggestionChips.tsx';
+import { SuggestionChips } from './components/SuggestionChips';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
