@@ -15,7 +15,6 @@ export interface Entry {
   text: string;
   title: string | null;
   tags: string[] | null;
-  sentiment?: Sentiment;
 }
 
 export interface AISuggestion {
@@ -24,7 +23,7 @@ export interface AISuggestion {
 }
 
 export interface Reflection {
-  id: string;
+  id:string;
   user_id: string;
   date: string; // YYYY-MM-DD for daily, or a week/month identifier
   summary: string;
