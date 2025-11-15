@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-// FIX: The Profile type is no longer needed here as it's not managed in this component's state.
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe } from './types';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion } from './types';
 import { getFormattedDate, getWeekId, getMonthId } from './utils/date';
 
 import { Header } from './components/Header';
@@ -22,19 +21,20 @@ import { ThematicModal } from './components/ThematicModal';
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
-  // FIX: Profile state is no longer managed here; it's now in AuthContext.
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
-  const [messages, setMessages] = useState<Message[]>([
-    { sender: 'ai', text: "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?" }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   
   const [view, setView] = useState<View>('stream');
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
+  
+  // Chat state
   const [isChatLoading, setIsChatLoading] = useState(false);
-
+  const [chatStarters, setChatStarters] = useState<string[]>([]);
+  const [isGeneratingStarters, setIsGeneratingStarters] = useState(false);
+  
   const [hasSeenPrivacy, setHasSeenPrivacy] = useLocalStorage('hasSeenPrivacy', false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
   
@@ -49,13 +49,10 @@ export const MindstreamApp: React.FC = () => {
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
   
-  const allReflections = reflections;
-
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
       try {
-        // FIX: Removed profile fetching logic, as it's now handled in AuthContext.
         const [userEntries, userReflections, userIntentions] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
@@ -66,6 +63,10 @@ export const MindstreamApp: React.FC = () => {
         setReflections(userReflections);
         setIntentions(userIntentions);
 
+        // Set initial chat greeting
+        const greeting = await gemini.generatePersonalizedGreeting(userEntries);
+        setMessages([{ sender: 'ai', text: greeting }]);
+
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -74,16 +75,36 @@ export const MindstreamApp: React.FC = () => {
     fetchData();
   }, [user]);
 
+  // Effect for generating chat starters when view changes to 'chat'
+  useEffect(() => {
+    const generateStarters = async () => {
+        if (view === 'chat' && chatStarters.length === 0 && !isGeneratingStarters) {
+            setIsGeneratingStarters(true);
+            try {
+                const starters = await gemini.generateChatStarters(entries, intentions);
+                setChatStarters(starters);
+            } catch (error) {
+                console.error("Error generating chat starters:", error);
+            } finally {
+                setIsGeneratingStarters(false);
+            }
+        }
+    };
+    generateStarters();
+  }, [view, entries, intentions, chatStarters.length, isGeneratingStarters]);
+
+
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
     setIsProcessing(true);
     try {
-      const { title, tags } = await gemini.processEntry(text);
+      const { title, tags, sentiment } = await gemini.processEntry(text);
       const newEntryData = {
         timestamp: new Date().toISOString(),
         text,
         title,
-        tags
+        tags,
+        sentiment
       };
       const newEntry = await db.addEntry(user.id, newEntryData);
       if (newEntry) {
@@ -101,15 +122,15 @@ export const MindstreamApp: React.FC = () => {
       setIsGeneratingReflection(date);
       try {
         const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-        const summary = await gemini.generateReflection(entriesForDay, intentionsForDay);
-        const reflectionData = {
+        const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay);
+        const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
             date: date,
             summary: summary,
-            type: 'daily' as const
+            type: 'daily' as const,
+            suggestions: suggestions
         };
         const newReflection = await db.addReflection(user.id, reflectionData);
         if (newReflection) {
-            // Fetch all reflections again to get the new "latest" one
             const userReflections = await db.getReflections(user.id);
             setReflections(userReflections);
         }
@@ -125,11 +146,12 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(weekId);
     try {
       const intentionsForWeek = intentions.filter(i => getWeekId(new Date(i.created_at)) === weekId);
-      const summary = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
-      const reflectionData = {
+      const { summary, suggestions } = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
+      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
         date: weekId,
         summary: summary,
         type: 'weekly' as const,
+        suggestions: suggestions,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
@@ -148,11 +170,12 @@ export const MindstreamApp: React.FC = () => {
     setIsGeneratingReflection(monthId);
     try {
       const intentionsForMonth = intentions.filter(i => getMonthId(new Date(i.created_at)) === monthId);
-      const summary = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
-      const reflectionData = {
+      const { summary, suggestions } = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
+      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
         date: monthId,
         summary: summary,
         type: 'monthly' as const,
+        suggestions: suggestions,
       };
       const newReflection = await db.addReflection(user.id, reflectionData);
       if (newReflection) {
@@ -173,10 +196,11 @@ export const MindstreamApp: React.FC = () => {
     const newHistory = [...messages, newUserMessage];
     setMessages(newHistory);
     setIsChatLoading(true);
+    setChatStarters([]); // Hide starters after conversation begins
 
     try {
-        const aiResponse = await gemini.getChatResponse(newHistory, entries, intentions);
-        const newAiMessage: Message = { sender: 'ai', text: aiResponse };
+        const { text: aiResponse, suggestions } = await gemini.getChatResponse(newHistory, entries, intentions);
+        const newAiMessage: Message = { sender: 'ai', text: aiResponse, suggestions };
         setMessages(prev => [...prev, newAiMessage]);
     } catch (error) {
         console.error("Error getting chat response:", error);
@@ -193,16 +217,21 @@ export const MindstreamApp: React.FC = () => {
     setView('chat');
   };
 
-  const handleAddIntention = async (text: string) => {
+  const handleAddIntention = async (text: string, timeframe: IntentionTimeframe) => {
     if (!user) return;
     try {
-        const newIntention = await db.addIntention(user.id, text, activeIntentionTimeframe);
+        const newIntention = await db.addIntention(user.id, text, timeframe);
         if (newIntention) {
             setIntentions(prev => [newIntention, ...prev]);
         }
     } catch (error) {
         console.error("Error adding intention:", error);
     }
+  };
+
+  const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
+    await handleAddIntention(suggestion.text, suggestion.timeframe);
+    // Optionally, give user feedback like a toast notification
   };
 
   const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
@@ -260,7 +289,7 @@ export const MindstreamApp: React.FC = () => {
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} onTagClick={handleTagClick} />;
+              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
           case 'reflections':
               return <ReflectionsView 
                         entries={entries}
@@ -271,13 +300,21 @@ export const MindstreamApp: React.FC = () => {
                         onGenerateMonthly={handleGenerateMonthlyReflection}
                         onExploreInChat={handleExploreInChat}
                         isGenerating={isGeneratingReflection}
+                        onAddSuggestion={handleAddSuggestedIntention}
                      />;
           case 'chat':
-              return <ChatView messages={messages} isLoading={isChatLoading} />;
+              return <ChatView 
+                        messages={messages} 
+                        isLoading={isChatLoading}
+                        starters={chatStarters}
+                        isGeneratingStarters={isGeneratingStarters}
+                        onStarterClick={handleSendMessage}
+                        onAddSuggestion={handleAddSuggestedIntention}
+                     />;
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} onTagClick={handleTagClick} />;
+              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
       }
   };
 
@@ -288,7 +325,7 @@ export const MindstreamApp: React.FC = () => {
         case 'chat':
             return <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading} />;
         case 'intentions':
-            return <IntentionsInputBar onAddIntention={handleAddIntention} activeTimeframe={activeIntentionTimeframe} />;
+            return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
         default:
             return null; // No action bar for reflections
     }
@@ -297,7 +334,7 @@ export const MindstreamApp: React.FC = () => {
   return (
     <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
       {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
-      {showSearchModal && <SearchModal entries={entries} reflections={allReflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
+      {showSearchModal && <SearchModal entries={entries} reflections={reflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
       {showThematicModal && selectedTag && (
         <ThematicModal 
           tag={selectedTag}
