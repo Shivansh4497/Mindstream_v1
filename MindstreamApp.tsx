@@ -20,6 +20,7 @@ import { ReflectionsView } from './components/ReflectionsView';
 import { ThematicModal } from './components/ThematicModal';
 import { AIStatusBanner } from './components/AIStatusBanner';
 import { SuggestionChips } from './components/SuggestionChips';
+import { Toast } from './components/Toast';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
@@ -41,6 +42,9 @@ export const MindstreamApp: React.FC = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [aiStatus, setAiStatus] = useState<AIStatus>('initializing');
   const [aiError, setAiError] = useState<string | null>(null);
+  const [headerSubtitle, setHeaderSubtitle] = useState('');
+  
+  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
   // Chat state
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -72,6 +76,18 @@ export const MindstreamApp: React.FC = () => {
     }
   };
   
+  useEffect(() => {
+    const updateSubtitle = () => {
+      const hour = new Date().getHours();
+      if (hour < 12) setHeaderSubtitle('Good morning.');
+      else if (hour < 18) setHeaderSubtitle('Good afternoon.');
+      else setHeaderSubtitle('Time for evening reflection.');
+    };
+    updateSubtitle();
+    const interval = setInterval(updateSubtitle, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const fetchDataAndVerifyAI = async () => {
       if (!user) return;
@@ -227,13 +243,14 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
     if (!user || isProcessing || aiStatus !== 'ready') return;
     setIsProcessing(true);
     try {
-      const { title, tags, sentiment } = await gemini.processEntry(text);
+      const { title, tags, sentiment, emoji } = await gemini.processEntry(text);
       const newEntryData = {
         timestamp: new Date().toISOString(),
         text,
         title,
         tags,
         sentiment,
+        emoji,
       };
       const newEntry = await db.addEntry(user.id, newEntryData);
       if (newEntry) {
@@ -339,6 +356,21 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
   const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
     await handleAddIntention(suggestion.text, suggestion.timeframe);
+
+    // Show confirmation toast
+    setToast({ message: 'To-do locked in!', id: Date.now() });
+    setTimeout(() => setToast(null), 3000);
+
+    // Remove suggestion from the UI
+    setReflections(prev => prev.map(r => {
+        if (r.suggestions?.some(s => s.text === suggestion.text && s.timeframe === suggestion.timeframe)) {
+            return {
+                ...r,
+                suggestions: r.suggestions.filter(s => s.text !== suggestion.text || s.timeframe !== suggestion.timeframe)
+            };
+        }
+        return r;
+    }));
   };
 
   const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
@@ -475,7 +507,7 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
         />
       )}
       
-      <Header onSearchClick={() => setShowSearchModal(true)} />
+      <Header onSearchClick={() => setShowSearchModal(true)} subtitle={headerSubtitle} />
       
       <AIStatusBanner status={aiStatus} error={aiError} />
 
@@ -488,7 +520,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
         {isDataLoaded && renderCurrentView()}
       </main>
       
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 relative">
+        {toast && <Toast key={toast.id} message={toast.message} onDismiss={() => setToast(null)} />}
         {isDataLoaded && renderActionBar()}
         <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded || aiStatus !== 'ready'} />
       </div>
