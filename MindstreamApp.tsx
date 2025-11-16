@@ -21,6 +21,8 @@ import { ThematicModal } from './components/ThematicModal';
 import { AIStatusBanner } from './components/AIStatusBanner';
 import { SuggestionChips } from './components/SuggestionChips';
 import { Toast } from './components/Toast';
+import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
+import { EditEntryModal } from './components/EditEntryModal';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
@@ -64,6 +66,10 @@ export const MindstreamApp: React.FC = () => {
   const [selectedTag, setSelectedTagState] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
+
+  // State for Entry management
+  const [entryToEdit, setEntryToEdit] = useState<Entry | null>(null);
+  const [entryToDelete, setEntryToDelete] = useState<Entry | null>(null);
   
   // State for Debugging
   const [debugOutput, setDebugOutput] = useState<string | null>(null);
@@ -283,6 +289,46 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
       setIsProcessing(false);
     }
   };
+
+  const handleUpdateEntry = async (entryId: string, newText: string) => {
+    if (!user || aiStatus !== 'ready') {
+      setToast({ message: "Cannot update entry: AI is not connected.", id: Date.now() });
+      return;
+    }
+
+    try {
+      // 1. Re-run AI analysis on the new text
+      const aiData = await gemini.processEntry(newText);
+      
+      const updatedData = {
+        ...aiData,
+        text: newText,
+      };
+
+      // 2. Update the database
+      const updatedEntry = await db.updateEntry(entryId, updatedData);
+
+      // 3. Update local state
+      setEntries(prev => prev.map(e => e.id === entryId ? { ...e, ...updatedEntry } : e));
+
+      setToast({ message: "Entry updated.", id: Date.now() });
+    } catch (error) {
+      handleApiError(error, 'updating entry');
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!user) return;
+    try {
+      const wasDeleted = await db.deleteEntry(entryId);
+      if (wasDeleted) {
+        setEntries(prev => prev.filter(e => e.id !== entryId));
+        setToast({ message: "Entry deleted.", id: Date.now() });
+      }
+    } catch (error) {
+      handleApiError(error, 'deleting entry');
+    }
+  };
   
   const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
       if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
@@ -458,7 +504,13 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
   const renderCurrentView = () => {
       switch(view) {
           case 'stream':
-              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
+              return <Stream 
+                        entries={entries} 
+                        intentions={intentions} 
+                        onTagClick={handleTagClick} 
+                        onEditEntry={(entry) => setEntryToEdit(entry)}
+                        onDeleteEntry={(entry) => setEntryToDelete(entry)}
+                     />;
           case 'reflections':
               return <ReflectionsView 
                         entries={entries}
@@ -483,7 +535,13 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
           default:
-              return <Stream entries={entries} intentions={intentions} onTagClick={handleTagClick} />;
+              return <Stream 
+                        entries={entries} 
+                        intentions={intentions} 
+                        onTagClick={handleTagClick} 
+                        onEditEntry={(entry) => setEntryToEdit(entry)}
+                        onDeleteEntry={(entry) => setEntryToDelete(entry)}
+                     />;
       }
   };
 
@@ -525,6 +583,25 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
           onGenerateReflection={() => handleGenerateThematicReflection(selectedTag)}
           isGenerating={isGeneratingThematic}
           reflectionResult={thematicReflection}
+        />
+      )}
+      {entryToEdit && (
+        <EditEntryModal
+          entry={entryToEdit}
+          onSave={async (newText) => {
+            await handleUpdateEntry(entryToEdit.id, newText);
+            setEntryToEdit(null);
+          }}
+          onCancel={() => setEntryToEdit(null)}
+        />
+      )}
+      {entryToDelete && (
+        <DeleteConfirmationModal
+          onConfirm={async () => {
+            await handleDeleteEntry(entryToDelete.id);
+            setEntryToDelete(null);
+          }}
+          onCancel={() => setEntryToDelete(null)}
         />
       )}
       
