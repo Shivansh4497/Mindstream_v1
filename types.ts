@@ -6,7 +6,14 @@ export interface Profile {
   avatar_url: string | null;
 }
 
-export type Sentiment = 'positive' | 'negative' | 'neutral';
+export type GranularSentiment =
+  // Positive
+  | 'Joyful' | 'Grateful' | 'Proud' | 'Hopeful' | 'Content'
+  // Negative
+  | 'Anxious' | 'Frustrated' | 'Sad' | 'Overwhelmed' | 'Confused'
+  // Contemplative
+  | 'Reflective' | 'Inquisitive' | 'Observational';
+
 
 export interface Entry {
   id: string;
@@ -16,7 +23,8 @@ export interface Entry {
   title: string;
   emoji: string;
   tags?: string[] | null;
-  sentiment?: Sentiment | null;
+  primary_sentiment: GranularSentiment;
+  secondary_sentiment?: GranularSentiment | null;
 }
 
 export interface AISuggestion {
