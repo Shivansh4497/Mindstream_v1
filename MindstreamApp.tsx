@@ -247,44 +247,36 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
-    setIsProcessing(true);
-
-    // Step 1: Create and save the basic entry immediately.
-    // Your thought is now safe.
-    const initialEntryData = {
-        timestamp: new Date().toISOString(),
-        text: text,
-        title: text.substring(0, 40) + (text.length > 40 ? '...' : ''), // A sensible default title
-        tags: [],
-        sentiment: 'neutral' as const,
-        emoji: '✍️'
-    };
-
-    let savedEntry: Entry | null = null;
-    try {
-        savedEntry = await db.addEntry(user.id, initialEntryData);
-        setEntries(prev => [savedEntry!, ...prev]); // Add to UI
-    } catch (dbError) {
-        handleApiError(dbError, 'saving entry');
-        setIsProcessing(false);
-        return; // Stop if the initial save fails
+    
+    // Do not allow adding entries if AI is down, as it's a core part of the feature.
+    if (aiStatus !== 'ready') {
+      setToast({ message: "Cannot save entry: AI is not connected.", id: Date.now() });
+      return;
     }
-
-    // Step 2: Asynchronously enrich the entry with AI data.
-    // This part can fail without losing your data.
+    
+    setIsProcessing(true);
+    
     try {
-        if (aiStatus !== 'ready') {
-             throw new Error("AI not ready for enrichment.");
-        }
-        const aiData = await gemini.processEntry(text);
-        const enrichedEntry = await db.updateEntryWithAIData(user.id, savedEntry.id, aiData);
-        // Update the specific entry in the UI with the new AI data
-        setEntries(prev => prev.map(e => e.id === savedEntry!.id ? enrichedEntry : e));
-    } catch (aiError) {
-        console.error("AI enrichment failed, but entry was saved:", aiError);
-        setToast({ message: "Entry saved without AI analysis.", id: Date.now() });
+      // Step 1: Get all AI data first. This is the robust, original logic.
+      const aiData = await gemini.processEntry(text);
+
+      // Step 2: Combine user text with AI data into a complete object.
+      const newEntryData = {
+        ...aiData,
+        text: text,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // Step 3: Save the single, complete entry to the database.
+      const newEntry = await db.addEntry(user.id, newEntryData);
+      
+      // Step 4: Update the UI with the final, complete entry.
+      setEntries(prev => [newEntry, ...prev]);
+
+    } catch (error) {
+      handleApiError(error, 'adding new entry');
     } finally {
-        setIsProcessing(false);
+      setIsProcessing(false);
     }
   };
   
