@@ -13,10 +13,10 @@ export interface Entry {
   user_id: string;
   timestamp: string;
   text: string;
-  title: string | null;
-  tags: string[] | null;
-  sentiment: Sentiment | null;
-  emoji: string | null;
+  title: string;
+  emoji: string;
+  tags?: string[] | null;
+  sentiment?: Sentiment | null;
 }
 
 export interface AISuggestion {
