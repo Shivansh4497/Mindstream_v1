@@ -1,6 +1,6 @@
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, Sentiment } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment } from '../types';
 import { getDisplayDate } from "../utils/date";
 
 let ai: GoogleGenAI | null = null;
@@ -77,10 +77,10 @@ export const generateReflection = async (entries: Entry[], intentions: Intention
   
   const model = 'gemini-2.5-flash';
 
-  const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
+  const entriesText = entries.map(e => `- Feeling ${e.primary_sentiment}, I wrote: ${e.text}`).join('\n');
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
 
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 concise, actionable suggestions for a new 'daily' or 'weekly' intention. Keep each suggestion under 10 words.
+  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries (including their primary emotion) and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions aligned with my goals. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "The prominent feelings today were Proud and Overwhelmed..."). Based on your analysis, also provide 1-2 concise, actionable suggestions for a new 'daily' or 'weekly' intention. Keep each suggestion under 10 words.
 
 Here were our intentions for today:
 ${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
@@ -175,7 +175,7 @@ export const generateWeeklyReflection = async (entries: Entry[], intentions: Int
   
   const entriesText = entries
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(e => `- ${getDisplayDate(e.timestamp)} at ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`)
+    .map(e => `- On ${getDisplayDate(e.timestamp)}, feeling ${e.primary_sentiment}: ${e.text}`)
     .join('\n');
 
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
@@ -224,7 +224,7 @@ export const generateMonthlyReflection = async (entries: Entry[], intentions: In
   
   const entriesText = entries
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(e => `- On ${getDisplayDate(e.timestamp)}: ${e.text}`)
+    .map(e => `- On ${getDisplayDate(e.timestamp)}, feeling ${e.primary_sentiment}: ${e.text}`)
     .join('\n');
 
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
@@ -294,18 +294,28 @@ Your holistic thematic reflection on our journey with "${tag}":`;
   return response.text;
 };
 
+const GRANULAR_SENTIMENTS: GranularSentiment[] = [
+    'Joyful', 'Grateful', 'Proud', 'Hopeful', 'Content',
+    'Anxious', 'Frustrated', 'Sad', 'Overwhelmed', 'Confused',
+    'Reflective', 'Inquisitive', 'Observational'
+];
 
 /**
- * Processes a new journal entry to generate a title, tags, and sentiment.
+ * Processes a new journal entry to generate a title, tags, and granular sentiments.
  */
-export const processEntry = async (entryText: string): Promise<{ title: string; tags: string[]; sentiment: Sentiment; emoji: string; }> => {
+export const processEntry = async (entryText: string): Promise<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>> => {
   if (!ai) throw new Error("AI client not initialized.");
   
   const model = 'gemini-2.5-flash';
 
-  const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title, 2-4 relevant tags, determine its overall sentiment ('positive', 'negative', or 'neutral'), and add a single, appropriate Unicode emoji that best represents the entry's core emotion or content.
+  const prompt = `Analyze the following journal entry. Based on its content:
+1.  Provide a concise, descriptive title (3-5 words, unless the entry is very short).
+2.  Generate 2-4 relevant tags.
+3.  Choose a 'primary_sentiment' from this specific list: [${GRANULAR_SENTIMENTS.join(', ')}].
+4.  If the emotion is complex, add an optional 'secondary_sentiment' from the same list.
+5.  Add a single, appropriate Unicode emoji.
   
-CRITICAL RULE: For very short entries (under 10 words), the title can be just 1-2 words, or a slightly rephrased, capitalized version of the entry itself. For all other entries, the title should be 3-5 words.
+CRITICAL RULE: For very short entries (under 10 words), the title can be just 1-2 words, or a slightly rephrased, capitalized version of the entry itself.
 
 Entry: "${entryText}"
 
@@ -319,32 +329,21 @@ Respond with only a JSON object.`;
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          title: {
-            type: Type.STRING,
-            description: "A short, descriptive title for the journal entry."
-          },
+          title: { type: Type.STRING },
           tags: {
             type: Type.ARRAY,
-            description: "An array of 2-4 single-word or two-word tags that categorize the entry.",
-            items: {
-              type: Type.STRING
-            }
+            items: { type: Type.STRING }
           },
-          sentiment: {
-            type: Type.STRING,
-            description: "The overall sentiment of the entry: 'positive', 'negative', or 'neutral'."
-          },
-          emoji: {
-            type: Type.STRING,
-            description: "A single Unicode emoji that best represents the entry's emotion or content."
-          }
+          primary_sentiment: { type: Type.STRING },
+          secondary_sentiment: { type: Type.STRING },
+          emoji: { type: Type.STRING }
         },
-        required: ['title', 'tags', 'sentiment', 'emoji']
+        required: ['title', 'tags', 'primary_sentiment', 'emoji']
       }
     }
   });
   
-  const result = parseGeminiJson<{ title: string; tags: string[]; sentiment: Sentiment; emoji: string }>(response.text);
+  const result = parseGeminiJson<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>>(response.text);
   return result;
 };
 
@@ -358,14 +357,14 @@ export const getChatResponseStream = async (history: Message[], entries: Entry[]
     const model = 'gemini-2.5-flash';
 
     const recentEntriesSummary = entries.slice(0, 15).map(e => 
-        `- On ${new Date(e.timestamp).toLocaleDateString()}, I wrote: "${e.text}"`
+        `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`
     ).join('\n');
     
     const intentionsSummary = intentions.map(i => 
         `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
     ).join('\n');
 
-    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
+    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries (including my stated emotions) AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
 
 CONTEXT from my recent journal entries:
 ${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
@@ -402,7 +401,7 @@ export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<st
     const lastEntry = entries[0];
     const prompt = `Based on my last journal entry, create a short, warm, one-sentence greeting that acknowledges the entry's topic without being too specific.
 
-Last entry: "${lastEntry.text}"
+Last entry: "Feeling ${lastEntry.primary_sentiment}, I wrote: ${lastEntry.text}"
 
 Your greeting:`;
     const response = await ai.models.generateContent({ model, contents: prompt });
@@ -413,7 +412,7 @@ export const generateChatStarters = async (entries: Entry[], intentions: Intenti
     if (!ai) throw new Error("AI is not configured.");
     
     const model = 'gemini-2.5-flash';
-    const entriesText = entries.slice(0, 5).map(e => `- Entry (Sentiment: ${e.sentiment || 'neutral'}): ${e.text}`).join('\n');
+    const entriesText = entries.slice(0, 5).map(e => `- Entry (Feeling: ${e.primary_sentiment}): ${e.text}`).join('\n');
     const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
 
     const prompt = `You are an AI assistant helping a user start a conversation with their journal. Your goal is to provide helpful, gentle, and useful starting points.
