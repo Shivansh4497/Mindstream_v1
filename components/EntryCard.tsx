@@ -1,11 +1,16 @@
 // FIX: This file was previously empty. It has been implemented as the EntryCard component.
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // FIX: Corrected the import path to be relative.
 import type { Entry, GranularSentiment } from '../types';
+import { MoreOptionsIcon } from './icons/MoreOptionsIcon';
+import { PencilIcon } from './icons/PencilIcon';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface EntryCardProps {
   entry: Entry;
   onTagClick?: (tag: string) => void;
+  onEdit: (entry: Entry) => void;
+  onDelete: (entry: Entry) => void;
 }
 
 const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): string => {
@@ -31,17 +36,61 @@ const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): s
 };
 
 
-export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick }) => {
+export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit, onDelete }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const entryTime = new Date(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   });
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   return (
-    <div className="bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
+    <div className="relative bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
+      
+      <div className="absolute top-2 right-2" ref={menuRef}>
+        <button
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          className="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+          aria-label="More options"
+        >
+          <MoreOptionsIcon className="w-5 h-5" />
+        </button>
+        {isMenuOpen && (
+          <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
+            <button
+              onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
+              className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
+            >
+              <PencilIcon className="w-4 h-4" />
+              Edit Entry
+            </button>
+            <button
+              onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
+              className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
+            >
+              <TrashIcon className="w-4 h-4" />
+              Delete Entry
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between items-start mb-3">
-        <h3 className="text-lg font-bold text-white pr-2">
+        <h3 className="text-lg font-bold text-white pr-10">
           {entry.emoji && <span className="mr-2">{entry.emoji}</span>}
           {entry.title}
         </h3>
