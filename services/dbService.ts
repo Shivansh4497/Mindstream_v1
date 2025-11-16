@@ -61,6 +61,34 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
   return data;
 };
 
+export const updateEntry = async (entryId: string, updatedData: Partial<Entry>): Promise<Entry> => {
+    const { data, error } = await supabase
+        .from('entries')
+        // FIX: Use @ts-ignore to bypass a Supabase client type inference issue with the update method.
+        // @ts-ignore
+        .update(updatedData)
+        .eq('id', entryId)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error updating entry:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const deleteEntry = async (entryId: string): Promise<boolean> => {
+    const { error } = await supabase
+        .from('entries')
+        .delete()
+        .eq('id', entryId);
+    if (error) {
+        console.error('Error deleting entry:', error);
+        return false;
+    }
+    return true;
+};
+
 
 // Onboarding Functions
 export const addWelcomeEntry = async (userId: string): Promise<void> => {
