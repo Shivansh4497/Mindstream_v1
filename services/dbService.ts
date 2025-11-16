@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
-import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, Sentiment } from '../types';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId } from '../utils/date';
 
 // Profile Functions
@@ -69,7 +69,7 @@ export const addWelcomeEntry = async (userId: string): Promise<void> => {
     text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
     title: "Your First Step to Clarity",
     tags: ["welcome", "getting-started"],
-    sentiment: "positive" as const,
+    primary_sentiment: "Hopeful" as const,
     emoji: "👋",
     user_id: userId,
   };
