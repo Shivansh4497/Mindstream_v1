@@ -70,9 +70,15 @@ export const MindstreamApp: React.FC = () => {
 
   const handleApiError = (error: unknown, context: string) => {
     console.error(`Error in ${context}:`, error);
-    // Don't show an alert if it's a persistent configuration error, the banner will handle it.
+    let message = API_ERROR_MESSAGE;
+    if (error instanceof Error && error.message) {
+        if (error.message.includes('column') || error.message.includes('schema')) {
+            message = "Database Error: A required column may be missing. Please check your database schema.";
+        }
+    }
+    // Don't show a notification if it's a persistent configuration error, the banner will handle it.
     if (aiStatus !== 'error') {
-      alert(API_ERROR_MESSAGE);
+      setToast({ message, id: Date.now() });
     }
   };
   
@@ -240,26 +246,45 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
   };
 
   const handleAddEntry = async (text: string) => {
-    if (!user || isProcessing || aiStatus !== 'ready') return;
+    if (!user || isProcessing) return;
     setIsProcessing(true);
-    try {
-      const { title, tags, sentiment, emoji } = await gemini.processEntry(text);
-      const newEntryData = {
+
+    // Step 1: Create and save the basic entry immediately.
+    // Your thought is now safe.
+    const initialEntryData = {
         timestamp: new Date().toISOString(),
-        text,
-        title,
-        tags,
-        sentiment,
-        emoji,
-      };
-      const newEntry = await db.addEntry(user.id, newEntryData);
-      if (newEntry) {
-        setEntries(prev => [newEntry, ...prev]);
-      }
-    } catch (error) {
-      handleApiError(error, 'processing entry');
+        text: text,
+        title: text.substring(0, 40) + (text.length > 40 ? '...' : ''), // A sensible default title
+        tags: [],
+        sentiment: 'neutral' as const,
+        emoji: '✍️'
+    };
+
+    let savedEntry: Entry | null = null;
+    try {
+        savedEntry = await db.addEntry(user.id, initialEntryData);
+        setEntries(prev => [savedEntry!, ...prev]); // Add to UI
+    } catch (dbError) {
+        handleApiError(dbError, 'saving entry');
+        setIsProcessing(false);
+        return; // Stop if the initial save fails
+    }
+
+    // Step 2: Asynchronously enrich the entry with AI data.
+    // This part can fail without losing your data.
+    try {
+        if (aiStatus !== 'ready') {
+             throw new Error("AI not ready for enrichment.");
+        }
+        const aiData = await gemini.processEntry(text);
+        const enrichedEntry = await db.updateEntryWithAIData(user.id, savedEntry.id, aiData);
+        // Update the specific entry in the UI with the new AI data
+        setEntries(prev => prev.map(e => e.id === savedEntry!.id ? enrichedEntry : e));
+    } catch (aiError) {
+        console.error("AI enrichment failed, but entry was saved:", aiError);
+        setToast({ message: "Entry saved without AI analysis.", id: Date.now() });
     } finally {
-      setIsProcessing(false);
+        setIsProcessing(false);
     }
   };
   
