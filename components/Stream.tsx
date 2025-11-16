@@ -8,9 +8,11 @@ interface StreamProps {
   entries: Entry[];
   intentions: Intention[];
   onTagClick?: (tag: string) => void;
+  onEditEntry: (entry: Entry) => void;
+  onDeleteEntry: (entry: Entry) => void;
 }
 
-export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick }) => {
+export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick, onEditEntry, onDeleteEntry }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -61,7 +63,13 @@ export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick 
             <div key={date} className="mb-8">
               <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
               {entriesForDay.map(entry => (
-                <EntryCard key={entry.id} entry={entry} onTagClick={onTagClick} />
+                <EntryCard 
+                  key={entry.id} 
+                  entry={entry} 
+                  onTagClick={onTagClick} 
+                  onEdit={onEditEntry}
+                  onDelete={onDeleteEntry}
+                />
               ))}
             </div>
           );
