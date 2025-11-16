@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
-import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus } from '../types';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, Sentiment } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId } from '../utils/date';
 
 // Profile Functions
@@ -55,6 +55,28 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
     .single();
   if (error) {
     console.error('Error adding entry:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const updateEntryWithAIData = async (userId: string, entryId: string, aiData: { title: string; tags: string[]; sentiment: Sentiment; emoji: string; }): Promise<Entry> => {
+  const { data, error } = await supabase
+    .from('entries')
+    // FIX: Cast the update payload to 'any' to resolve Supabase client typing issue, consistent with other DB write operations in this file.
+    .update({
+      title: aiData.title,
+      tags: aiData.tags,
+      sentiment: aiData.sentiment,
+      emoji: aiData.emoji,
+    } as any)
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating entry with AI data:', error);
     throw error;
   }
   return data;
