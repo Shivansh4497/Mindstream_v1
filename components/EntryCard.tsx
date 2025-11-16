@@ -59,46 +59,51 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
   }, []);
 
   return (
-    <div className="relative bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
+    <div className="bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
       
-      <div className="absolute top-2 right-2" ref={menuRef}>
-        <button
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
-          aria-label="More options"
-        >
-          <MoreOptionsIcon className="w-5 h-5" />
-        </button>
-        {isMenuOpen && (
-          <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
-            <button
-              onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
-              className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
-            >
-              <PencilIcon className="w-4 h-4" />
-              Edit Entry
-            </button>
-            <button
-              onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
-              className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
-            >
-              <TrashIcon className="w-4 h-4" />
-              Delete Entry
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-between items-start mb-3">
-        <h3 className="text-lg font-bold text-white pr-10">
+      <div className="flex justify-between items-start mb-3 gap-4">
+        <h3 className="flex-grow text-lg font-bold text-white">
           {entry.emoji && <span className="mr-2">{entry.emoji}</span>}
           {entry.title}
         </h3>
-        <time className="text-sm text-gray-400 flex-shrink-0">{entryTime}</time>
+        
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <time className="text-sm text-gray-400">{entryTime}</time>
+          
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 -m-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+              aria-label="More options"
+            >
+              <MoreOptionsIcon className="w-5 h-5" />
+            </button>
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
+                <button
+                  onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
+                >
+                  <PencilIcon className="w-4 h-4" />
+                  Edit Entry
+                </button>
+                <button
+                  onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                  Delete Entry
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+      
       <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">
         {entry.text}
       </p>
+
       {(entry.tags && entry.tags.length > 0) || entry.primary_sentiment ? (
         <div className="flex flex-wrap items-center gap-2">
            {entry.primary_sentiment && (
