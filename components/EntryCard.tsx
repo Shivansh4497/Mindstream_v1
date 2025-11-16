@@ -28,27 +28,13 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick }) => {
     minute: '2-digit',
     hour12: true,
   });
-  
-  const isMicro = entry.text.length < 75;
-
-  if (isMicro) {
-    return (
-      <div className="bg-dark-surface/80 rounded-2xl p-4 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] flex items-center gap-3">
-        {entry.emoji && <span className="text-2xl">{entry.emoji}</span>}
-        <p className="text-gray-300 leading-relaxed whitespace-pre-wrap flex-grow">
-          {entry.text}
-        </p>
-        <time className="text-sm text-gray-500 self-start flex-shrink-0">{entryTime}</time>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
       <div className="flex justify-between items-start mb-3">
         <h3 className="text-lg font-bold text-white pr-2">
           {entry.emoji && <span className="mr-2">{entry.emoji}</span>}
-          {entry.title || 'Entry'}
+          {entry.title}
         </h3>
         <time className="text-sm text-gray-400 flex-shrink-0">{entryTime}</time>
       </div>
