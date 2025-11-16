@@ -20,10 +20,10 @@ export interface Entry {
   user_id: string;
   timestamp: string;
   text: string;
-  title: string;
-  emoji: string;
+  title?: string | null;
+  emoji?: string | null;
   tags?: string[] | null;
-  primary_sentiment: GranularSentiment;
+  primary_sentiment?: GranularSentiment | null;
   secondary_sentiment?: GranularSentiment | null;
 }
 
