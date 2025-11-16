@@ -303,7 +303,9 @@ export const processEntry = async (entryText: string): Promise<{ title: string; 
   
   const model = 'gemini-2.5-flash';
 
-  const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title (3-5 words), 2-4 relevant tags, determine its overall sentiment ('positive', 'negative', or 'neutral'), and add a single, appropriate Unicode emoji that best represents the entry's core emotion or content.
+  const prompt = `Analyze the following journal entry. Based on its content, provide a concise, descriptive title, 2-4 relevant tags, determine its overall sentiment ('positive', 'negative', or 'neutral'), and add a single, appropriate Unicode emoji that best represents the entry's core emotion or content.
+  
+CRITICAL RULE: For very short entries (under 10 words), the title can be just 1-2 words, or a slightly rephrased, capitalized version of the entry itself. For all other entries, the title should be 3-5 words.
 
 Entry: "${entryText}"
 
@@ -319,7 +321,7 @@ Respond with only a JSON object.`;
         properties: {
           title: {
             type: Type.STRING,
-            description: "A short, descriptive title for the journal entry (3-5 words)."
+            description: "A short, descriptive title for the journal entry."
           },
           tags: {
             type: Type.ARRAY,
