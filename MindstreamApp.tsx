@@ -72,7 +72,11 @@ export const MindstreamApp: React.FC = () => {
     console.error(`Error in ${context}:`, error);
     let message = API_ERROR_MESSAGE;
     if (error instanceof Error && error.message) {
-        if (error.message.includes('column') || error.message.includes('schema')) {
+        // Specific check for the 'add entry' context and a common Supabase error for missing columns.
+        // This makes the error message much more helpful for the user.
+        if (context === 'adding new entry' && error.message.toLowerCase().includes('column') && error.message.toLowerCase().includes('does not exist')) {
+            message = "Database Error: The 'entries' table seems to be missing a required column (likely 'emoji'). Please update your database schema.";
+        } else if (error.message.includes('column') || error.message.includes('schema')) {
             message = "Database Error: A required column may be missing. Please check your database schema.";
         }
     }
