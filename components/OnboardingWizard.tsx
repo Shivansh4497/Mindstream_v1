@@ -1,17 +1,17 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { LockIcon } from './icons/LockIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { ChatBubbleIcon } from './icons/ChatBubbleIcon';
 import { MicIcon } from './icons/MicIcon';
+import { FloatingBubbles } from './FloatingBubbles';
 import * as gemini from '../services/geminiService';
 import * as db from '../services/dbService';
 import type { InstantInsight } from '../types';
 
 interface OnboardingWizardProps {
   userId: string;
-  onComplete: (destination: 'stream' | 'chat', initialContext?: string) => void;
+  onComplete: (destination: 'stream' | 'chat', initialContext?: string, aiQuestion?: string) => void;
 }
 
 type Step = 'sanctuary' | 'spark' | 'container' | 'friction' | 'elaboration' | 'processing' | 'awe';
@@ -23,15 +23,16 @@ const sentiments: Sentiment[] = [
   'Tired', 'Inspired', 'Frustrated', 'Grateful'
 ];
 
+// Updated to Radial Gradients for Spotlight Effect
 const sentimentGradients: Record<Sentiment, string> = {
-  Anxious: 'bg-gradient-to-br from-slate-900 to-orange-900',
-  Excited: 'bg-gradient-to-br from-teal-900 to-yellow-900',
-  Overwhelmed: 'bg-gradient-to-br from-gray-900 to-purple-900',
-  Calm: 'bg-gradient-to-br from-blue-900 to-emerald-900',
-  Tired: 'bg-gradient-to-br from-gray-800 to-slate-900',
-  Inspired: 'bg-gradient-to-br from-violet-900 to-fuchsia-900',
-  Frustrated: 'bg-gradient-to-br from-red-900 to-zinc-900',
-  Grateful: 'bg-gradient-to-br from-amber-900 to-yellow-800',
+  Anxious: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-orange-950',
+  Excited: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-teal-950 to-yellow-900',
+  Overwhelmed: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-purple-950',
+  Calm: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-blue-950 to-emerald-950',
+  Tired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-700 via-slate-800 to-gray-950',
+  Inspired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-violet-800 via-violet-900 to-fuchsia-950',
+  Frustrated: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-900 via-red-950 to-zinc-950',
+  Grateful: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900 via-amber-950 to-yellow-950',
 };
 
 const lifeAreas: { id: LifeArea; label: string; icon: string }[] = [
@@ -54,7 +55,7 @@ const triggers: Record<LifeArea, string[]> = {
 const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 if (recognition) {
-  recognition.continuous = false; // For short bursts in onboarding
+  recognition.continuous = false; 
   recognition.interimResults = true;
   recognition.lang = 'en-US';
 }
@@ -67,12 +68,23 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
   const [elaboration, setElaboration] = useState('');
   const [insight, setInsight] = useState<InstantInsight | null>(null);
   
-  // UI States for Enhancements
+  // Enhancements
   const [isListening, setIsListening] = useState(false);
   const [processingText, setProcessingText] = useState("Connecting patterns...");
   const [displayedInsight, setDisplayedInsight] = useState('');
+  const [showMicPulse, setShowMicPulse] = useState(false);
   
   const recognitionRef = useRef(recognition);
+
+  // Idle timer for Mic Pulse
+  useEffect(() => {
+    if (step === 'elaboration' && elaboration.length === 0 && !isListening) {
+      const timer = setTimeout(() => setShowMicPulse(true), 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowMicPulse(false);
+    }
+  }, [step, elaboration, isListening]);
 
   // Voice Logic
   useEffect(() => {
@@ -88,7 +100,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       }
       if (finalTranscript) {
         setElaboration(prev => prev + (prev.length > 0 ? ' ' : '') + finalTranscript);
-        setIsListening(false); // Stop after one sentence for flow
+        setIsListening(false); 
       }
     };
 
@@ -109,6 +121,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     }
     if (isListening) {
       recognitionRef.current.stop();
+      setIsListening(false);
     } else {
       recognitionRef.current.start();
       setIsListening(true);
@@ -120,13 +133,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     if (step === 'awe' && insight) {
       let i = 0;
       const text = insight.insight;
-      setDisplayedInsight(''); // Reset
+      setDisplayedInsight(''); 
       
       const interval = setInterval(() => {
         setDisplayedInsight(text.slice(0, i + 1));
         i++;
         if (i > text.length) clearInterval(interval);
-      }, 30); // 30ms per char
+      }, 30); 
 
       return () => clearInterval(interval);
     }
@@ -142,7 +155,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         "Almost there..."
       ];
       let i = 0;
-      // Initial set
       setProcessingText(steps[0]);
       
       const interval = setInterval(() => {
@@ -150,12 +162,11 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         if (i < steps.length) {
           setProcessingText(steps[i]);
         }
-      }, 1500); // Change text every 1.5s
+      }, 1500); 
 
       return () => clearInterval(interval);
     }
   }, [step, selectedArea, selectedTrigger]);
-
 
   const handleEnterSanctuary = () => setStep('spark');
   
@@ -174,9 +185,14 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     setStep('elaboration');
   };
 
+  // Fixed Logic Gap: Checks sentiment valence
   const getPromptPlaceholder = () => {
-      if (!selectedTrigger) return "I'm thinking about...";
-      const prompts: Record<string, string> = {
+      if (!selectedTrigger || !selectedSentiment) return "I'm thinking about...";
+      
+      const isPositive = ['Excited', 'Calm', 'Inspired', 'Grateful', 'Joyful', 'Hopeful', 'Proud', 'Content'].includes(selectedSentiment);
+      
+      // Base Prompts map
+      const negativePrompts: Record<string, string> = {
         'Imposter Syndrome': "What is one specific task making you doubt yourself?",
         'Burnout': "What specifically is draining your energy right now?",
         'Deadlines': "Which deliverable is weighing on you the most?",
@@ -187,7 +203,28 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         'Purpose': "What feels meaningless right now?",
         'Debt': "What specific financial worry is on your mind?",
       };
-      return prompts[selectedTrigger] || `What is the specific context regarding ${selectedTrigger}?`;
+
+      const positivePrompts: Record<string, string> = {
+        'Imposter Syndrome': "How did you overcome that doubt today?",
+        'Burnout': "How are you finding balance today?",
+        'Deadlines': "What progress are you celebrating?",
+        'Conflict': "How did you handle that situation well?",
+        'Misunderstanding': "How did you find clarity?",
+        'Boundaries': "How did protecting your energy help you?",
+        'Fatigue': "How are you prioritizing your rest?",
+        'Purpose': "What reinforced your sense of purpose today?",
+        'Debt': "What positive step did you take for your finances?",
+        'Self-Worth': "What reinforced your value today?"
+      };
+
+      const map = isPositive ? positivePrompts : negativePrompts;
+      
+      if (map[selectedTrigger]) return map[selectedTrigger];
+
+      // Fallback dynamic generation
+      return isPositive 
+        ? `How is ${selectedTrigger} supporting your ${selectedSentiment} feeling?`
+        : `How is ${selectedTrigger} causing you to feel ${selectedSentiment}?`;
   };
 
   const handleAnalyze = async () => {
@@ -230,17 +267,16 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     }
   };
 
-  // Dynamic Background Class
   const bgClass = selectedSentiment 
     ? sentimentGradients[selectedSentiment] 
     : 'bg-brand-indigo';
 
   return (
-    <div className={`h-screen w-screen transition-colors duration-1000 ease-in-out ${bgClass} flex flex-col items-center justify-center p-6 overflow-hidden`}>
+    <div className={`h-screen w-screen transition-colors duration-1000 ease-in-out ${bgClass} flex flex-col items-center justify-center p-6 overflow-hidden relative`}>
       
       {/* Step 1: Sanctuary */}
       {step === 'sanctuary' && (
-        <div className="text-center animate-fade-in flex flex-col items-center">
+        <div className="text-center animate-fade-in flex flex-col items-center relative z-10">
           <div className="bg-dark-surface p-4 rounded-full mb-6 animate-pulse-ring">
             <LockIcon className="w-12 h-12 text-brand-teal" />
           </div>
@@ -261,7 +297,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       {/* Step 2: Spark */}
       {step === 'spark' && (
-        <div className="flex flex-col items-center w-full animate-fade-in">
+        <div className="flex flex-col items-center w-full animate-fade-in relative z-10">
           <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center">
             Let's calibrate. How are you feeling right now?
           </h2>
@@ -281,7 +317,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       {/* Step 3: Container */}
       {step === 'container' && (
-        <div className="flex flex-col items-center w-full animate-fade-in">
+        <div className="flex flex-col items-center w-full animate-fade-in relative z-10">
           <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center">
             Where is this feeling living right now?
           </h2>
@@ -302,7 +338,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       {/* Step 4: Friction */}
       {step === 'friction' && selectedArea && (
-        <div className="flex flex-col items-center w-full animate-fade-in">
+        <div className="flex flex-col items-center w-full animate-fade-in relative z-10">
           <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center">
              What specific theme is weighing on you?
           </h2>
@@ -320,56 +356,66 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         </div>
       )}
 
-      {/* Step 5: Elaboration (With Voice) */}
-      {step === 'elaboration' && (
-        <div className="max-w-xl w-full animate-fade-in-up flex flex-col items-center">
-            <div className="flex items-center gap-2 mb-6 text-sm text-brand-teal/80 font-mono uppercase tracking-widest bg-dark-surface/30 px-3 py-1 rounded-full backdrop-blur-sm">
-                 <span>{selectedSentiment}</span>
-                 <span>•</span>
-                 <span>{selectedArea}</span>
-                 <span>•</span>
-                 <span>{selectedTrigger}</span>
-            </div>
-            
-            <h2 className="text-2xl font-bold font-display text-white mb-6 text-center">
-               {getPromptPlaceholder()}
-            </h2>
-            
-            <div className="w-full relative">
-                <textarea
-                    value={elaboration}
-                    onChange={(e) => setElaboration(e.target.value)}
-                    placeholder={isListening ? "Listening..." : "Type here or tap the mic..."}
-                    className="w-full h-40 bg-dark-surface/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all"
-                    autoFocus
-                />
-                <button 
-                    onClick={toggleListening}
-                    className={`absolute bottom-4 right-4 p-3 rounded-full transition-all duration-300 ${isListening ? 'bg-brand-teal text-brand-indigo shadow-[0_0_15px_rgba(44,229,195,0.5)] scale-110' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                    title="Use Voice Input"
-                >
-                    <MicIcon className="w-6 h-6" />
-                </button>
-            </div>
-            
-            <div className="mt-8 flex justify-between items-center w-full">
-                <span className={`text-sm font-medium transition-colors ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
-                    {elaboration.length < 10 ? 'Tell me a bit more...' : 'Ready to analyze'}
-                </span>
-                <button
-                    onClick={handleAnalyze}
-                    disabled={elaboration.length < 10}
-                    className="bg-white text-brand-indigo font-bold py-3 px-8 rounded-full hover:bg-brand-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                >
-                    Analyze
-                </button>
-            </div>
-        </div>
+      {/* Step 5: Elaboration (With Voice & Bubbles) */}
+      {step === 'elaboration' && selectedSentiment && (
+        <>
+          <FloatingBubbles sentiment={selectedSentiment} visible={elaboration.length === 0 && !isListening} />
+          
+          <div className="max-w-xl w-full animate-fade-in-up flex flex-col items-center relative z-10">
+              <div className="flex items-center gap-2 mb-6 text-sm text-brand-teal/80 font-mono uppercase tracking-widest bg-dark-surface/30 px-3 py-1 rounded-full backdrop-blur-sm">
+                   <span>{selectedSentiment}</span>
+                   <span>•</span>
+                   <span>{selectedArea}</span>
+                   <span>•</span>
+                   <span>{selectedTrigger}</span>
+              </div>
+              
+              <h2 className="text-2xl font-bold font-display text-white mb-6 text-center">
+                 {getPromptPlaceholder()}
+              </h2>
+              
+              <div className="w-full relative">
+                  <textarea
+                      value={elaboration}
+                      onChange={(e) => setElaboration(e.target.value)}
+                      placeholder={isListening ? "Listening..." : "Type here or tap the mic..."}
+                      className="w-full h-40 bg-dark-surface/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all"
+                      autoFocus
+                  />
+                  <button 
+                      onClick={toggleListening}
+                      className={`absolute bottom-4 right-4 p-3 rounded-full transition-all duration-500 ${
+                        isListening 
+                          ? 'bg-brand-teal text-brand-indigo shadow-[0_0_15px_rgba(44,229,195,0.5)] scale-110' 
+                          : showMicPulse 
+                            ? 'bg-white/20 text-white animate-pulse shadow-[0_0_10px_rgba(255,255,255,0.3)]' 
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                      title="Use Voice Input"
+                  >
+                      <MicIcon className="w-6 h-6" />
+                  </button>
+              </div>
+              
+              <div className="mt-8 flex justify-between items-center w-full">
+                  <span className={`text-sm font-medium transition-colors ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
+                      {elaboration.length < 10 ? 'Just one sentence is enough...' : 'Ready to analyze'}
+                  </span>
+                  <button
+                      onClick={handleAnalyze}
+                      disabled={elaboration.length < 10}
+                      className="bg-white text-brand-indigo font-bold py-3 px-8 rounded-full hover:bg-brand-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                      Analyze
+                  </button>
+              </div>
+          </div>
+        </>
       )}
 
-      {/* Step 6: Processing (Transparent Steps) */}
+      {/* Step 6: Processing */}
       {step === 'processing' && (
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center relative z-10">
            <div className="relative w-24 h-24 mb-8">
               <div className="absolute inset-0 border-4 border-brand-teal/20 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
@@ -383,7 +429,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       {/* Step 7: Awe (Typewriter Reveal) */}
       {step === 'awe' && insight && (
-        <div className="max-w-md w-full bg-dark-surface/30 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl animate-fade-in-up">
+        <div className="max-w-md w-full bg-dark-surface/30 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl animate-fade-in-up relative z-10">
             <div className="flex items-center gap-3 mb-6">
                 <SparklesIcon className="w-6 h-6 text-brand-teal animate-pulse" />
                 <h3 className="text-sm font-bold uppercase tracking-wider text-brand-teal">Instant Insight</h3>
@@ -396,7 +442,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
             {displayedInsight.length === insight.insight.length && (
                 <div className="flex flex-col gap-3 animate-fade-in">
                     <button
-                        onClick={() => onComplete('chat', insight.followUpQuestion)}
+                        onClick={() => onComplete('chat', elaboration, insight.followUpQuestion)}
                         className="w-full flex items-center justify-center gap-2 bg-brand-teal text-brand-indigo font-bold py-4 rounded-xl hover:bg-teal-300 transition-all shadow-lg"
                     >
                         <ChatBubbleIcon className="w-5 h-5" />
