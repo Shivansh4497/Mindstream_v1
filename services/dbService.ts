@@ -1,17 +1,8 @@
 
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
-import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory } from '../types';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
-
-// --- UNIFIED BRAIN CONTEXT ---
-// Defined here to avoid modifying types.ts and risking data loss
-export interface UserContext {
-  recentEntries: Entry[];
-  pendingIntentions: Intention[];
-  activeHabits: Habit[];
-  latestReflection: Reflection | null;
-}
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
