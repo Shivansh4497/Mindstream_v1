@@ -36,6 +36,41 @@ export const createProfile = async (user: User): Promise<Profile | null> => {
   return data;
 };
 
+export const deleteAccount = async (userId: string): Promise<boolean> => {
+  if (!supabase) return false;
+  
+  try {
+    // Delete all data associated with the user.
+    // Note: If Cascading deletes are set up in SQL, deleting the profile might be enough,
+    // but we delete children explicitly here to be safe and ensure clean removal.
+    
+    // Habits and logs (Cascading usually handles logs, but we target habits)
+    await supabase.from('habits').delete().eq('user_id', userId);
+    
+    // Intentions
+    await supabase.from('intentions').delete().eq('user_id', userId);
+    
+    // Reflections
+    await supabase.from('reflections').delete().eq('user_id', userId);
+    
+    // Entries
+    await supabase.from('entries').delete().eq('user_id', userId);
+    
+    // Finally, the Profile
+    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    
+    if (error) {
+      console.error("Error deleting profile:", error);
+      return false;
+    }
+    
+    return true;
+  } catch (e) {
+    console.error("Exception during account deletion:", e);
+    return false;
+  }
+};
+
 // Entry Functions
 export const getEntries = async (userId: string): Promise<Entry[]> => {
   if (!supabase) return [];
