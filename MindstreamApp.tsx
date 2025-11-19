@@ -10,7 +10,7 @@ import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
 import { Stream } from './components/Stream';
 import { InputBar } from './components/InputBar';
-import { PrivacyModal } from './components/PrivacyModal';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { SearchModal } from './components/SearchModal';
 import { ChatView } from './components/ChatView';
@@ -29,6 +29,7 @@ import { HabitsInputBar } from './components/HabitsInputBar';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
+const ONBOARDING_COMPLETE_STEP = 5;
 
 export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
 
@@ -60,8 +61,17 @@ export const MindstreamApp: React.FC = () => {
   const [chatStarters, setChatStarters] = useState<string[]>([]);
   const [isGeneratingStarters, setIsGeneratingStarters] = useState(false);
   
-  const [hasSeenPrivacy, setHasSeenPrivacy] = useLocalStorage('hasSeenPrivacy', false);
-  const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
+  // Replaces hasSeenPrivacy with a numeric step
+  const [onboardingStep, setOnboardingStep] = useLocalStorage<number>('onboardingStep', 0);
+  // Legacy support: If user previously saw privacy modal, mark as complete
+  const [legacyPrivacy] = useLocalStorage('hasSeenPrivacy', false);
+  
+  useEffect(() => {
+      if (legacyPrivacy && onboardingStep === 0) {
+          setOnboardingStep(ONBOARDING_COMPLETE_STEP);
+      }
+  }, [legacyPrivacy, onboardingStep, setOnboardingStep]);
+
   
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [initialSearchQuery, setInitialSearchQuery] = useState('');
@@ -223,10 +233,29 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
         if (firstUserPrompt) {
             // If starting with a prompt, set up history and immediately start streaming response.
-            const userMessage: Message = { sender: 'user', text: firstUserPrompt, id: `user-${Date.now()}` };
-            const initialHistory = [initialAiMessage, userMessage];
+            // We do NOT add the user message here because the caller usually sets view to chat immediately.
+            // But for the Onboarding handoff, we need to manually construct history.
+            
+            // Special case: If the prompt comes from onboarding, we assume it's a system prompt context for the AI,
+            // not necessarily a direct user message bubble.
+            // Wait, standard chat flow is user types -> AI responds.
+            
+            // Let's treat `firstUserPrompt` as a hidden system-like context wrapper.
+            // Actually, better UX: Just use it as the user's first message.
+            
+            // However, for the onboarding flow: "The AI is already typing a relevant question."
+            // So we want the AI to initiate based on the prompt.
+            
+            const systemContextMessage: Message = { 
+                sender: 'user', 
+                text: `(Context from onboarding: ${firstUserPrompt})`, 
+                id: 'onboarding-context' 
+            };
+            
+            // We don't show this context message in UI necessarily, but for simplicity let's just send it.
+            // Actually, let's just trigger a generation based on history.
+            const initialHistory = [initialAiMessage];
             setMessages(initialHistory);
-            // This is a continuation call, so pass the history.
             await handleSendMessage(firstUserPrompt, initialHistory);
         } else {
             // Normal session start: display greeting, then fetch starters in the background.
@@ -571,6 +600,29 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
     const output = await gemini.getRawReflectionForDebug(entriesForDay, intentionsForDay);
     setDebugOutput(output);
   };
+  
+  const handleOnboardingComplete = async (destination: 'stream' | 'chat', initialContext?: string) => {
+      setOnboardingStep(ONBOARDING_COMPLETE_STEP);
+      if (user) {
+          // Refresh data to show the newly added onboarding entry
+          const userEntries = await db.getEntries(user.id);
+          setEntries(userEntries);
+      }
+
+      if (destination === 'chat' && initialContext) {
+           setView('chat');
+           // Seed the chat with the context from onboarding
+           const contextPrompt = `The user has just completed onboarding. They wrote about feeling an emotion. Here is the context: "${initialContext}". Please ask the gentle follow-up question you generated to help them unpack this.`;
+           startNewChatSession(contextPrompt);
+      } else {
+          setView('stream');
+      }
+  };
+
+  // Render Onboarding Wizard if incomplete
+  if (onboardingStep < ONBOARDING_COMPLETE_STEP && user) {
+      return <OnboardingWizard userId={user.id} onComplete={handleOnboardingComplete} />;
+  }
 
   const renderCurrentView = () => {
       switch(view) {
@@ -648,7 +700,6 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
   return (
     <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
-      {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
       {showSearchModal && <SearchModal entries={entries} reflections={reflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
       {showThematicModal && selectedTag && (
         <ThematicModal 
