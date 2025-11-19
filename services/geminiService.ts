@@ -440,6 +440,7 @@ Respond with only a JSON object.`;
 
 /**
  * Asynchronously analyzes an entry to offer specific, actionable next steps (The Silent Observer).
+ * UPDATED: Uses a robust Object schema { suggestions: [...] } to avoid JSON parsing errors.
  */
 export const generateEntrySuggestions = async (entryText: string): Promise<EntrySuggestion[] | null> => {
     if (!ai) return null;
@@ -449,17 +450,16 @@ export const generateEntrySuggestions = async (entryText: string): Promise<Entry
     Entry: "${entryText}"
     
     Rules:
-    1. Be Strict: Only suggest if the user clearly implies a desire to change, achieve, or explore. If they are just logging/venting, return null.
+    1. Be Strict: Only suggest if the user clearly implies a desire to change, achieve, or explore. If they are just logging/venting, return an empty list.
     2. Suggest ONLY 1 or 2 items maximum.
-    3. Output format: A JSON array of objects.
+    3. Output format: A JSON object with a "suggestions" array.
     
     Types:
     - 'habit': Use if they mention a repetitive action they want to start/stop (e.g., "I need to run more"). Data: { frequency: 'daily' | 'weekly' }.
     - 'intention': Use for one-off goals (e.g., "I want to finish that report"). Data: { timeframe: 'daily' | 'weekly' | 'monthly' }.
     - 'reflection': Use if they seem confused, stuck, or emotional and need to talk it out. Data: { prompt: "Specific question to start chat" }.
     
-    Output Schema: 
-    Array<{ type: 'habit'|'intention'|'reflection', label: string, data: any }> or null.
+    Respond with a JSON object: { "suggestions": [...] }
     `;
 
     try {
@@ -471,21 +471,27 @@ export const generateEntrySuggestions = async (entryText: string): Promise<Entry
                 config: {
                     responseMimeType: "application/json",
                     responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                type: { type: Type.STRING, enum: ['habit', 'intention', 'reflection'] },
-                                label: { type: Type.STRING, description: "Short button label e.g. 'Track Running' or 'Discuss Anxiety'" },
-                                data: { type: Type.OBJECT, description: "Context object" }
-                            },
-                            required: ['type', 'label', 'data']
-                        }
+                        type: Type.OBJECT,
+                        properties: {
+                            suggestions: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        type: { type: Type.STRING, enum: ['habit', 'intention', 'reflection'] },
+                                        label: { type: Type.STRING, description: "Short button label e.g. 'Track Running' or 'Discuss Anxiety'" },
+                                        data: { type: Type.OBJECT, description: "Context object" }
+                                    },
+                                    required: ['type', 'label', 'data']
+                                }
+                            }
+                        },
+                        required: ['suggestions']
                     }
                 }
             });
-            const result = parseGeminiJson<EntrySuggestion[]>(response.text);
-            return result.length > 0 ? result : null;
+            const result = parseGeminiJson<{ suggestions: EntrySuggestion[] }>(response.text);
+            return result.suggestions && result.suggestions.length > 0 ? result.suggestions : null;
         });
     } catch (e) {
         console.warn("Silent observer failed (non-critical):", e);
