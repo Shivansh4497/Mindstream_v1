@@ -66,12 +66,16 @@ export interface Intention {
     created_at: string;
 }
 
+export type HabitFrequency = 'daily' | 'weekly' | 'monthly';
+export type HabitCategory = 'Health' | 'Growth' | 'Career' | 'Finance' | 'Connection' | 'System';
+
 export interface Habit {
   id: string;
   user_id: string;
   name: string;
   emoji: string;
-  frequency: 'daily';
+  category: HabitCategory;
+  frequency: HabitFrequency;
   current_streak: number;
   longest_streak: number;
   created_at: string;
