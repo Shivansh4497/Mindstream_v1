@@ -335,10 +335,11 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
         setEntries(prev => prev.map(e => e.id === tempId ? savedEntry : e));
         
         // 5. Phase 2: The Silent Observer (Async Suggestion Engine)
-        // Only trigger if text is substantial enough (> 5 words) and AI is ready.
-        if (aiStatus === 'ready' && text.split(' ').length > 5) {
+        // UPDATED: Threshold lowered to 3 words for easier testing of features.
+        if (aiStatus === 'ready' && text.split(' ').length > 3) {
             gemini.generateEntrySuggestions(text).then(async (suggestions) => {
                 if (suggestions && suggestions.length > 0) {
+                    console.log("✨ Silent Observer found suggestions:", suggestions);
                     // Update DB
                     await db.updateEntry(savedEntry.id, { suggestions });
                     // Update UI to show Sparkle
