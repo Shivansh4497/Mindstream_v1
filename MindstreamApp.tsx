@@ -337,15 +337,20 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
         // 5. Phase 2: The Silent Observer (Async Suggestion Engine)
         // UPDATED: Threshold lowered to 3 words for easier testing of features.
         if (aiStatus === 'ready' && text.split(' ').length > 3) {
+            console.log(`[Silent Observer] Triggered for entry: "${text.substring(0, 20)}..."`);
             gemini.generateEntrySuggestions(text).then(async (suggestions) => {
                 if (suggestions && suggestions.length > 0) {
-                    console.log("✨ Silent Observer found suggestions:", suggestions);
+                    console.log(`[Silent Observer] ✨ Found ${suggestions.length} suggestions.`);
                     // Update DB
                     await db.updateEntry(savedEntry.id, { suggestions });
                     // Update UI to show Sparkle
                     setEntries(prev => prev.map(e => e.id === savedEntry.id ? { ...e, suggestions } : e));
+                } else if (text.startsWith("TEST:")) {
+                    // DEBUG FEEDBACK: If it was a test and we got nothing, show a toast so the user knows the AI ran.
+                    console.log("[Silent Observer] AI ran but returned no suggestions.");
+                    setToast({ message: "AI Analysis: No suggestions found.", id: Date.now() });
                 }
-            }).catch(err => console.error("Error generating background suggestions:", err));
+            }).catch(err => console.error("[Silent Observer] Error:", err));
         }
 
     } catch (error) {
