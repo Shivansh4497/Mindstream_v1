@@ -2,16 +2,20 @@
 // FIX: This file was previously empty. It has been implemented as the EntryCard component.
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Corrected the import path to be relative.
-import type { Entry, GranularSentiment } from '../types';
+import type { Entry, GranularSentiment, EntrySuggestion } from '../types';
 import { MoreOptionsIcon } from './icons/MoreOptionsIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { SparklesIcon } from './icons/SparklesIcon';
+import { PlusCircleIcon } from './icons/PlusCircleIcon';
+import { ChatBubbleIcon } from './icons/ChatBubbleIcon';
 
 interface EntryCardProps {
   entry: Entry;
   onTagClick?: (tag: string) => void;
   onEdit: (entry: Entry) => void;
   onDelete: (entry: Entry) => void;
+  onAcceptSuggestion?: (entryId: string, suggestion: EntrySuggestion) => void;
 }
 
 const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): string => {
@@ -37,12 +41,14 @@ const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): s
 };
 
 
-export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit, onDelete }) => {
+export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit, onDelete, onAcceptSuggestion }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isProcessing = entry.emoji === "⏳";
   const isUnprocessed = entry.tags?.includes("Unprocessed");
+  const hasSuggestions = entry.suggestions && entry.suggestions.length > 0;
 
   const entryTime = new Date(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
@@ -80,6 +86,16 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
         </div>
         
         <div className="flex items-center gap-2 flex-shrink-0">
+          {hasSuggestions && !isProcessing && (
+            <button
+                onClick={() => setIsSuggestionsOpen(!isSuggestionsOpen)}
+                className={`p-2 rounded-full transition-all duration-300 ${isSuggestionsOpen ? 'bg-brand-teal/20 text-brand-teal rotate-12' : 'text-brand-teal hover:bg-brand-teal/10 hover:scale-110 animate-pulse'}`}
+                aria-label="View AI Suggestions"
+            >
+                <SparklesIcon className="w-5 h-5" />
+            </button>
+          )}
+
           <time className="text-sm text-gray-400">{entryTime}</time>
           
           {!isProcessing && (
@@ -140,6 +156,44 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
             </button>
           ))}
         </div>
+      )}
+
+      {/* Suggestions Drawer */}
+      {isSuggestionsOpen && hasSuggestions && (
+          <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in-up">
+              <div className="text-xs font-bold text-brand-teal uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <SparklesIcon className="w-3 h-3" />
+                  Mindstream Suggests
+              </div>
+              <div className="flex flex-col gap-2">
+                  {entry.suggestions!.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => onAcceptSuggestion?.(entry.id, suggestion)}
+                        className="flex items-center justify-between w-full p-3 rounded-lg bg-brand-indigo/50 hover:bg-brand-indigo border border-brand-teal/20 hover:border-brand-teal/50 transition-all group text-left"
+                      >
+                          <div className="flex items-center gap-3">
+                                {suggestion.type === 'habit' && <div className="p-1.5 rounded-full bg-rose-500/20 text-rose-400"><PlusCircleIcon className="w-4 h-4" /></div>}
+                                {suggestion.type === 'intention' && <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400"><PlusCircleIcon className="w-4 h-4" /></div>}
+                                {suggestion.type === 'reflection' && <div className="p-1.5 rounded-full bg-sky-500/20 text-sky-400"><ChatBubbleIcon className="w-4 h-4" /></div>}
+                                
+                                <div>
+                                    <div className="text-sm font-medium text-white group-hover:text-brand-teal transition-colors">
+                                        {suggestion.label}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 capitalize">
+                                        {suggestion.type === 'habit' ? `${suggestion.data.frequency} Habit` : 
+                                         suggestion.type === 'intention' ? `${suggestion.data.timeframe} Goal` : 'Discuss in Chat'}
+                                    </div>
+                                </div>
+                          </div>
+                          <div className="text-brand-teal opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold">
+                              {suggestion.type === 'reflection' ? 'Start Chat' : 'Add'} &rarr;
+                          </div>
+                      </button>
+                  ))}
+              </div>
+          </div>
       )}
     </div>
   );
