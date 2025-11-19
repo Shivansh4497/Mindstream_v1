@@ -1,456 +1,392 @@
-// FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
-import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment } from '../types';
-import { getDisplayDate } from "../utils/date";
 
-let ai: GoogleGenAI | null = null;
-let apiKeyAvailable = false;
+import { supabase } from './supabaseClient';
+import { User } from '@supabase/supabase-js';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog } from '../types';
+import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
 
-// FIX: Reverted to VITE_ prefix as required by the Vite build tool for client-side exposure.
-const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
-
-if (GEMINI_API_KEY) {
-  try {
-    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    apiKeyAvailable = true;
-  } catch (e) {
-    console.error("Error initializing Gemini client. Please check your API key.", e);
-    ai = null;
-    apiKeyAvailable = false;
+// Profile Functions
+export const getProfile = async (userId: string): Promise<Profile | null> => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+    console.error('Error getting profile:', error);
   }
-}
-
-if (!apiKeyAvailable) {
-    console.log("Gemini API Key is not configured. AI features will be disabled.");
-}
-
-export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
-
-/**
- * Performs a simple, low-cost API call to verify the API key is valid and functional.
- * Throws an error if the API call fails.
- */
-export const verifyApiKey = async (): Promise<boolean> => {
-  if (!ai) throw new Error("AI client not initialized. API key may be missing.");
-  // This is a simple, fast, and low-token request to verify the key.
-  await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'Hi' });
-  return true;
+  return data;
 };
 
-/**
- * A robust JSON parser that handles markdown-wrapped JSON from Gemini.
- */
-const parseGeminiJson = <T>(jsonString: string): T => {
-    let cleanJsonString = jsonString.trim();
-    // A common failure mode is the LLM wrapping the JSON in markdown code blocks.
-    const match = cleanJsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (match && match[1]) {
-      cleanJsonString = match[1];
+export const createProfile = async (user: User): Promise<Profile | null> => {
+  if (!supabase) throw new Error("Supabase client not initialized");
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert({
+      id: user.id,
+      email: user.email,
+      avatar_url: user.user_metadata.avatar_url,
+    } as any)
+    .select()
+    .single();
+  if (error) {
+    console.error('Error creating profile:', error);
+    throw error;
+  }
+  return data;
+};
+
+// Entry Functions
+export const getEntries = async (userId: string): Promise<Entry[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false });
+  if (error) {
+    console.error('Error fetching entries:', error);
+    return [];
+  }
+  return data || [];
+};
+
+// This function saves a complete, AI-enriched entry. This is the original, working logic.
+export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
+  if (!supabase) throw new Error("Supabase client not initialized");
+  const { data, error } = await supabase
+    .from('entries')
+    .insert({ ...entryData, user_id: userId } as any)
+    .select()
+    .single();
+  if (error) {
+    console.error('Error adding entry:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const updateEntry = async (entryId: string, updatedData: Partial<Entry>): Promise<Entry> => {
+    if (!supabase) throw new Error("Supabase client not initialized");
+    const { data, error } = await supabase
+        .from('entries')
+        // FIX: Use @ts-ignore to bypass a Supabase client type inference issue with the update method.
+        // @ts-ignore
+        .update(updatedData)
+        .eq('id', entryId)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error updating entry:', error);
+        throw error;
     }
-    return JSON.parse(cleanJsonString);
+    return data;
 };
 
-const generateActionableSuggestionsSchema = {
-    type: Type.ARRAY,
-    description: "A list of 1-2 concise, actionable suggestions based on the reflection, framed as intentions. Keep each suggestion text under 10 words and frame it as a direct, actionable command.",
-    items: {
-        type: Type.OBJECT,
-        properties: {
-            text: {
-                type: Type.STRING,
-                description: "The task or goal to be achieved (under 10 words)."
-            },
-            timeframe: {
-                type: Type.STRING,
-                description: "The suggested timeframe, either 'daily' or 'weekly'."
-            }
-        },
-        required: ['text', 'timeframe']
+export const deleteEntry = async (entryId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { error } = await supabase
+        .from('entries')
+        .delete()
+        .eq('id', entryId);
+    if (error) {
+        console.error('Error deleting entry:', error);
+        return false;
     }
+    return true;
 };
 
-/**
- * Generates a summary reflection based on a day's entries and intentions.
- */
-export const generateReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
-  if (!ai) throw new Error("AI functionality is disabled. Please configure the API key.");
-  
-  const model = 'gemini-2.5-flash';
 
-  const entriesText = entries.map(e => `- Feeling ${e.primary_sentiment}, I wrote: ${e.text}`).join('\n');
-  const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
-
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries (including their primary emotion) and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions aligned with my goals. Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "The prominent feelings today were Proud and Overwhelmed..."). Based on your analysis, also provide 1-2 concise, actionable suggestions for a new 'daily' or 'weekly' intention. Keep each suggestion under 10 words.
-
-Here were our intentions for today:
-${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
-
-Here are today's journal entries:
-${entriesText}
-
-Respond with a JSON object.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 2-3 sentence holistic reflection on the day."
-                },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
-        }
-    }
-  });
-
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
+// Onboarding Functions
+export const addWelcomeEntry = async (userId: string): Promise<void> => {
+  if (!supabase) return;
+  const welcomeData = {
+    timestamp: new Date().toISOString(),
+    text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
+    title: "Your First Step to Clarity",
+    tags: ["welcome", "getting-started"],
+    primary_sentiment: "Hopeful" as const,
+    emoji: "👋",
+    user_id: userId,
+  };
+   // FIX: Cast to 'any' to bypass Supabase client type error due to missing generated types.
+   const { error } = await supabase.from('entries').insert(welcomeData as any);
+   if (error) {
+     console.error("Failed to add welcome entry:", error);
+     throw error;
+   }
 };
 
-/**
- * FOR DEBUGGING: Calls the reflection API but returns the raw, unparsed response or error.
- */
-export const getRawReflectionForDebug = async (entries: Entry[], intentions: Intention[]): Promise<string> => {
-  try {
-    if (!ai) return "AI client not initialized. Check if VITE_API_KEY is set.";
+export const addFirstIntention = async (userId: string): Promise<Intention | null> => {
+  return addIntention(userId, "Explore all four tabs of Mindstream", "daily");
+};
+
+
+// Reflection Functions
+export const getReflections = async (userId: string): Promise<Reflection[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('reflections')
+    .select('*')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching reflections:', error);
+    return [];
+  }
+  if (!data) return [];
+
+  // Convert dates back to the ID format the app expects before de-duping.
+  const processedData = data.map((reflection: any) => {
+    const typedReflection = reflection as Reflection;
+    let finalDate = typedReflection.date;
     
-    // We use the same logic as the real function to ensure the test is valid.
-    const model = 'gemini-2.5-flash';
-    const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
-    const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
-    const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 actionable suggestions for a new 'daily' or 'weekly' intention.
-
-Here were our intentions for today:
-${intentionsText.length > 0 ? intentionsText : "No specific intentions were set."}
-
-Here are today's journal entries:
-${entriesText.length > 0 ? entriesText : "No journal entries were made."}
-
-Respond with a JSON object.`;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                  summary: { type: Type.STRING },
-                  suggestions: generateActionableSuggestionsSchema
-              },
-              required: ['summary', 'suggestions']
-          }
-      }
-    });
-
-    return `SUCCESS! Raw AI Response:\n\n---\n${response.text}\n---`;
-  } catch (error: any) {
-    console.error("DEBUG CAPTURED ERROR:", error);
-    let errorMessage = `ERROR! The API call failed.\n\n---\n`;
-    errorMessage += `Error Type: ${error.name}\n`;
-    errorMessage += `Error Message: ${error.message}\n`;
-    if (error.stack) {
-      errorMessage += `Stack Trace:\n${error.stack}\n`;
+    if (typedReflection.type === 'weekly') {
+      finalDate = getWeekId(new Date(typedReflection.date));
+    } else if (typedReflection.type === 'monthly') {
+      finalDate = getMonthId(new Date(typedReflection.date));
     }
-    errorMessage += '---\n\nThis usually means the API key is invalid or billing is not enabled for the project.';
-    return errorMessage;
-  }
-};
-
-
-/**
- * Generates a weekly summary reflection based on a week's journal entries.
- */
-export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
-  if (!ai) throw new Error("AI functionality is disabled.");
-  
-  const model = 'gemini-2.5-flash';
-  
-  const entriesText = entries
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(e => `- On ${getDisplayDate(e.timestamp)}, feeling ${e.primary_sentiment}: ${e.text}`)
-    .join('\n');
-
-  const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
-
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions/goals from an entire week. Please synthesize these into a higher-level weekly summary (3-4 sentences). Identify broader patterns, recurring themes, and overall mood, paying special attention to how our actions and feelings (from entries) aligned with our goals (from intentions). Based on this, also provide 1-2 concise, actionable 'weekly' intentions (under 10 words each). Speak in a gentle, encouraging, and first-person-plural tone.
-
-Here are our intentions for context:
-${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
-
-Here are our journal entries from this week:
-${entriesText}
-
-Respond with a JSON object.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 3-4 sentence holistic reflection on the week."
-                },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
-        }
-    }
+    return { ...typedReflection, date: finalDate, suggestions: typedReflection.suggestions || [] };
   });
-  
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
-};
 
-
-/**
- * Generates a monthly summary reflection based on a month's journal entries.
- */
-export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
-  if (!ai) throw new Error("AI functionality is disabled.");
-  
-  const model = 'gemini-2.5-flash';
-  
-  const entriesText = entries
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(e => `- On ${getDisplayDate(e.timestamp)}, feeling ${e.primary_sentiment}: ${e.text}`)
-    .join('\n');
-
-  const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text} (${i.timeframe})`).join('\n');
-
-  const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and intentions from an entire month. Please synthesize these into a higher-level monthly summary (4-5 sentences). Analyze how our actions and feelings related to our goals. Identify major themes, significant shifts in mood or thinking, challenges we faced, and milestones we achieved over the month. Based on this, also provide 1-2 concise, actionable 'weekly' or 'monthly' intentions (under 10 words each). Speak in a gentle, encouraging, and first-person-plural tone.
-
-Here are our intentions for context:
-${intentionsText.length > 0 ? intentionsText : "No specific intentions were set for this period."}
-
-Here are our journal entries from this month:
-${entriesText}
-
-Respond with a JSON object.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 4-5 sentence holistic reflection on the month."
-                },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
-        }
+  // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
+  const latestReflections = new Map<string, Reflection>();
+  for (const reflection of processedData) {
+    const typedReflection = reflection as Reflection;
+    const key = `${typedReflection.date}-${typedReflection.type}`;
+    if (!latestReflections.has(key)) {
+      latestReflections.set(key, typedReflection);
     }
-  });
-  
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
-};
-
-export const generateThematicReflection = async (tag: string, entries: Entry[]): Promise<string> => {
-  if (!ai) throw new Error("AI functionality is disabled.");
-  
-  const model = 'gemini-2.5-flash';
-  const relevantEntries = entries.filter(e => e.tags?.includes(tag));
-  
-  if (relevantEntries.length === 0) {
-    return "There are no entries with this tag to reflect upon.";
   }
 
-  const entriesText = relevantEntries
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(e => `- On ${getDisplayDate(e.timestamp)}: ${e.title ? `(${e.title}) ` : ''}${e.text}`)
-    .join('\n');
-
-  const prompt = `You are a thoughtful journal assistant. I will provide you with all my journal entries that share a common theme or tag. Please synthesize these into a "thematic reflection" that explores how my thoughts and feelings on this topic have evolved over time. Identify key moments, shifts in perspective, or unresolved questions related to this theme. Speak in a gentle, encouraging, first-person-plural tone. Keep it to 3-4 sentences.
-
-The theme we are reflecting on is: "${tag}"
-
-Here are our journal entries related to this theme:
-${entriesText}
-
-Your holistic thematic reflection on our journey with "${tag}":`;
-  
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-  });
-
-  return response.text;
+  return Array.from(latestReflections.values());
 };
 
-const GRANULAR_SENTIMENTS: GranularSentiment[] = [
-    'Joyful', 'Grateful', 'Proud', 'Hopeful', 'Content',
-    'Anxious', 'Frustrated', 'Sad', 'Overwhelmed', 'Confused',
-    'Reflective', 'Inquisitive', 'Observational'
-];
-
-/**
- * Processes a new journal entry to generate a title, tags, and granular sentiments.
- */
-export const processEntry = async (entryText: string): Promise<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>> => {
-  if (!ai) throw new Error("AI client not initialized.");
-  
-  const model = 'gemini-2.5-flash';
-
-  const prompt = `Analyze the following journal entry. Based on its content:
-1.  Provide a concise, descriptive title (3-5 words, unless the entry is very short).
-2.  Generate 2-4 relevant tags.
-3.  Choose a 'primary_sentiment' from this specific list: [${GRANULAR_SENTIMENTS.join(', ')}].
-4.  If the emotion is complex, add an optional 'secondary_sentiment' from the same list.
-5.  Add a single, appropriate Unicode emoji.
-  
-CRITICAL RULE: For very short entries (under 10 words), the title can be just 1-2 words, or a slightly rephrased, capitalized version of the entry itself.
-
-Entry: "${entryText}"
-
-Respond with only a JSON object.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          tags: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          },
-          primary_sentiment: { type: Type.STRING },
-          secondary_sentiment: { type: Type.STRING },
-          emoji: { type: Type.STRING }
-        },
-        required: ['title', 'tags', 'primary_sentiment', 'emoji']
-      }
+export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection> => {
+    if (!supabase) throw new Error("Supabase client not initialized");
+    let dateForDb = reflectionData.date;
+    if (reflectionData.type === 'weekly') {
+        dateForDb = getDateFromWeekId(reflectionData.date).toISOString().split('T')[0];
+    } else if (reflectionData.type === 'monthly') {
+        dateForDb = `${reflectionData.date}-01`;
     }
-  });
-  
-  const result = parseGeminiJson<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>>(response.text);
-  return result;
+
+    const dbPayload = {
+        ...reflectionData,
+        date: dateForDb,
+        user_id: userId,
+        timestamp: new Date().toISOString(),
+        suggestions: reflectionData.suggestions || null, // Pass object directly to jsonb column
+    };
+
+    const { data, error } = await supabase
+        .from('reflections')
+        .insert(dbPayload as any)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error adding reflection:', error);
+        throw error;
+    }
+    
+    // The returned data should have suggestions as an object, not a string.
+    return data as Reflection;
 };
 
+// Intention Functions
+export const getIntentions = async (userId: string): Promise<Intention[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+        .from('intentions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error('Error fetching intentions:', error);
+        return [];
+    }
+    return data || [];
+};
 
-/**
- * Gets a streaming response from the AI for the chat feature.
- */
-export const getChatResponseStream = async (history: Message[], entries: Entry[], intentions: Intention[]) => {
-    if (!ai) throw new Error("AI functionality is disabled.");
+export const addIntention = async (userId: string, text: string, timeframe: IntentionTimeframe): Promise<Intention | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('intentions')
+        .insert({ 
+            user_id: userId, 
+            text, 
+            timeframe,
+            status: 'pending',
+            is_recurring: false, // Default value
+        } as any)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error adding intention:', error);
+        throw error;
+    }
+    return data;
+};
 
-    const model = 'gemini-2.5-flash';
+export const updateIntentionStatus = async (id: string, status: IntentionStatus): Promise<Intention | null> => {
+    if (!supabase) return null;
+    const updatePayload = {
+        status,
+        completed_at: status === 'completed' ? new Date().toISOString() : null,
+    };
+    const { data, error } = await supabase
+        .from('intentions')
+        // @ts-ignore
+        .update(updatePayload)
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error updating intention status:', error);
+        throw error;
+    }
+    return data;
+};
 
-    const recentEntriesSummary = entries.slice(0, 15).map(e => 
-        `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`
-    ).join('\n');
+export const deleteIntention = async (id: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { error } = await supabase
+        .from('intentions')
+        .delete()
+        .eq('id', id);
+    if (error) {
+        console.error('Error deleting intention:', error);
+        return false;
+    }
+    return true;
+};
+
+// Habit Functions
+
+export const getHabits = async (userId: string): Promise<Habit[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+        .from('habits')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
     
-    const intentionsSummary = intentions.map(i => 
-        `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
-    ).join('\n');
-
-    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries (including my stated emotions) AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
-
-CONTEXT from my recent journal entries:
-${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
-
-CONTEXT from my intentions and goals:
-${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set yet."}`;
-
-    const userPrompt = history[history.length - 1].text;
-    
-    const chatHistory = history.slice(0, -1).map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }],
-    }));
-    
-    const streamResult = await ai.models.generateContentStream({
-        model,
-        contents: [
-            ...chatHistory,
-            { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-            systemInstruction,
-        }
-    });
-    
-    return streamResult;
+    if (error) {
+        console.error('Error fetching habits:', error);
+        return [];
+    }
+    return data || [];
 }
 
-export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<string> => {
-    if (!ai) throw new Error("AI is not configured.");
-    if (entries.length === 0) return "Hello! I'm Mindstream. How can I help you reflect today?";
+export const getTodaysHabitLogs = async (userId: string): Promise<HabitLog[]> => {
+    if (!supabase) return [];
     
-    const model = 'gemini-2.5-flash';
-    const lastEntry = entries[0];
-    const prompt = `Based on my last journal entry, create a short, warm, one-sentence greeting that acknowledges the entry's topic without being too specific.
-
-Last entry: "Feeling ${lastEntry.primary_sentiment}, I wrote: ${lastEntry.text}"
-
-Your greeting:`;
-    const response = await ai.models.generateContent({ model, contents: prompt });
-    return response.text;
-};
-
-export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<{ starters: string[] }> => {
-    if (!ai) throw new Error("AI is not configured.");
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
     
-    const model = 'gemini-2.5-flash';
-    const entriesText = entries.slice(0, 5).map(e => `- Entry (Feeling: ${e.primary_sentiment}): ${e.text}`).join('\n');
-    const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
-
-    const prompt = `You are an AI assistant helping a user start a conversation with their journal. Your goal is to provide helpful, gentle, and useful starting points.
+    // Workaround: We first get the user's habit IDs, then find logs for those IDs.
+    const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
+    if (!habits || habits.length === 0) return [];
     
-Based on my recent entries and pending intentions, generate 3 conversation starters. They should be framed as questions I can ask you, the AI.
+    // FIX: Explicitly type 'h' as any to avoid TypeScript "Property 'id' does not exist on type 'never'" error
+    const habitIds = habits.map((h: any) => h.id);
     
-Follow these rules:
-1.  Generate ONE starter that is gently contextual, reflecting a high-level theme from the recent entries (e.g., "Review my thoughts on the 'new project'").
-2.  Generate TWO starters that are high-utility and not directly tied to a specific entry (e.g., "What are my pending intentions?" or "Summarize my main goals.").
-3.  Keep them short and clear.
+    const { data, error } = await supabase
+        .from('habit_logs')
+        .select('*')
+        .in('habit_id', habitIds)
+        .gte('completed_at', todayStart.toISOString());
+        
+    if (error) {
+        console.error('Error fetching habit logs:', error);
+        return [];
+    }
+    return data || [];
+}
 
-Recent Entries:
-${entriesText.length > 0 ? entriesText : "None"}
+export const addHabit = async (userId: string, name: string, emoji: string): Promise<Habit | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('habits')
+        .insert({
+            user_id: userId,
+            name,
+            emoji,
+            frequency: 'daily',
+            current_streak: 0,
+            longest_streak: 0
+        } as any)
+        .select()
+        .single();
+        
+    if (error) {
+        console.error('Error adding habit:', error);
+        throw error;
+    }
+    return data;
+}
 
-Pending Intentions:
-${intentionsText.length > 0 ? intentionsText : "None"}
+export const deleteHabit = async (habitId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { error } = await supabase.from('habits').delete().eq('id', habitId);
+    if (error) {
+        console.error('Error deleting habit:', error);
+        return false;
+    }
+    return true;
+}
 
-Respond with a JSON object containing a 'starters' array with exactly 3 strings.`;
+export const checkHabit = async (habitId: string, currentStreak: number): Promise<{log: HabitLog, updatedHabit: Habit}> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+    // 1. Insert Log
+    const { data: log, error: logError } = await supabase
+        .from('habit_logs')
+        .insert({ habit_id: habitId, completed_at: new Date().toISOString() } as any)
+        .select()
+        .single();
+        
+    if (logError) throw logError;
     
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    starters: {
-                        type: Type.ARRAY,
-                        description: "An array of exactly 3 string conversation starters.",
-                        items: { type: Type.STRING }
-                    }
-                },
-                required: ['starters']
-            }
-        }
-    });
+    // 2. Update Streak (Optimistic increment for 'daily' habits)
+    const newStreak = currentStreak + 1;
+    
+    const { data: habit, error: habitError } = await supabase
+        .from('habits')
+        // @ts-ignore
+        .update({ current_streak: newStreak })
+        .eq('id', habitId)
+        .select()
+        .single();
+        
+    if (habitError) throw habitError;
+    
+    return { log, updatedHabit: habit };
+}
 
-    const result = parseGeminiJson<{ starters: string[] }>(response.text);
-    return result;
-};
+export const uncheckHabit = async (logId: string, habitId: string, currentStreak: number): Promise<{ updatedHabit: Habit }> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+    // 1. Delete Log
+    const { error: logError } = await supabase
+        .from('habit_logs')
+        .delete()
+        .eq('id', logId);
+        
+    if (logError) throw logError;
+    
+    // 2. Decrement Streak (Safeguard against negative)
+    const newStreak = Math.max(0, currentStreak - 1);
+    
+    const { data: habit, error: habitError } = await supabase
+        .from('habits')
+        // @ts-ignore
+        .update({ current_streak: newStreak })
+        .eq('id', habitId)
+        .select()
+        .single();
+        
+    if (habitError) throw habitError;
+    
+    return { updatedHabit: habit };
+}
