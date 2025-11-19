@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { SearchIcon } from './icons/SearchIcon';
 import { useAuth } from '../context/AuthContext';
@@ -22,8 +21,9 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
       await db.deleteAccount(user.id);
       
       // 2. Clear local storage flags so the Onboarding Wizard triggers again
-      // upon the next login.
-      window.localStorage.removeItem('onboardingStep');
+      // We remove the user-specific key
+      window.localStorage.removeItem(`onboardingStep_${user.id}`);
+      // And the generic one just in case (cleaner slate)
       window.localStorage.removeItem('hasSeenPrivacy');
       
       // 3. Logout
@@ -62,6 +62,7 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
                   <LogoutIcon className="w-4 h-4" />
                   Logout
                 </button>
+                <div className="border-t border-white/10 my-1"></div>
                 <button
                   onClick={handleDeleteAccount}
                   className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
