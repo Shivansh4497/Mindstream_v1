@@ -3,6 +3,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight } from '../types';
 import { getDisplayDate } from "../utils/date";
+import type { UserContext } from './dbService'; // Import from dbService to use the new interface
 
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
@@ -478,28 +479,69 @@ Respond with JSON.`;
     }
 };
 
-
 /**
- * Gets a streaming response from the AI for the chat feature.
+ * Converts the UserContext object into a natural language system prompt payload.
  */
-export const getChatResponseStream = async (history: Message[], entries: Entry[], intentions: Intention[]) => {
-    if (!ai) throw new Error("AI functionality is disabled.");
-
-    const recentEntriesSummary = entries.slice(0, 15).map(e => 
+const buildSystemContext = (context: UserContext): string => {
+    const recentEntriesSummary = context.recentEntries.map(e => 
         `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`
     ).join('\n');
     
-    const intentionsSummary = intentions.map(i => 
-        `- My [${i.timeframe}] goal is: "${i.text}" (Status: ${i.status})`
+    const intentionsSummary = context.pendingIntentions.map(i => 
+        `- My [${i.timeframe}] goal is: "${i.text}"`
     ).join('\n');
 
-    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. You have access to my recent journal entries (including my stated emotions) AND my list of intentions (to-dos/goals) to provide full context. Use all this information to answer my questions. Be empathetic, ask clarifying questions, and offer gentle guidance. Do not give medical advice. Keep your responses concise and conversational.
+    const habitsSummary = context.activeHabits.map(h =>
+        `- Habit: ${h.name} (${h.category}, Streak: ${h.current_streak})`
+    ).join('\n');
 
-CONTEXT from my recent journal entries:
-${recentEntriesSummary.length > 0 ? recentEntriesSummary : "No recent journal entries."}
+    let contextString = "";
+    
+    if (recentEntriesSummary) {
+        contextString += `CONTEXT from my recent journal entries:\n${recentEntriesSummary}\n\n`;
+    } else {
+        contextString += `CONTEXT: No recent journal entries.\n\n`;
+    }
 
-CONTEXT from my intentions and goals:
-${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set yet."}`;
+    if (intentionsSummary) {
+        contextString += `CONTEXT from my active intentions/goals:\n${intentionsSummary}\n\n`;
+    } else {
+        contextString += `CONTEXT: No active goals set.\n\n`;
+    }
+
+    if (habitsSummary) {
+        contextString += `CONTEXT from my active habits:\n${habitsSummary}\n\n`;
+    } else {
+        contextString += `CONTEXT: No habits being tracked.\n\n`;
+    }
+
+    if (context.latestReflection) {
+        contextString += `CONTEXT: My latest reflection was: "${context.latestReflection.summary}"`;
+    }
+
+    return contextString;
+}
+
+/**
+ * Gets a streaming response from the AI for the chat feature.
+ * Updated to accept the unified UserContext object.
+ */
+export const getChatResponseStream = async (history: Message[], context: UserContext) => {
+    if (!ai) throw new Error("AI functionality is disabled.");
+
+    const contextPrompt = buildSystemContext(context);
+
+    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion for journaling and self-reflection. Your goal is to help me explore my thoughts, feelings, and goals. 
+    
+You have access to my full context:
+${contextPrompt}
+
+Use this information to answer my questions contextually. 
+- If I talk about stress, check if I have habits or goals related to that.
+- If I ask about my progress, reference my habit streaks and reflection summaries.
+- Be empathetic, ask clarifying questions, and offer gentle guidance. 
+- Do not give medical advice. 
+- Keep your responses concise and conversational.`;
 
     const userPrompt = history[history.length - 1].text;
     
@@ -508,9 +550,6 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         parts: [{ text: msg.text }],
     }));
     
-    // Initialize the stream. We wrap this in a try/catch to support fallback models.
-    // Note: If the stream fails mid-generation, it's hard to recover seamlessly,
-    // so fallback focuses on initial connection failure.
     try {
         // @ts-ignore
         const streamResult = await ai.models.generateContentStream({
