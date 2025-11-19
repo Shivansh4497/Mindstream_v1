@@ -1,8 +1,8 @@
 
 # Product Requirement Document: Mindstream
-**Version:** 1.0
+**Version:** 1.1
 **Date:** [Current Date]
-**Status:** In Development (Phase 1 Complete)
+**Status:** In Development (Phase 2: Habits Integration Complete)
 **Author:** AI Assistant
 
 ---
@@ -13,10 +13,10 @@
 This document provides a detailed overview of the Mindstream application. It outlines the product's vision, target audience, features, user flows, and technical specifications. It serves as a central source of truth for the development team to ensure alignment with the product goals.
 
 ### 1.2. App Vision
-To be a private, calm, and intelligent reflection companion that transforms a user's scattered thoughts into clear, actionable insights.
+To be a private, calm, and intelligent reflection companion that transforms a user's scattered thoughts into clear, actionable insights. Mindstream closes the loop between *feeling* (journaling) and *doing* (habits), acting as a holistic "second brain."
 
 ### 1.3. Value Proposition
-Mindstream is not just a digital journal for storing notes; it's a "second brain" that actively helps users understand themselves better. It leverages AI to find the signal in the noise of their own thoughts, fostering self-awareness and personal growth.
+Mindstream is not just a digital journal for storing notes; it's an active partner in personal growth. It leverages AI to find the signal in the noise of thoughts and correlates internal emotional states with external behaviors (habits), fostering deep self-awareness.
 
 ---
 
@@ -32,11 +32,11 @@ Mindstream is for individuals who value self-reflection, personal development, a
 *   **Goals:**
     *   Wants to track career growth and manage work-related stress.
     *   Aims to be more intentional with their time and energy.
-    *   Seeks to understand the connection between daily activities and long-term goals.
+    *   Seeks to understand the connection between daily activities (e.g., exercise, reading) and mental well-being.
 *   **Pain Points:**
     *   Feels overwhelmed by a constant stream of thoughts, ideas, and tasks.
-    *   Traditional journaling feels unstructured and time-consuming.
-    *   Struggles to see the "big picture" from daily notes.
+    *   Struggles to maintain consistency with positive habits.
+    *   Often sets goals but forgets the daily systems required to achieve them.
     *   Values privacy and is hesitant to share deep thoughts with standard note-taking apps.
 
 ---
@@ -44,27 +44,28 @@ Mindstream is for individuals who value self-reflection, personal development, a
 ## 3. Core Problems & Use Cases
 
 ### 3.1. Problem Statement
-Individuals often have a constant stream of thoughts, feelings, and ideas but lack an effective, private tool to capture, connect, and analyze them. This leads to mental clutter, missed insights, and a disconnect between daily actions and long-term aspirations.
+Individuals often have a constant stream of thoughts and feelings but lack an effective way to connect them to their daily actions. This leads to a disconnect: "Why do I feel anxious?" (Answer: "You haven't exercised in 3 days"). Without tracking behavior alongside sentiment, true insight is limited.
 
 ### 3.2. Key Use Cases
 *   **Capture a Fleeting Thought:** A user has a sudden idea or feeling and wants to quickly capture it without friction, using either text or voice.
-*   **Review the Day:** At the end of the day, a user wants to see a summary of their thoughts and feelings to understand how their day went.
-*   **Set and Track Goals:** A user wants to define their daily, weekly, or life goals and track their progress against them.
-*   **Explore a Specific Topic:** A user wants to understand their recurring thoughts about a specific topic (e.g., "anxiety," "new project") over time.
-*   **Gain Deeper Insight:** A user wants to ask questions about their own thoughts, such as "Why was I feeling so stressed last week?" and receive an intelligent, context-aware answer.
+*   **Build Consistency:** A user wants to build specific habits (e.g., "Read 10 pages", "Deep Work") and track adherence without the pressure of aggressive gamification.
+*   **Review the Day:** At the end of the day, a user wants to see a summary of their thoughts *and* their productivity.
+*   **Understand Cause & Effect:** A user wants the AI to point out, "You tend to feel more 'Grateful' on days where you complete your 'Health' habits."
+*   **Explore a Specific Topic:** A user wants to understand their recurring thoughts about a specific topic over time.
 
 ---
 
 ## 4. App Structure & Core Pillars
 
 ### 4.1. Overview
-Mindstream is a single-page application (SPA) built around four core pillars, accessible via a main navigation bar. This structure allows users to seamlessly switch between different modes of interaction with their own data.
+Mindstream is a single-page application (SPA) built around five core pillars, accessible via a main navigation bar. This structure allows users to seamlessly switch between different modes of interaction with their own data.
 
-### 4.2. The Four Pillars
+### 4.2. The Five Pillars
 1.  **Stream:** The foundational input layer. A chronological, reverse-sorted feed of all journal entries. It is designed for frictionless thought capture.
-2.  **Reflections:** The synthesis layer. An AI-powered engine that condenses journal entries into daily, weekly, and monthly summaries, revealing patterns and themes.
+2.  **Reflections:** The synthesis layer. An AI-powered engine that condenses journal entries, intentions, and habit logs into daily, weekly, and monthly summaries, revealing patterns and themes.
 3.  **Chat:** The exploration layer. A conversational AI interface that allows users to "talk" to their own journal, asking questions and exploring their thoughts in a natural way.
-4.  **Intentions:** The action layer. A goal-setting and tracking system where users can define their to-dos and aspirations across various timeframes.
+4.  **Intentions:** The goal layer. A task management system where users can define their to-dos and aspirations across various timeframes.
+5.  **Habits:** The behavioral layer. A system tracker for recurring actions, categorized by life domain (Health, Career, etc.), designed to measure consistency.
 
 ---
 
@@ -72,124 +73,106 @@ Mindstream is a single-page application (SPA) built around four core pillars, ac
 
 ### 5.1. Onboarding & Authentication
 *   **Authentication:** Users sign in exclusively via Google OAuth for simplicity and security.
-*   **Privacy Modal:** On first launch, a modal appears to assure the user of the app's privacy-first approach, explaining that their data is private and secure. This must be acknowledged to proceed.
-*   **Data Fetching:** Upon login, the app fetches all the user's existing entries, reflections, and intentions from the Supabase backend.
+*   **Privacy Modal:** On first launch, a modal appears to assure the user of the app's privacy-first approach.
+*   **Data Fetching:** Upon login, the app fetches all user data (entries, reflections, intentions, habits, logs) from Supabase.
 
 ### 5.2. The Stream View
 *   **Entry Creation:**
-    *   **Text Input:** A primary input bar allows users to type their thoughts. `Enter` sends the message.
-    *   **Voice Input:** A microphone button initiates the browser's Speech Recognition API, transcribing spoken words into the input bar.
-    *   **Guided Prompts:** A series of clickable prompts (e.g., "What's one thing I'm grateful for?") are available to help users overcome writer's block.
-*   **AI-Powered Processing:** Upon submitting an entry, the Gemini API is called to:
-    *   Generate a concise, descriptive title (e.g., "Reflecting on the team meeting").
-    *   Generate 2-4 relevant tags (e.g., `work`, `anxiety`, `collaboration`).
-*   **Display:**
-    *   Entries are displayed as cards in a reverse-chronological list.
-    *   Entries are grouped by day (e.g., "Today," "Yesterday," "October 25, 2023").
-    *   Each `EntryCard` shows the title, time, full text, and clickable tags.
+    *   **Text/Voice Input:** Frictionless capture of thoughts.
+    *   **Guided Prompts:** Chips to help overcome writer's block.
+*   **AI-Powered Processing:** Upon submitting an entry, the Gemini API:
+    *   Generates a title.
+    *   Generates relevant tags.
+    *   Determines a granular sentiment (e.g., "Joyful", "Anxious") and assigns an emoji.
+*   **Display:** Chronological cards grouped by day.
 
 ### 5.3. Reflections View
-*   **Timeframe Navigation:** Users can switch between 'Daily', 'Weekly', and 'Monthly' views.
-*   **Generation Logic:**
-    *   Users can generate reflections for any period that contains journal entries.
-    *   The AI prompt for **Weekly** and **Monthly** reflections is now context-aware, incorporating the user's stated **Intentions** for that period to analyze progress and alignment.
-    *   The "Generate" button shows a loading state and becomes an "Update" button if a reflection for that period already exists.
-*   **Display:** Generated summaries are shown in `ReflectionCard` components, grouped under their respective date/week/month headers.
+*   **Holistic Synthesis:** The Reflection engine now consumes three data sources:
+    1.  **Entries:** Qualitative thoughts and feelings.
+    2.  **Intentions:** Goal completion status.
+    3.  **Habits:** Behavioral consistency and categorical breakdown.
+*   **Context-Aware Analysis:** The AI analyzes the correlation between these sources.
+    *   *Example:* "I noticed you felt 'Anxious' today, which might be related to missing your 'Meditation' habit, despite completing your work tasks."
+*   **Timeframes:** Daily, Weekly, and Monthly generation.
+*   **Actionable Suggestions:** The AI suggests 1-2 new intentions based on the reflection.
 
 ### 5.4. Chat View
-*   **Conversational UI:** A familiar chat interface displays a history of messages between the user and the AI.
-*   **Context-Aware AI:** The Gemini API is provided with a system prompt that includes a summary of the user's recent journal entries and their full list of intentions. This allows the AI to provide deeply personal and relevant answers.
-*   **Loading State:** A typing indicator appears while the AI is generating a response.
-*   **Markdown Support:** AI responses are rendered as Markdown, allowing for formatting like lists, bolding, etc.
+*   **Conversational UI:** A familiar chat interface.
+*   **RAG (Retrieval Augmented Generation):** The AI context includes recent journal entries, pending intentions, and habit performance to answer user queries deeply.
 
 ### 5.5. Intentions View
-*   **Timeframe Filtering:** Users can filter their intentions by 'Daily', 'Weekly', 'Monthly', 'Yearly', and 'Life'.
-*   **CRUD Functionality:**
-    *   **Create:** A dedicated input bar allows adding new intentions for the active timeframe.
-    *   **Read:** Intentions are displayed in a list, separated into "Pending" and "Completed" sections.
-    *   **Update:** Users can toggle an intention's status between 'pending' and 'completed' via a checkbox.
-    *   **Delete:** A trash icon allows for permanent deletion of an intention.
+*   **Timeframe Filtering:** Filter by 'Daily', 'Weekly', 'Monthly', 'Yearly', 'Life'.
+*   **Management:** Create, Toggle (Pending/Completed), and Delete.
+*   **Differentiation:** Intentions are for *finite* goals (e.g., "Buy a car"), whereas Habits are for *infinite* systems (e.g., "Save 10% of income").
 
-### 5.6. Global & Cross-Pillar Features
-*   **Universal Search:**
-    *   Accessible from the main header, it opens a full-screen modal.
-    *   Users can search the full text of all their entries and reflections.
-    *   Results can be filtered by 'All', 'Entries', or 'Reflections'.
-    *   The search query is highlighted in the results.
-*   **Interactive Tags & Thematic Reflections:**
-    *   Tags on `EntryCard` components are clickable.
-    *   Clicking a tag opens a `ThematicModal`, offering two choices:
-        1.  **View all entries:** Opens the Search modal with the tag pre-filled as the query.
-        2.  **Generate a thematic reflection:** Calls the Gemini API to create a unique summary of every entry containing that tag, analyzing the theme's evolution over time.
-*   **Explore in Chat:**
-    *   Each `ReflectionCard` has an "Explore in Chat" button.
-    *   Clicking it switches the user to the Chat view and sends a pre-filled message asking the AI to elaborate on the insights from that specific reflection.
+### 5.6. Habits View
+*   **Creation & Classification:**
+    *   User inputs a name (e.g., "Go for a run") and selects a frequency (Daily, Weekly, Monthly).
+    *   **AI Processing:** Gemini analyzes the text to assign:
+        1.  **Emoji:** A visual representation (e.g., 🏃).
+        2.  **Category:** One of 6 fixed tags: **Health, Growth, Career, Finance, Connection, System**.
+*   **Tracking & Logic:**
+    *   **Daily:** Resets every midnight. Streak increases if done consecutively.
+    *   **Weekly:** Resets every Monday. Streak increases if done at least once per ISO week.
+    *   **Monthly:** Resets on the 1st. Streak increases if done at least once per month.
+*   **Visual Feedback:**
+    *   **Progress Bar:** A daily completion bar shows percentage of "active" habits done today.
+    *   **Streaks:** A subtle "Flame" icon appears for streaks > 2.
+    *   **Categories:** Habits are color-coded based on their AI-assigned category (e.g., Health = Red, Finance = Green).
 
 ---
 
 ## 6. UI & UX Flows
 
 ### 6.1. Design Philosophy
-*   **Aesthetic:** Dark, calm, and minimalist. The color palette (`brand-indigo`, `dark-surface`, `brand-teal`) is chosen to be easy on the eyes and promote a sense of focus and tranquility.
-*   **Font:** A clean sans-serif (`Inter`) is used for body text, with a slightly more stylized sans-serif (`DM Sans`) for display headers.
-*   **Interactions:** Animations are subtle (`fade-in`, `fade-in-up`) to provide feedback without being distracting.
+*   **Aesthetic:** Dark, calm, and minimalist.
+*   **Palette:** `brand-indigo` (Background), `brand-teal` (Accents), `dark-surface` (Cards).
+*   **Interactions:** Subtle animations (`fade-in-up`, `ripple`) reward user actions without over-stimulating.
 
 ### 6.2. Key UX Flows
-*   **Flow 1: Capturing a Thought**
-    1.  User opens the app, landing on the **Stream** view.
-    2.  User types a thought into the `InputBar`.
-    3.  User presses `Enter` or clicks the `Send` icon.
-    4.  The input is submitted; a loading indicator could briefly appear.
-    5.  A new `EntryCard` animates into the top of the Stream, complete with an AI-generated title and tags.
+*   **Flow 1: Capturing a Thought (Stream)**
+    *   User types/speaks -> Entry added -> AI enriches with tags/sentiment -> Appears in feed.
 
-*   **Flow 2: Daily Review & Exploration**
-    1.  User navigates to the **Reflections** tab.
-    2.  Under the "Daily" view, they see a group for "Today" with a button: "Wanna know how your day was?".
-    3.  User clicks the button. It enters a "Generating..." state.
-    4.  A new `ReflectionCard` appears, showing the AI-generated summary.
-    5.  User reads the reflection and clicks the "Explore in Chat" button.
-    6.  The app switches to the **Chat** view, and a new message from the user appears, prompting the AI to discuss the reflection.
-    7.  The AI begins generating a response.
+*   **Flow 2: Building a Habit (Habits)**
+    *   User types "Read a book" -> Selects "Daily" -> Clicks Add.
+    *   AI assigns "📖" and category "Growth" (Amber color).
+    *   Habit appears in "Daily Rituals" list.
+    *   User taps circle -> Ripple animation -> Circle fills teal -> Progress bar advances.
 
-*   **Flow 3: Thematic Discovery**
-    1.  User is browsing the **Stream** view.
-    2.  They notice a recurring tag, `project-launch`, and click on it.
-    3.  A `ThematicModal` appears.
-    4.  User clicks "Generate thematic reflection".
-    5.  The button enters a loading state.
-    6.  After a moment, a new section appears within the modal displaying a unique summary of all their thoughts about the project launch.
+*   **Flow 3: Daily Review (Reflections)**
+    *   User navigates to Reflections.
+    *   Clicks "Generate Daily Reflection".
+    *   AI reads: "User felt 'Proud', wrote about coding, finished 5/5 'Career' habits".
+    *   AI Output: "It was a productive day. Your consistency in Career habits is driving a sense of Pride..."
 
 ---
 
 ## 7. Technical Stack & Services
 
-*   **Frontend Framework:** React with TypeScript
-*   **Styling:** Tailwind CSS
-*   **Backend as a Service (BaaS):** Supabase
-    *   **Authentication:** Supabase Auth (Google OAuth provider)
-    *   **Database:** Supabase PostgreSQL
-*   **AI Services:** Google Gemini API (`gemini-2.5-flash` model)
-*   **Deployment Environment:** Hosted on a modern frontend platform (e.g., Vercel, Netlify) that supports environment variables.
-*   **Local State Management:** React Hooks (`useState`, `useEffect`, `useMemo`).
-*   **Browser Storage:** `localStorage` is used via a custom hook to persist simple user preferences (e.g., privacy modal acknowledgment).
+*   **Frontend:** React, TypeScript, Tailwind CSS, Vite.
+*   **Backend:** Supabase (Auth, PostgreSQL, RLS).
+*   **AI:** Google Gemini API (`gemini-2.5-flash`).
+*   **Data Model Additions:**
+    *   `habits`: Stores name, frequency, category, streak.
+    *   `habit_logs`: Stores timestamps of completions for history tracking.
 
 ---
 
 ## 8. Assumptions & Dependencies
 
-*   **User Account:** The user must have a valid Google account to use the application.
-*   **Environment Variables:** The application requires `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_API_KEY` to be correctly configured in the deployment environment for full functionality. A configuration error screen is shown if they are missing.
-*   **Browser APIs:** The voice input feature depends on the browser supporting the Web Speech API (`SpeechRecognition`).
+*   **Gemini 2.5:** The app relies on the reasoning capabilities of Gemini 2.5 Flash for accurate sentiment analysis and habit categorization.
+*   **Billing:** The Google Cloud project must have billing enabled for the API to function.
 
 ---
 
-## 9. Future Scope (Roadmap Summary)
-This PRD describes the current "Unified Brain" state of the application. Future phases may include:
-*   **Phase 2 (The Proactive Companion):** Introduce features like proactive insight notifications and mood/sentiment visualization.
-*   **Phase 3 (The Holistic Life OS):** Explore integrations with external services like calendars and introduce advanced goal management features.
+## 9. Future Scope
+*   **Visualization:** Charts showing mood vs. habit completion over time.
+*   **Calendar Integration:** Syncing Intentions with Google Calendar.
+*   **Proactive Insights:** Push notifications when the AI detects a negative spiral.
 
 ---
 
 ## 10. Document History
 
-*   **v1.0 (Current):** Initial creation of the PRD, reflecting the completion of the "Phase 1: The Unified Brain" roadmap.
+*   **v1.0:** Initial Release (Stream, Reflections, Chat, Intentions).
+*   **v1.1 (Current):** Added Habits, AI Categorization, and Frequency logic.
