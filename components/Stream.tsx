@@ -1,6 +1,7 @@
+
 import React, { useMemo } from 'react';
 import { getDisplayDate, getFormattedDate, isSameDay } from '../utils/date';
-import type { Entry, Intention } from '../types';
+import type { Entry, Intention, EntrySuggestion } from '../types';
 import { EntryCard } from './EntryCard';
 import { TodaysFocusBanner } from './TodaysFocusBanner';
 
@@ -10,9 +11,10 @@ interface StreamProps {
   onTagClick?: (tag: string) => void;
   onEditEntry: (entry: Entry) => void;
   onDeleteEntry: (entry: Entry) => void;
+  onAcceptSuggestion: (entryId: string, suggestion: EntrySuggestion) => void;
 }
 
-export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick, onEditEntry, onDeleteEntry }) => {
+export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick, onEditEntry, onDeleteEntry, onAcceptSuggestion }) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -69,6 +71,7 @@ export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick,
                   onTagClick={onTagClick} 
                   onEdit={onEditEntry}
                   onDelete={onDeleteEntry}
+                  onAcceptSuggestion={onAcceptSuggestion}
                 />
               ))}
             </div>
