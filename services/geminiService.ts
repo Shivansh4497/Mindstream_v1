@@ -1,9 +1,8 @@
 
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight, EntrySuggestion } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight, EntrySuggestion, UserContext } from '../types';
 import { getDisplayDate } from "../utils/date";
-import type { UserContext } from './dbService'; // Import from dbService to use the new interface
 
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
