@@ -4,6 +4,15 @@ import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
 
+// --- UNIFIED BRAIN CONTEXT ---
+// Defined here to avoid modifying types.ts and risking data loss
+export interface UserContext {
+  recentEntries: Entry[];
+  pendingIntentions: Intention[];
+  activeHabits: Habit[];
+  latestReflection: Reflection | null;
+}
+
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
   if (!supabase) return null;
@@ -430,4 +439,25 @@ export const uncheckHabit = async (logId: string, habitId: string, currentStreak
     if (habitError) throw habitError;
     
     return { updatedHabit: habit };
+}
+
+/**
+ * Helper to fetch the unified context for the "Companion Brain" features.
+ */
+export const getUserContext = async (userId: string): Promise<UserContext> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+    
+    const [entries, intentions, habits, reflections] = await Promise.all([
+        getEntries(userId),
+        getIntentions(userId),
+        getHabits(userId),
+        getReflections(userId)
+    ]);
+    
+    return {
+        recentEntries: entries.slice(0, 15), // Only contextually relevant recent entries
+        pendingIntentions: intentions.filter(i => i.status === 'pending'),
+        activeHabits: habits,
+        latestReflection: reflections.length > 0 ? reflections[0] : null
+    };
 }
