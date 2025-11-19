@@ -96,15 +96,12 @@ export const MindstreamApp: React.FC = () => {
     console.error(`Error in ${context}:`, error);
     let message = API_ERROR_MESSAGE;
     if (error instanceof Error && error.message) {
-        // Specific check for the 'add entry' context and a common Supabase error for missing columns.
-        // This makes the error message much more helpful for the user.
         if (context === 'adding new entry' && error.message.toLowerCase().includes('column') && error.message.toLowerCase().includes('does not exist')) {
             message = "Database Error: The 'entries' table seems to be missing a required column (likely 'emoji'). Please update your database schema.";
         } else if (error.message.includes('column') || error.message.includes('schema')) {
             message = "Database Error: A required column may be missing. Please check your database schema.";
         }
     }
-    // Don't show a notification if it's a persistent configuration error, the banner will handle it.
     if (aiStatus !== 'error') {
       setToast({ message, id: Date.now() });
     }
@@ -118,7 +115,7 @@ export const MindstreamApp: React.FC = () => {
       else setHeaderSubtitle('Time for evening reflection.');
     };
     updateSubtitle();
-    const interval = setInterval(updateSubtitle, 60000); // Update every minute
+    const interval = setInterval(updateSubtitle, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -126,13 +123,12 @@ export const MindstreamApp: React.FC = () => {
     const fetchDataAndVerifyAI = async () => {
       if (!user) return;
       try {
-        // Fetch user data from database
         const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
           db.getIntentions(user.id),
           db.getHabits(user.id),
-          db.getCurrentPeriodHabitLogs(user.id) // Fetches recent logs relevant for current stats
+          db.getCurrentPeriodHabitLogs(user.id)
         ]);
         
         setEntries(userEntries);
@@ -143,19 +139,15 @@ export const MindstreamApp: React.FC = () => {
         
         setIsDataLoaded(true);
 
-        // Once data is loaded, verify the AI connection
         setAiStatus('verifying');
         await gemini.verifyApiKey();
         setAiStatus('ready');
 
       } catch (error: any) {
-        // This catch block handles both data fetching and AI verification errors
         console.error("Error during startup:", error);
         
-        // If data fetching is what failed, we might not have set it as loaded.
         if (!isDataLoaded) setIsDataLoaded(true);
 
-        // Check if the error is from our AI verification
         if (aiStatus === 'verifying') {
           setAiStatus('error');
            let message = error.message || 'An unknown error occurred.';
@@ -182,7 +174,6 @@ export const MindstreamApp: React.FC = () => {
     
     const currentHistory = historyOverride ? historyToUse : [...historyToUse, newUserMessage];
     
-    // Update UI immediately for non-continuation messages
     if (!historyOverride) {
       setMessages(currentHistory);
       setChatStarters([]);
@@ -191,7 +182,6 @@ export const MindstreamApp: React.FC = () => {
     setIsChatLoading(true);
 
     const aiMessageId = `ai-${Date.now()}`;
-    // Add placeholder for AI response
     setMessages(prev => [...prev, { sender: 'ai', text: '', id: aiMessageId }]);
 
     try {
@@ -221,46 +211,48 @@ export const MindstreamApp: React.FC = () => {
     }
 }
 
-const startNewChatSession = async (firstUserPrompt?: string) => {
+const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: Message) => {
     if (!isDataLoaded || aiStatus !== 'ready') return;
 
-    // Clear previous starters, but don't set loading yet.
     setChatStarters([]);
 
     try {
-        // Step 1: Fetch and display the greeting for better perceived performance.
-        const greeting = await gemini.generatePersonalizedGreeting(entries);
-        const initialAiMessage: Message = { sender: 'ai', text: greeting, id: 'greeting' };
+        // If we have a specific initial AI message (from onboarding), we use that.
+        // Otherwise, we generate a personalized greeting.
+        let startMessage: Message;
+        
+        if (initialAiMessage) {
+            startMessage = initialAiMessage;
+        } else {
+            const greeting = await gemini.generatePersonalizedGreeting(entries);
+            startMessage = { sender: 'ai', text: greeting, id: 'greeting' };
+        }
 
         if (firstUserPrompt) {
-            // If starting with a prompt, set up history and immediately start streaming response.
-            // We do NOT add the user message here because the caller usually sets view to chat immediately.
-            // But for the Onboarding handoff, we need to manually construct history.
+            // If starting with a user prompt (context), construct history.
+            // For onboarding, we want:
+            // 1. User's context (hidden or shown? Let's show it for clarity)
+            // 2. AI's Follow-up question (already provided as initialAiMessage)
+            // 3. Ready for user's next input.
             
-            // Special case: If the prompt comes from onboarding, we assume it's a system prompt context for the AI,
-            // not necessarily a direct user message bubble.
-            // Wait, standard chat flow is user types -> AI responds.
+            // Actually, if `firstUserPrompt` is passed, usually it means "User sent this, AI respond".
+            // BUT for Onboarding handoff, `initialAiMessage` is the response to `firstUserPrompt`.
             
-            // Let's treat `firstUserPrompt` as a hidden system-like context wrapper.
-            // Actually, better UX: Just use it as the user's first message.
-            
-            // However, for the onboarding flow: "The AI is already typing a relevant question."
-            // So we want the AI to initiate based on the prompt.
-            
-            const systemContextMessage: Message = { 
-                sender: 'user', 
-                text: `(Context from onboarding: ${firstUserPrompt})`, 
-                id: 'onboarding-context' 
-            };
-            
-            // We don't show this context message in UI necessarily, but for simplicity let's just send it.
-            // Actually, let's just trigger a generation based on history.
-            const initialHistory = [initialAiMessage];
-            setMessages(initialHistory);
-            await handleSendMessage(firstUserPrompt, initialHistory);
+            if (initialAiMessage) {
+                // Onboarding Handoff Case
+                const userContextMsg: Message = { sender: 'user', text: firstUserPrompt, id: 'context' };
+                setMessages([userContextMsg, startMessage]);
+                // We don't trigger generation, just set state.
+            } else {
+                // Standard "Explore in Chat" Case
+                const history = [startMessage];
+                setMessages(history);
+                await handleSendMessage(firstUserPrompt, history);
+            }
+
         } else {
-            // Normal session start: display greeting, then fetch starters in the background.
-            setMessages([initialAiMessage]);
+            // Standard fresh session
+            setMessages([startMessage]);
             setIsGeneratingStarters(true);
             
             gemini.generateChatStarters(entries, intentions)
@@ -299,32 +291,16 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
   const handleAddEntry = async (text: string) => {
     if (!user || isProcessing) return;
-    
-    // Do not allow adding entries if AI is down, as it's a core part of the feature.
     if (aiStatus !== 'ready') {
       setToast({ message: "Cannot save entry: AI is not connected.", id: Date.now() });
       return;
     }
-    
     setIsProcessing(true);
-    
     try {
-      // Step 1: Get all AI data first. This is the robust, original logic.
       const aiData = await gemini.processEntry(text);
-
-      // Step 2: Combine user text with AI data into a complete object.
-      const newEntryData = {
-        ...aiData,
-        text: text,
-        timestamp: new Date().toISOString(),
-      };
-      
-      // Step 3: Save the single, complete entry to the database.
+      const newEntryData = { ...aiData, text: text, timestamp: new Date().toISOString() };
       const newEntry = await db.addEntry(user.id, newEntryData);
-      
-      // Step 4: Update the UI with the final, complete entry.
       setEntries(prev => [newEntry, ...prev]);
-
     } catch (error) {
       handleApiError(error, 'adding new entry');
     } finally {
@@ -337,22 +313,11 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
       setToast({ message: "Cannot update entry: AI is not connected.", id: Date.now() });
       return;
     }
-
     try {
-      // 1. Re-run AI analysis on the new text
       const aiData = await gemini.processEntry(newText);
-      
-      const updatedData = {
-        ...aiData,
-        text: newText,
-      };
-
-      // 2. Update the database
+      const updatedData = { ...aiData, text: newText };
       const updatedEntry = await db.updateEntry(entryId, updatedData);
-
-      // 3. Update local state
       setEntries(prev => prev.map(e => e.id === entryId ? { ...e, ...updatedEntry } : e));
-
       setToast({ message: "Entry updated.", id: Date.now() });
     } catch (error) {
       handleApiError(error, 'updating entry');
@@ -377,7 +342,6 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
       setIsGeneratingReflection(date);
       try {
         const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-        // Pass habits and logs for better context
         const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay, habits, habitLogs);
         const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
             date: date,
@@ -466,12 +430,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
   const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
     await handleAddIntention(suggestion.text, suggestion.timeframe);
-
-    // Show confirmation toast
     setToast({ message: 'To-do locked in!', id: Date.now() });
     setTimeout(() => setToast(null), 3000);
-
-    // Remove suggestion from the UI
     setReflections(prev => prev.map(r => {
         if (r.suggestions?.some(s => s.text === suggestion.text && s.timeframe === suggestion.timeframe)) {
             return {
@@ -523,8 +483,6 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
       if (!habit) return;
 
       const now = new Date();
-
-      // Find if a relevant log exists based on frequency
       const existingLog = habitLogs.find(l => {
           if (l.habit_id !== habitId) return false;
           const logDate = new Date(l.completed_at);
@@ -536,12 +494,10 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
 
       try {
           if (existingLog) {
-              // Uncheck
               const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak);
               setHabitLogs(prev => prev.filter(l => l.id !== existingLog.id));
               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
           } else {
-              // Check
               const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak);
               setHabitLogs(prev => [...prev, log]);
               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
@@ -602,25 +558,28 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
     setDebugOutput(output);
   };
   
-  const handleOnboardingComplete = async (destination: 'stream' | 'chat', initialContext?: string) => {
+  const handleOnboardingComplete = async (destination: 'stream' | 'chat', initialContext?: string, aiQuestion?: string) => {
       setOnboardingStep(ONBOARDING_COMPLETE_STEP);
       if (user) {
-          // Refresh data to show the newly added onboarding entry
           const userEntries = await db.getEntries(user.id);
           setEntries(userEntries);
       }
 
-      if (destination === 'chat' && initialContext) {
+      if (destination === 'chat' && initialContext && aiQuestion) {
            setView('chat');
-           // Seed the chat with the context from onboarding
-           const contextPrompt = `The user has just completed onboarding. They wrote about feeling an emotion. Here is the context: "${initialContext}". Please ask the gentle follow-up question you generated to help them unpack this.`;
-           startNewChatSession(contextPrompt);
+           // Handoff: Inject the User's Elaboration and the AI's follow-up question to "seed" the chat.
+           // This makes it look like the conversation has already started.
+           const aiFollowUpMessage: Message = { 
+               sender: 'ai', 
+               text: aiQuestion, 
+               id: 'onboarding-followup' 
+           };
+           startNewChatSession(initialContext, aiFollowUpMessage);
       } else {
           setView('stream');
       }
   };
 
-  // Render Onboarding Wizard if incomplete
   if (onboardingStep < ONBOARDING_COMPLETE_STEP && user) {
       return <OnboardingWizard userId={user.id} onComplete={handleOnboardingComplete} />;
   }
