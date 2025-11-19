@@ -27,6 +27,36 @@ if (!apiKeyAvailable) {
 
 export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
 
+// --- VERTICAL REDUNDANCY HELPERS ---
+
+const PRIMARY_MODEL = 'gemini-2.5-flash';
+const BACKUP_MODEL = 'gemini-1.5-flash';
+
+/**
+ * Executes a Gemini API call with automatic fallback to a backup model if the primary fails.
+ * @param operation A function that takes a model name and returns a Promise (the API call).
+ */
+async function callWithFallback<T>(operation: (model: string) => Promise<T>): Promise<T> {
+    try {
+        return await operation(PRIMARY_MODEL);
+    } catch (error: any) {
+        const isRetryable = error.status === 503 || error.status === 429 || error.message?.includes('fetch failed');
+        
+        if (isRetryable || error.message) {
+            console.warn(`Primary model (${PRIMARY_MODEL}) failed. Switching to backup (${BACKUP_MODEL}). Error:`, error.message);
+            try {
+                return await operation(BACKUP_MODEL);
+            } catch (backupError: any) {
+                console.error(`Backup model (${BACKUP_MODEL}) also failed.`, backupError);
+                throw backupError; // Throw original error or backup error? Throw backup to bubble up failure.
+            }
+        }
+        throw error;
+    }
+}
+
+// -----------------------------------
+
 /**
  * Performs a simple, low-cost API call to verify the API key is valid and functional.
  * Throws an error if the API call fails.
@@ -34,7 +64,8 @@ export const GEMINI_API_KEY_AVAILABLE = apiKeyAvailable;
 export const verifyApiKey = async (): Promise<boolean> => {
   if (!ai) throw new Error("AI client not initialized. API key may be missing.");
   // This is a simple, fast, and low-token request to verify the key.
-  await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'Hi' });
+  // We use the primary model directly here as it's a connectivity check.
+  await ai.models.generateContent({ model: PRIMARY_MODEL, contents: 'Hi' });
   return true;
 };
 
@@ -72,7 +103,6 @@ const generateActionableSuggestionsSchema = {
 
 export const generateInstantInsight = async (text: string, sentiment: string, lifeArea: string, trigger: string): Promise<InstantInsight> => {
     if (!ai) throw new Error("AI functionality is disabled.");
-    const model = 'gemini-2.5-flash';
 
     const prompt = `You are an expert coach and a wise, empathetic friend. 
     
@@ -97,23 +127,25 @@ export const generateInstantInsight = async (text: string, sentiment: string, li
     
     Respond with a JSON object containing "insight" and "followUpQuestion".`;
 
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    insight: { type: Type.STRING },
-                    followUpQuestion: { type: Type.STRING }
-                },
-                required: ['insight', 'followUpQuestion']
+    return callWithFallback(async (model) => {
+        // @ts-ignore - ai is checked above
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        insight: { type: Type.STRING },
+                        followUpQuestion: { type: Type.STRING }
+                    },
+                    required: ['insight', 'followUpQuestion']
+                }
             }
-        }
+        });
+        return parseGeminiJson<InstantInsight>(response.text);
     });
-
-    return parseGeminiJson<InstantInsight>(response.text);
 };
 
 /**
@@ -121,8 +153,6 @@ export const generateInstantInsight = async (text: string, sentiment: string, li
  */
 export const generateReflection = async (entries: Entry[], intentions: Intention[], habits?: Habit[], habitLogs?: HabitLog[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) throw new Error("AI functionality is disabled. Please configure the API key.");
-  
-  const model = 'gemini-2.5-flash';
 
   const entriesText = entries.map(e => `- Feeling ${e.primary_sentiment}, I wrote: ${e.text}`).join('\n');
   const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
@@ -150,27 +180,28 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 2-3 sentence holistic reflection on the day."
+  return callWithFallback(async (model) => {
+    // @ts-ignore
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: {
+                        type: Type.STRING,
+                        description: "The 2-3 sentence holistic reflection on the day."
+                    },
+                    suggestions: generateActionableSuggestionsSchema
                 },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
+                required: ['summary', 'suggestions']
+            }
         }
-    }
+    });
+    return parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
   });
-
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
 };
 
 /**
@@ -181,7 +212,6 @@ export const getRawReflectionForDebug = async (entries: Entry[], intentions: Int
     if (!ai) return "AI client not initialized. Check if VITE_API_KEY is set.";
     
     // We use the same logic as the real function to ensure the test is valid.
-    const model = 'gemini-2.5-flash';
     const entriesText = entries.map(e => `- ${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${e.text}`).join('\n');
     const intentionsText = intentions.map(i => `- [${i.status === 'completed' ? 'x' : ' '}] ${i.text}`).join('\n');
     const prompt = `You are a thoughtful and empathetic journal assistant. I will provide you with my journal entries and my intentions (to-dos) from today. Please write a short, insightful reflection (2-3 sentences) that analyzes how my feelings and actions (from the entries) aligned with my goals (from the intentions). Speak in a gentle, encouraging, and first-person-plural tone (e.g., "It seems like we made great progress...", "Today, we explored themes of..."). Based on your analysis, also provide 1-2 actionable suggestions for a new 'daily' or 'weekly' intention.
@@ -194,23 +224,26 @@ ${entriesText.length > 0 ? entriesText : "No journal entries were made."}
 
 Respond with a JSON object.`;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                  summary: { type: Type.STRING },
-                  suggestions: generateActionableSuggestionsSchema
-              },
-              required: ['summary', 'suggestions']
-          }
-      }
+    return await callWithFallback(async (model) => {
+        // @ts-ignore
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        summary: { type: Type.STRING },
+                        suggestions: generateActionableSuggestionsSchema
+                    },
+                    required: ['summary', 'suggestions']
+                }
+            }
+        });
+        return `SUCCESS! Raw AI Response:\n\n---\n${response.text}\n---`;
     });
 
-    return `SUCCESS! Raw AI Response:\n\n---\n${response.text}\n---`;
   } catch (error: any) {
     console.error("DEBUG CAPTURED ERROR:", error);
     let errorMessage = `ERROR! The API call failed.\n\n---\n`;
@@ -231,8 +264,6 @@ Respond with a JSON object.`;
 export const generateWeeklyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) throw new Error("AI functionality is disabled.");
   
-  const model = 'gemini-2.5-flash';
-  
   const entriesText = entries
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(e => `- On ${getDisplayDate(e.timestamp)}, feeling ${e.primary_sentiment}: ${e.text}`)
@@ -250,27 +281,28 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 3-4 sentence holistic reflection on the week."
+  return callWithFallback(async (model) => {
+      // @ts-ignore
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: {
+                        type: Type.STRING,
+                        description: "The 3-4 sentence holistic reflection on the week."
+                    },
+                    suggestions: generateActionableSuggestionsSchema
                 },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
+                required: ['summary', 'suggestions']
+            }
         }
-    }
+    });
+    return parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
   });
-  
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
 };
 
 
@@ -279,8 +311,6 @@ Respond with a JSON object.`;
  */
 export const generateMonthlyReflection = async (entries: Entry[], intentions: Intention[]): Promise<{ summary: string; suggestions: AISuggestion[] }> => {
   if (!ai) throw new Error("AI functionality is disabled.");
-  
-  const model = 'gemini-2.5-flash';
   
   const entriesText = entries
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -299,33 +329,33 @@ ${entriesText}
 
 Respond with a JSON object.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                summary: {
-                    type: Type.STRING,
-                    description: "The 4-5 sentence holistic reflection on the month."
+  return callWithFallback(async (model) => {
+      // @ts-ignore
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: {
+                        type: Type.STRING,
+                        description: "The 4-5 sentence holistic reflection on the month."
+                    },
+                    suggestions: generateActionableSuggestionsSchema
                 },
-                suggestions: generateActionableSuggestionsSchema
-            },
-            required: ['summary', 'suggestions']
+                required: ['summary', 'suggestions']
+            }
         }
-    }
+    });
+    return parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
   });
-  
-  const result = parseGeminiJson<{ summary: string; suggestions: AISuggestion[] }>(response.text);
-  return result;
 };
 
 export const generateThematicReflection = async (tag: string, entries: Entry[]): Promise<string> => {
   if (!ai) throw new Error("AI functionality is disabled.");
   
-  const model = 'gemini-2.5-flash';
   const relevantEntries = entries.filter(e => e.tags?.includes(tag));
   
   if (relevantEntries.length === 0) {
@@ -346,12 +376,14 @@ ${entriesText}
 
 Your holistic thematic reflection on our journey with "${tag}":`;
   
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
+  return callWithFallback(async (model) => {
+      // @ts-ignore
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+    });
+    return response.text;
   });
-
-  return response.text;
 };
 
 const GRANULAR_SENTIMENTS: GranularSentiment[] = [
@@ -366,8 +398,6 @@ const GRANULAR_SENTIMENTS: GranularSentiment[] = [
 export const processEntry = async (entryText: string): Promise<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>> => {
   if (!ai) throw new Error("AI client not initialized.");
   
-  const model = 'gemini-2.5-flash';
-
   const prompt = `Analyze the following journal entry. Based on its content:
 1.  Provide a concise, descriptive title (3-5 words, unless the entry is very short).
 2.  Generate 2-4 relevant tags.
@@ -381,35 +411,35 @@ Entry: "${entryText}"
 
 Respond with only a JSON object.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          tags: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          },
-          primary_sentiment: { type: Type.STRING },
-          secondary_sentiment: { type: Type.STRING },
-          emoji: { type: Type.STRING }
-        },
-        required: ['title', 'tags', 'primary_sentiment', 'emoji']
-      }
-    }
+  return callWithFallback(async (model) => {
+      // @ts-ignore
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+            title: { type: Type.STRING },
+            tags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+            },
+            primary_sentiment: { type: Type.STRING },
+            secondary_sentiment: { type: Type.STRING },
+            emoji: { type: Type.STRING }
+            },
+            required: ['title', 'tags', 'primary_sentiment', 'emoji']
+        }
+        }
+    });
+    return parseGeminiJson<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>>(response.text);
   });
-  
-  const result = parseGeminiJson<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>>(response.text);
-  return result;
 };
 
 export const analyzeHabit = async (habitName: string): Promise<{ emoji: string, category: HabitCategory }> => {
     if (!ai) return { emoji: "⚡️", category: "System" }; 
-    const model = 'gemini-2.5-flash';
     const prompt = `Analyze the habit: "${habitName}".
 1. Pick a single Unicode emoji that best represents it.
 2. Categorize it into exactly one of these categories: Health, Growth, Career, Finance, Connection, System.
@@ -423,23 +453,25 @@ export const analyzeHabit = async (habitName: string): Promise<{ emoji: string, 
 Respond with JSON.`;
     
     try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: { 
-                        emoji: { type: Type.STRING },
-                        category: { type: Type.STRING, enum: ['Health', 'Growth', 'Career', 'Finance', 'Connection', 'System'] }
-                    },
-                    required: ['emoji', 'category']
+        return await callWithFallback(async (model) => {
+            // @ts-ignore
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: { 
+                            emoji: { type: Type.STRING },
+                            category: { type: Type.STRING, enum: ['Health', 'Growth', 'Career', 'Finance', 'Connection', 'System'] }
+                        },
+                        required: ['emoji', 'category']
+                    }
                 }
-            }
+            });
+            return parseGeminiJson<{emoji: string, category: HabitCategory}>(response.text);
         });
-        const result = parseGeminiJson<{emoji: string, category: HabitCategory}>(response.text);
-        return result;
     } catch (e) {
         console.error("Error analyzing habit:", e);
         return { emoji: "⚡️", category: "System" };
@@ -453,7 +485,10 @@ Respond with JSON.`;
 export const getChatResponseStream = async (history: Message[], entries: Entry[], intentions: Intention[]) => {
     if (!ai) throw new Error("AI functionality is disabled.");
 
-    const model = 'gemini-2.5-flash';
+    // Streaming doesn't easily support the simple retry wrapper because it returns an async generator.
+    // For simplicity in this version, we stick to the primary model, or we could implement a complex wrapper.
+    // Given streaming's nature, a hard fail is often better than a delayed fallback that might duplicate tokens.
+    // We will use the primary model. If chat fails, the UI handles it.
 
     const recentEntriesSummary = entries.slice(0, 15).map(e => 
         `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`
@@ -478,8 +513,9 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         parts: [{ text: msg.text }],
     }));
     
+    // @ts-ignore
     const streamResult = await ai.models.generateContentStream({
-        model,
+        model: PRIMARY_MODEL,
         contents: [
             ...chatHistory,
             { role: 'user', parts: [{ text: userPrompt }] }
@@ -496,21 +532,23 @@ export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<st
     if (!ai) throw new Error("AI is not configured.");
     if (entries.length === 0) return "Hello! I'm Mindstream. How can I help you reflect today?";
     
-    const model = 'gemini-2.5-flash';
     const lastEntry = entries[0];
     const prompt = `Based on my last journal entry, create a short, warm, one-sentence greeting that acknowledges the entry's topic without being too specific.
 
 Last entry: "Feeling ${lastEntry.primary_sentiment}, I wrote: ${lastEntry.text}"
 
 Your greeting:`;
-    const response = await ai.models.generateContent({ model, contents: prompt });
-    return response.text;
+
+    return callWithFallback(async (model) => {
+        // @ts-ignore
+        const response = await ai.models.generateContent({ model, contents: prompt });
+        return response.text;
+    });
 };
 
 export const generateChatStarters = async (entries: Entry[], intentions: Intention[]): Promise<{ starters: string[] }> => {
     if (!ai) throw new Error("AI is not configured.");
     
-    const model = 'gemini-2.5-flash';
     const entriesText = entries.slice(0, 5).map(e => `- Entry (Feeling: ${e.primary_sentiment}): ${e.text}`).join('\n');
     const intentionsText = intentions.filter(i => i.status === 'pending').slice(0, 5).map(i => `- Intention: ${i.text}`).join('\n');
 
@@ -531,25 +569,26 @@ ${intentionsText.length > 0 ? intentionsText : "None"}
 
 Respond with a JSON object.`;
     
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    starters: {
-                        type: Type.ARRAY,
-                        description: "An array of exactly 3 string conversation starters.",
-                        items: { type: Type.STRING }
-                    }
-                },
-                required: ['starters']
+    return callWithFallback(async (model) => {
+        // @ts-ignore
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        starters: {
+                            type: Type.ARRAY,
+                            description: "An array of exactly 3 string conversation starters.",
+                            items: { type: Type.STRING }
+                        }
+                    },
+                    required: ['starters']
+                }
             }
-        }
+        });
+        return parseGeminiJson<{ starters: string[] }>(response.text);
     });
-
-    const result = parseGeminiJson<{ starters: string[] }>(response.text);
-    return result;
 };
