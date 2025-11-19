@@ -4,6 +4,8 @@ import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
 import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency } from './types';
+// Import the new type from dbService
+import type { UserContext } from './services/dbService';
 import { getFormattedDate, getWeekId, getMonthId, isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from './utils/date';
 
 import { Header } from './components/Header';
@@ -125,6 +127,7 @@ export const MindstreamApp: React.FC = () => {
     const fetchDataAndVerifyAI = async () => {
       if (!user) return;
       try {
+        // Used for initial load
         const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
@@ -187,7 +190,15 @@ export const MindstreamApp: React.FC = () => {
     setMessages(prev => [...prev, { sender: 'ai', text: '', id: aiMessageId }]);
 
     try {
-        const streamResult = await gemini.getChatResponseStream(currentHistory, entries, intentions);
+        // Construct UserContext from current state
+        const context: UserContext = {
+            recentEntries: entries.slice(0, 15),
+            pendingIntentions: intentions.filter(i => i.status === 'pending'),
+            activeHabits: habits,
+            latestReflection: reflections.length > 0 ? reflections[0] : null // Assuming first is latest due to sort
+        };
+
+        const streamResult = await gemini.getChatResponseStream(currentHistory, context);
 
         let fullText = '';
         for await (const chunk of streamResult) {
