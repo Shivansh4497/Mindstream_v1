@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
@@ -576,8 +575,6 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
               return <ReflectionsView 
                         entries={entries}
                         intentions={intentions}
-                        habits={habits}
-                        habitLogs={habitLogs}
                         reflections={reflections}
                         onGenerateDaily={handleGenerateReflection}
                         onGenerateWeekly={handleGenerateWeeklyReflection}
