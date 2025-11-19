@@ -1,7 +1,7 @@
 
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory } from '../types';
 import { getDisplayDate } from "../utils/date";
 
 let ai: GoogleGenAI | null = null;
@@ -87,7 +87,7 @@ export const generateReflection = async (entries: Entry[], intentions: Intention
     const completedHabitIds = new Set(habitLogs.map(l => l.habit_id));
     habitsText = habits.map(h => {
         const isDone = completedHabitIds.has(h.id);
-        return `- [${isDone ? 'x' : ' '}] Habit: ${h.name} (Streak: ${h.current_streak})`;
+        return `- [${isDone ? 'x' : ' '}] Habit (${h.category}): ${h.name} (Streak: ${h.current_streak})`;
     }).join('\n');
   }
 
@@ -361,10 +361,20 @@ Respond with only a JSON object.`;
   return result;
 };
 
-export const generateHabitEmoji = async (habitName: string): Promise<string> => {
-    if (!ai) return "⚡️"; // Default
+export const analyzeHabit = async (habitName: string): Promise<{ emoji: string, category: HabitCategory }> => {
+    if (!ai) return { emoji: "⚡️", category: "System" }; 
     const model = 'gemini-2.5-flash';
-    const prompt = `Pick a single Unicode emoji that best represents the habit: "${habitName}". Return JSON.`;
+    const prompt = `Analyze the habit: "${habitName}".
+1. Pick a single Unicode emoji that best represents it.
+2. Categorize it into exactly one of these categories: Health, Growth, Career, Finance, Connection, System.
+   - Health: Physical, mental, sleep, nutrition.
+   - Growth: Learning, hobbies, skills, reading.
+   - Career: Work, deep work, networking.
+   - Finance: Budgeting, saving, investing.
+   - Connection: Relationships, family, social.
+   - System: Chores, admin, organization, planning.
+
+Respond with JSON.`;
     
     try {
         const response = await ai.models.generateContent({
@@ -374,15 +384,19 @@ export const generateHabitEmoji = async (habitName: string): Promise<string> => 
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
-                    properties: { emoji: { type: Type.STRING } },
-                    required: ['emoji']
+                    properties: { 
+                        emoji: { type: Type.STRING },
+                        category: { type: Type.STRING, enum: ['Health', 'Growth', 'Career', 'Finance', 'Connection', 'System'] }
+                    },
+                    required: ['emoji', 'category']
                 }
             }
         });
-        const result = parseGeminiJson<{emoji: string}>(response.text);
-        return result.emoji;
+        const result = parseGeminiJson<{emoji: string, category: HabitCategory}>(response.text);
+        return result;
     } catch (e) {
-        return "⚡️";
+        console.error("Error analyzing habit:", e);
+        return { emoji: "⚡️", category: "System" };
     }
 };
 
