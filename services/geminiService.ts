@@ -1,7 +1,7 @@
 
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight, EntrySuggestion } from '../types';
 import { getDisplayDate } from "../utils/date";
 import type { UserContext } from './dbService'; // Import from dbService to use the new interface
 
@@ -438,6 +438,62 @@ Respond with only a JSON object.`;
     return parseGeminiJson<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>>(response.text);
   });
 };
+
+/**
+ * Asynchronously analyzes an entry to offer specific, actionable next steps (The Silent Observer).
+ */
+export const generateEntrySuggestions = async (entryText: string): Promise<EntrySuggestion[] | null> => {
+    if (!ai) return null;
+
+    const prompt = `Analyze the following journal entry. Does the user express a clear need or desire that could be turned into a Habit, an Intention (Goal), or a deeper Reflection (Chat)?
+    
+    Entry: "${entryText}"
+    
+    Rules:
+    1. Be Strict: Only suggest if the user clearly implies a desire to change, achieve, or explore. If they are just logging/venting, return null.
+    2. Suggest ONLY 1 or 2 items maximum.
+    3. Output format: A JSON array of objects.
+    
+    Types:
+    - 'habit': Use if they mention a repetitive action they want to start/stop (e.g., "I need to run more"). Data: { frequency: 'daily' | 'weekly' }.
+    - 'intention': Use for one-off goals (e.g., "I want to finish that report"). Data: { timeframe: 'daily' | 'weekly' | 'monthly' }.
+    - 'reflection': Use if they seem confused, stuck, or emotional and need to talk it out. Data: { prompt: "Specific question to start chat" }.
+    
+    Output Schema: 
+    Array<{ type: 'habit'|'intention'|'reflection', label: string, data: any }> or null.
+    `;
+
+    try {
+        return await callWithFallback(async (model) => {
+            // @ts-ignore
+            const response = await ai.models.generateContent({
+                model, // Use backup model (1.5-flash) preferably for cost/speed via callWithFallback logic if setup
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { type: Type.STRING, enum: ['habit', 'intention', 'reflection'] },
+                                label: { type: Type.STRING, description: "Short button label e.g. 'Track Running' or 'Discuss Anxiety'" },
+                                data: { type: Type.OBJECT, description: "Context object" }
+                            },
+                            required: ['type', 'label', 'data']
+                        }
+                    }
+                }
+            });
+            const result = parseGeminiJson<EntrySuggestion[]>(response.text);
+            return result.length > 0 ? result : null;
+        });
+    } catch (e) {
+        console.warn("Silent observer failed (non-critical):", e);
+        return null;
+    }
+}
+
 
 export const analyzeHabit = async (habitName: string): Promise<{ emoji: string, category: HabitCategory }> => {
     if (!ai) return { emoji: "⚡️", category: "System" }; 
