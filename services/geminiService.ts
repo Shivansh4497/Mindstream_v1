@@ -485,11 +485,6 @@ Respond with JSON.`;
 export const getChatResponseStream = async (history: Message[], entries: Entry[], intentions: Intention[]) => {
     if (!ai) throw new Error("AI functionality is disabled.");
 
-    // Streaming doesn't easily support the simple retry wrapper because it returns an async generator.
-    // For simplicity in this version, we stick to the primary model, or we could implement a complex wrapper.
-    // Given streaming's nature, a hard fail is often better than a delayed fallback that might duplicate tokens.
-    // We will use the primary model. If chat fails, the UI handles it.
-
     const recentEntriesSummary = entries.slice(0, 15).map(e => 
         `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`
     ).join('\n');
@@ -513,19 +508,38 @@ ${intentionsSummary.length > 0 ? intentionsSummary : "No intentions or goals set
         parts: [{ text: msg.text }],
     }));
     
-    // @ts-ignore
-    const streamResult = await ai.models.generateContentStream({
-        model: PRIMARY_MODEL,
-        contents: [
-            ...chatHistory,
-            { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-            systemInstruction,
-        }
-    });
-    
-    return streamResult;
+    // Initialize the stream. We wrap this in a try/catch to support fallback models.
+    // Note: If the stream fails mid-generation, it's hard to recover seamlessly,
+    // so fallback focuses on initial connection failure.
+    try {
+        // @ts-ignore
+        const streamResult = await ai.models.generateContentStream({
+            model: PRIMARY_MODEL,
+            contents: [
+                ...chatHistory,
+                { role: 'user', parts: [{ text: userPrompt }] }
+            ],
+            config: {
+                systemInstruction,
+            }
+        });
+        return streamResult;
+    } catch (primaryError: any) {
+        console.warn(`Primary model (${PRIMARY_MODEL}) failed for chat stream. Trying backup (${BACKUP_MODEL}).`, primaryError);
+        
+        // @ts-ignore
+        const streamResult = await ai.models.generateContentStream({
+            model: BACKUP_MODEL,
+            contents: [
+                ...chatHistory,
+                { role: 'user', parts: [{ text: userPrompt }] }
+            ],
+            config: {
+                systemInstruction,
+            }
+        });
+        return streamResult;
+    }
 }
 
 export const generatePersonalizedGreeting = async (entries: Entry[]): Promise<string> => {
