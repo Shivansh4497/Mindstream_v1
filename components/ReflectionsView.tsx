@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo } from 'react';
-import type { Entry, Intention, Reflection, AISuggestion, Habit, HabitLog } from '../types';
+import type { Entry, Intention, Reflection, AISuggestion } from '../types';
 import { DailyReflections } from './DailyReflections';
 import { WeeklyReflections } from './WeeklyReflections';
 import { MonthlyReflections } from './MonthlyReflections';
@@ -11,8 +10,6 @@ type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly';
 interface ReflectionsViewProps {
   entries: Entry[];
   intentions: Intention[];
-  habits: Habit[]; // New prop
-  habitLogs: HabitLog[]; // New prop
   reflections: Reflection[];
   onGenerateDaily: (date: string, entriesForDay: Entry[]) => void;
   onGenerateWeekly: (weekId: string, entriesForWeek: Entry[]) => void;
@@ -34,8 +31,6 @@ const timeframes: { id: ReflectionTimeframe; label: string }[] = [
 export const ReflectionsView: React.FC<ReflectionsViewProps> = ({ 
   entries, 
   intentions, 
-  habits,
-  habitLogs,
   reflections, 
   onGenerateDaily, 
   onGenerateWeekly, 
@@ -43,7 +38,7 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
   onExploreInChat, 
   isGenerating, 
   onAddSuggestion, 
-  aiStatus,
+  aiStatus, 
   onDebug,
   debugOutput 
 }) => {
@@ -75,10 +70,6 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
             aiStatus={aiStatus}
             onDebug={onDebug}
             debugOutput={debugOutput}
-            // Pass habit data to DailyReflections if needed for UI, 
-            // but mainly the onGenerate function will use them from the parent's scope/handler.
-            // However, DailyReflections component doesn't necessarily need to *display* habits, 
-            // just generate based on them. The handler `onGenerateDaily` in `MindstreamApp` will have access to habits.
         />;
       case 'weekly':
         return <WeeklyReflections entries={entries} weeklyReflections={weekly} onGenerate={onGenerateWeekly} onExplore={onExploreInChat} isGenerating={isGenerating} onAddSuggestion={onAddSuggestion} />;
