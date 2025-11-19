@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
@@ -43,7 +44,7 @@ export const MindstreamApp: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
   
   const [view, setView] = useState<View>('stream');
-  const [isProcessing, setIsProcessing] = useState(false); // For new entries
+  const [isProcessing, setIsProcessing] = useState(false); // For new entries (deprecated in favor of optimistic ui, but used for UI lock if needed)
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   
@@ -217,8 +218,6 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
     setChatStarters([]);
 
     try {
-        // If we have a specific initial AI message (from onboarding), we use that.
-        // Otherwise, we generate a personalized greeting.
         let startMessage: Message;
         
         if (initialAiMessage) {
@@ -229,29 +228,16 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
         }
 
         if (firstUserPrompt) {
-            // If starting with a user prompt (context), construct history.
-            // For onboarding, we want:
-            // 1. User's context (hidden or shown? Let's show it for clarity)
-            // 2. AI's Follow-up question (already provided as initialAiMessage)
-            // 3. Ready for user's next input.
-            
-            // Actually, if `firstUserPrompt` is passed, usually it means "User sent this, AI respond".
-            // BUT for Onboarding handoff, `initialAiMessage` is the response to `firstUserPrompt`.
-            
             if (initialAiMessage) {
-                // Onboarding Handoff Case
                 const userContextMsg: Message = { sender: 'user', text: firstUserPrompt, id: 'context' };
                 setMessages([userContextMsg, startMessage]);
-                // We don't trigger generation, just set state.
             } else {
-                // Standard "Explore in Chat" Case
                 const history = [startMessage];
                 setMessages(history);
                 await handleSendMessage(firstUserPrompt, history);
             }
 
         } else {
-            // Standard fresh session
             setMessages([startMessage]);
             setIsGeneratingStarters(true);
             
@@ -290,21 +276,59 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
   };
 
   const handleAddEntry = async (text: string) => {
-    if (!user || isProcessing) return;
-    if (aiStatus !== 'ready') {
-      setToast({ message: "Cannot save entry: AI is not connected.", id: Date.now() });
-      return;
-    }
-    setIsProcessing(true);
+    if (!user) return;
+    // Optimistic UI: Immediate Update
+    const tempId = `temp-${Date.now()}`;
+    const tempEntry: Entry = {
+        id: tempId,
+        user_id: user.id,
+        timestamp: new Date().toISOString(),
+        text: text,
+        title: "Processing...", 
+        emoji: "⏳",
+        tags: [],
+        primary_sentiment: null,
+    };
+
+    setEntries(prev => [tempEntry, ...prev]);
+
     try {
-      const aiData = await gemini.processEntry(text);
-      const newEntryData = { ...aiData, text: text, timestamp: new Date().toISOString() };
-      const newEntry = await db.addEntry(user.id, newEntryData);
-      setEntries(prev => [newEntry, ...prev]);
+        // 2. AI Processing (Graceful Degradation)
+        let processedData;
+        // Try AI only if status is ready. If not, skip directly to fallback.
+        if (aiStatus === 'ready') {
+            try {
+                processedData = await gemini.processEntry(text);
+            } catch (aiError) {
+                console.warn("AI processing failed, falling back to unprocessed state.", aiError);
+                processedData = null;
+            }
+        }
+
+        // If AI failed or wasn't ready, use fallback data
+        if (!processedData) {
+            processedData = {
+                title: "Draft Entry",
+                emoji: "📝",
+                tags: ["Unprocessed"],
+                primary_sentiment: null,
+                secondary_sentiment: null
+            };
+        }
+
+        // 3. DB Save
+        const newEntryData = { ...processedData, text, timestamp: tempEntry.timestamp };
+        // @ts-ignore - processedData might be missing fields if we fallback, but our fallback covers them.
+        const savedEntry = await db.addEntry(user.id, newEntryData);
+
+        // 4. Reconcile State: Swap temp entry with real entry
+        setEntries(prev => prev.map(e => e.id === tempId ? savedEntry : e));
+
     } catch (error) {
-      handleApiError(error, 'adding new entry');
-    } finally {
-      setIsProcessing(false);
+        console.error("Critical error saving entry:", error);
+        handleApiError(error, 'adding new entry');
+        // Revert optimistic update on critical DB failure
+        setEntries(prev => prev.filter(e => e.id !== tempId));
     }
   };
 
@@ -567,8 +591,6 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
 
       if (destination === 'chat' && initialContext && aiQuestion) {
            setView('chat');
-           // Handoff: Inject the User's Elaboration and the AI's follow-up question to "seed" the chat.
-           // This makes it look like the conversation has already started.
            const aiFollowUpMessage: Message = { 
                sender: 'ai', 
                text: aiQuestion, 
