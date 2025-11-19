@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
@@ -47,6 +47,7 @@ export const MindstreamApp: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false); // For new entries (deprecated in favor of optimistic ui, but used for UI lock if needed)
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isAddingHabit, setIsAddingHabit] = useState(false);
+  const processingHabits = useRef<Set<string>>(new Set());
   
   // App/Data loading state
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -442,13 +443,33 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
 
   const handleAddIntention = async (text: string, timeframe: IntentionTimeframe) => {
     if (!user) return;
+
+    // Optimistic UI
+    const tempId = `temp-intention-${Date.now()}`;
+    const tempIntention: Intention = {
+        id: tempId,
+        user_id: user.id,
+        text: text,
+        status: 'pending',
+        timeframe: timeframe,
+        is_recurring: false,
+        tags: [],
+        target_date: null,
+        completed_at: null,
+        created_at: new Date().toISOString()
+    };
+
+    setIntentions(prev => [tempIntention, ...prev]);
+
     try {
         const newIntention = await db.addIntention(user.id, text, timeframe);
         if (newIntention) {
-            setIntentions(prev => [newIntention, ...prev]);
+            setIntentions(prev => prev.map(i => i.id === tempId ? newIntention : i));
         }
     } catch (error) {
         console.error("Error adding intention:", error);
+        setIntentions(prev => prev.filter(i => i.id !== tempId));
+        setToast({ message: "Failed to add intention.", id: Date.now() });
     }
   };
 
@@ -469,43 +490,87 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
 
   const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
+    
+    // Optimistic UI
+    setIntentions(prev => prev.map(i => i.id === id ? { ...i, status: newStatus, completed_at: newStatus === 'completed' ? new Date().toISOString() : null } : i));
+
     try {
-        const updatedIntention = await db.updateIntentionStatus(id, newStatus);
-        if (updatedIntention) {
-            setIntentions(prev => prev.map(i => i.id === id ? updatedIntention : i));
-        }
+        await db.updateIntentionStatus(id, newStatus);
     } catch (error) {
         console.error(`Error updating intention status to ${newStatus}:`, error);
+        // Revert
+        setIntentions(prev => prev.map(i => i.id === id ? { ...i, status: currentStatus, completed_at: currentStatus === 'completed' ? new Date().toISOString() : null } : i));
+        setToast({ message: "Failed to update status.", id: Date.now() });
     }
   };
 
   const handleDeleteIntention = async (id: string) => {
-    const wasDeleted = await db.deleteIntention(id);
-    if (wasDeleted) {
-        setIntentions(prev => prev.filter(i => i.id !== id));
-    }
+      // Optimistic UI
+      const prevIntentions = [...intentions];
+      setIntentions(prev => prev.filter(i => i.id !== id));
+
+      try {
+          await db.deleteIntention(id);
+      } catch (error) {
+          // Revert
+          setIntentions(prevIntentions);
+          setToast({ message: "Failed to delete intention.", id: Date.now() });
+      }
   };
 
   const handleAddHabit = async (name: string, frequency: HabitFrequency) => {
     if (!user || isAddingHabit) return;
     setIsAddingHabit(true);
+
+    // Optimistic UI
+    const tempId = `temp-habit-${Date.now()}`;
+    const tempHabit: Habit = {
+        id: tempId,
+        user_id: user.id,
+        name: name,
+        emoji: '⚡️', // Default placeholder
+        category: 'System', // Default placeholder
+        frequency: frequency,
+        current_streak: 0,
+        longest_streak: 0,
+        created_at: new Date().toISOString()
+    };
+
+    setHabits(prev => [...prev, tempHabit]);
+
     try {
-        const { emoji, category } = await gemini.analyzeHabit(name);
+        // Graceful Degradation: Try AI, but use defaults if it fails.
+        let emoji = '⚡️';
+        let category = 'System' as any;
+        
+        try {
+             const aiResult = await gemini.analyzeHabit(name);
+             emoji = aiResult.emoji;
+             category = aiResult.category;
+        } catch (aiError) {
+            console.warn("AI habit categorization failed. Using defaults.");
+        }
+
         const newHabit = await db.addHabit(user.id, name, emoji, category, frequency);
         if (newHabit) {
-            setHabits(prev => [...prev, newHabit]);
+            setHabits(prev => prev.map(h => h.id === tempId ? newHabit : h));
         }
     } catch (error) {
         handleApiError(error, 'adding habit');
+        // Revert
+        setHabits(prev => prev.filter(h => h.id !== tempId));
     } finally {
         setIsAddingHabit(false);
     }
   };
 
   const handleToggleHabit = async (habitId: string) => {
+      if (processingHabits.current.has(habitId)) return; // Prevent spamming
+      
       const habit = habits.find(h => h.id === habitId);
       if (!habit) return;
 
+      // Optimistic Logic
       const now = new Date();
       const existingLog = habitLogs.find(l => {
           if (l.habit_id !== habitId) return false;
@@ -515,28 +580,77 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
           if (habit.frequency === 'monthly') return isDateInCurrentMonth(logDate);
           return false;
       });
+      
+      const isCompleting = !existingLog;
+      const tempLogId = `temp-log-${Date.now()}`;
+
+      // Optimistic State Updates
+      processingHabits.current.add(habitId);
+      
+      // Update Streak Optimistically
+      const newStreak = isCompleting ? habit.current_streak + 1 : Math.max(0, habit.current_streak - 1);
+      setHabits(prev => prev.map(h => h.id === habitId ? { ...h, current_streak: newStreak } : h));
+
+      // Update Logs Optimistically
+      if (isCompleting) {
+          const newLog: HabitLog = { id: tempLogId, habit_id: habitId, completed_at: new Date().toISOString() };
+          setHabitLogs(prev => [...prev, newLog]);
+      } else {
+          setHabitLogs(prev => prev.filter(l => l.id !== existingLog!.id));
+      }
 
       try {
           if (existingLog) {
+              // Uncheck
+              // If the log being deleted was an optimistic one (temp-log), this might fail if called too fast,
+              // but the guard `processingHabits` prevents re-entry until complete.
+              // However, `existingLog.id` might be a temp ID if we didn't fetch from DB yet? 
+              // Ideally, we assume standard flow. If it's a temp ID, we can't call DB delete.
+              // But since we block interaction, by the time they click again, it should have reconciled?
+              // Wait... we aren't reconciling logs here, only fetching on mount. 
+              // So `existingLog` relies on what `checkHabit` returns.
+              // `checkHabit` returns the REAL log. So we need to update state with REAL log.
+              
               const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak);
-              setHabitLogs(prev => prev.filter(l => l.id !== existingLog.id));
-              setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+              // Reconcile (though optimistic update likely matches)
+               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+               // We don't need to reconcile logs since we already removed it.
           } else {
+              // Check
               const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak);
-              setHabitLogs(prev => [...prev, log]);
+              // Reconcile Log: Swap temp ID for Real ID so future unchecks work
+              setHabitLogs(prev => prev.map(l => l.id === tempLogId ? log : l));
               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
           }
       } catch (error) {
           console.error("Error toggling habit:", error);
           setToast({ message: "Failed to update habit status", id: Date.now() });
+          // Revert State
+          setHabits(prev => prev.map(h => h.id === habitId ? habit : h)); // Revert streak
+          if (isCompleting) {
+             setHabitLogs(prev => prev.filter(l => l.id !== tempLogId));
+          } else {
+             setHabitLogs(prev => [...prev, existingLog!]);
+          }
+      } finally {
+          processingHabits.current.delete(habitId);
       }
   };
   
   const handleDeleteHabit = async (habitId: string) => {
+      // Optimistic UI
+      const prevHabits = [...habits];
+      const prevLogs = [...habitLogs];
+      
+      setHabits(prev => prev.filter(h => h.id !== habitId));
+      setHabitLogs(prev => prev.filter(l => l.habit_id !== habitId));
+
       const success = await db.deleteHabit(habitId);
-      if (success) {
-          setHabits(prev => prev.filter(h => h.id !== habitId));
-          setHabitLogs(prev => prev.filter(l => l.habit_id !== habitId));
+      if (!success) {
+          // Revert
+          setHabits(prevHabits);
+          setHabitLogs(prevLogs);
+          setToast({ message: "Failed to delete habit.", id: Date.now() });
       }
   };
 
