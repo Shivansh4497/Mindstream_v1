@@ -1,7 +1,7 @@
 
 // FIX: Updated to use import.meta.env for consistency and added optional chaining to prevent crashes.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory } from '../types';
+import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight } from '../types';
 import { getDisplayDate } from "../utils/date";
 
 let ai: GoogleGenAI | null = null;
@@ -68,6 +68,41 @@ const generateActionableSuggestionsSchema = {
         },
         required: ['text', 'timeframe']
     }
+};
+
+export const generateInstantInsight = async (text: string, sentiment: string): Promise<InstantInsight> => {
+    if (!ai) throw new Error("AI functionality is disabled.");
+    const model = 'gemini-2.5-flash';
+
+    const prompt = `You are an expert therapist and a wise, empathetic friend. The user is feeling "${sentiment}" because: "${text}".
+    
+    Your task is to provide an "Instant Insight".
+    1. Validate their feeling (make them feel seen).
+    2. Do NOT simply summarize what they wrote.
+    3. Offer a specific perspective shift, a comforting truth, or a gentle challenge.
+    4. Keep the insight under 3 sentences.
+    
+    Also, generate a gentle "followUpQuestion" that you would ask to help them dig deeper into this feeling in a chat session.
+    
+    Respond with a JSON object containing "insight" and "followUpQuestion".`;
+
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    insight: { type: Type.STRING },
+                    followUpQuestion: { type: Type.STRING }
+                },
+                required: ['insight', 'followUpQuestion']
+            }
+        }
+    });
+
+    return parseGeminiJson<InstantInsight>(response.text);
 };
 
 /**
