@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion } from './types';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog } from './types';
 import { getFormattedDate, getWeekId, getMonthId } from './utils/date';
 
 import { Header } from './components/Header';
@@ -23,6 +24,8 @@ import { SuggestionChips } from './components/SuggestionChips';
 import { Toast } from './components/Toast';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { EditEntryModal } from './components/EditEntryModal';
+import { HabitsView } from './components/HabitsView';
+import { HabitsInputBar } from './components/HabitsInputBar';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
@@ -34,11 +37,15 @@ export const MindstreamApp: React.FC = () => {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [intentions, setIntentions] = useState<Intention[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
+  
   const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
   
   const [view, setView] = useState<View>('stream');
   const [isProcessing, setIsProcessing] = useState(false); // For new entries
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
+  const [isAddingHabit, setIsAddingHabit] = useState(false);
   
   // App/Data loading state
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -109,15 +116,20 @@ export const MindstreamApp: React.FC = () => {
       if (!user) return;
       try {
         // Fetch user data from database
-        const [userEntries, userReflections, userIntentions] = await Promise.all([
+        const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs] = await Promise.all([
           db.getEntries(user.id),
           db.getReflections(user.id),
-          db.getIntentions(user.id)
+          db.getIntentions(user.id),
+          db.getHabits(user.id),
+          db.getTodaysHabitLogs(user.id)
         ]);
         
         setEntries(userEntries);
         setReflections(userReflections);
         setIntentions(userIntentions);
+        setHabits(userHabits);
+        setHabitLogs(userHabitLogs);
+        
         setIsDataLoaded(true);
 
         // Once data is loaded, verify the AI connection
@@ -335,7 +347,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
       setIsGeneratingReflection(date);
       try {
         const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-        const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay);
+        // Pass habits and logs for better context
+        const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay, habits, habitLogs);
         const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
             date: date,
             summary: summary,
@@ -459,6 +472,54 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
     }
   };
 
+  const handleAddHabit = async (name: string) => {
+    if (!user || isAddingHabit) return;
+    setIsAddingHabit(true);
+    try {
+        const emoji = await gemini.generateHabitEmoji(name);
+        const newHabit = await db.addHabit(user.id, name, emoji);
+        if (newHabit) {
+            setHabits(prev => [...prev, newHabit]);
+        }
+    } catch (error) {
+        handleApiError(error, 'adding habit');
+    } finally {
+        setIsAddingHabit(false);
+    }
+  };
+
+  const handleToggleHabit = async (habitId: string) => {
+      // Check if already logged today
+      const todayLog = habitLogs.find(l => l.habit_id === habitId);
+      const habit = habits.find(h => h.id === habitId);
+      if (!habit) return;
+
+      try {
+          if (todayLog) {
+              // Uncheck
+              const { updatedHabit } = await db.uncheckHabit(todayLog.id, habitId, habit.current_streak);
+              setHabitLogs(prev => prev.filter(l => l.id !== todayLog.id));
+              setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+          } else {
+              // Check
+              const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak);
+              setHabitLogs(prev => [...prev, log]);
+              setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+          }
+      } catch (error) {
+          console.error("Error toggling habit:", error);
+          setToast({ message: "Failed to update habit status", id: Date.now() });
+      }
+  };
+  
+  const handleDeleteHabit = async (habitId: string) => {
+      const success = await db.deleteHabit(habitId);
+      if (success) {
+          setHabits(prev => prev.filter(h => h.id !== habitId));
+          setHabitLogs(prev => prev.filter(l => l.habit_id !== habitId));
+      }
+  };
+
   const handleTagClick = (tag: string) => {
     setSelectedTagState(tag);
     setShowThematicModal(true);
@@ -515,6 +576,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
               return <ReflectionsView 
                         entries={entries}
                         intentions={intentions}
+                        habits={habits}
+                        habitLogs={habitLogs}
                         reflections={reflections}
                         onGenerateDaily={handleGenerateReflection}
                         onGenerateWeekly={handleGenerateWeeklyReflection}
@@ -534,6 +597,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
                      />;
           case 'intentions':
               return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
+          case 'habits':
+              return <HabitsView habits={habits} todaysLogs={habitLogs} onToggle={handleToggleHabit} onDelete={handleDeleteHabit} />;
           default:
               return <Stream 
                         entries={entries} 
@@ -566,6 +631,8 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
             );
         case 'intentions':
             return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
+        case 'habits':
+            return <HabitsInputBar onAddHabit={handleAddHabit} isLoading={isAddingHabit} />;
         default:
             return null;
     }
