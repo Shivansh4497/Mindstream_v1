@@ -23,16 +23,17 @@ const sentiments: Sentiment[] = [
   'Tired', 'Inspired', 'Frustrated', 'Grateful'
 ];
 
-// Updated to Radial Gradients for Spotlight Effect
+// Updated to Monochromatic Radial Gradients for a cleaner "Spotlight" effect.
+// No mixing colors (e.g., no Yellow in Teal) to avoid muddy transitions.
 const sentimentGradients: Record<Sentiment, string> = {
-  Anxious: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-orange-950',
-  Excited: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-teal-950 to-yellow-900',
-  Overwhelmed: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-purple-950',
-  Calm: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-blue-950 to-emerald-950',
-  Tired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-700 via-slate-800 to-gray-950',
-  Inspired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-violet-800 via-violet-900 to-fuchsia-950',
-  Frustrated: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-900 via-red-950 to-zinc-950',
-  Grateful: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900 via-amber-950 to-yellow-950',
+  Anxious: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-950 to-black',
+  Excited: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-teal-950 to-black',
+  Overwhelmed: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gray-800 via-gray-950 to-black',
+  Calm: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-blue-950 to-black',
+  Tired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-800 via-zinc-950 to-black',
+  Inspired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-violet-900 via-violet-950 to-black',
+  Frustrated: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-900 via-red-950 to-black',
+  Grateful: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900 via-amber-950 to-black',
 };
 
 const lifeAreas: { id: LifeArea; label: string; icon: string }[] = [
@@ -185,46 +186,84 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     setStep('elaboration');
   };
 
-  // Fixed Logic Gap: Checks sentiment valence
+  // Fixed Logic Gap: Comprehensive Prompt Matrix
   const getPromptPlaceholder = () => {
       if (!selectedTrigger || !selectedSentiment) return "I'm thinking about...";
       
       const isPositive = ['Excited', 'Calm', 'Inspired', 'Grateful', 'Joyful', 'Hopeful', 'Proud', 'Content'].includes(selectedSentiment);
       
-      // Base Prompts map
       const negativePrompts: Record<string, string> = {
-        'Imposter Syndrome': "What is one specific task making you doubt yourself?",
-        'Burnout': "What specifically is draining your energy right now?",
+        // Work
         'Deadlines': "Which deliverable is weighing on you the most?",
         'Conflict': "What happened that caused this tension?",
+        'Burnout': "What specifically is draining your energy right now?",
+        'Imposter Syndrome': "What is one specific task making you doubt yourself?",
+        'Boredom': "What feels uninspiring about your work right now?",
+        // Relationships
         'Misunderstanding': "What do you wish they understood?",
+        'Distance': "Who are you missing right now, and why?",
         'Boundaries': "Where do you feel your limits were crossed?",
+        'Loneliness': "What kind of connection are you craving?",
+        'Trust': "What happened to shake your trust?",
+        // Health
         'Fatigue': "What is stopping you from resting?",
+        'Sleep': "What thoughts are keeping you awake?",
+        'Diet': "How is your body reacting to your recent choices?",
+        'Body Image': "What negative thought is cycling in your mind?",
+        'Pain': "How is this physical sensation affecting your mood?",
+        // Self
         'Purpose': "What feels meaningless right now?",
+        'Motivation': "What block is standing in your way?",
+        'Self-Worth': "What is making you question your value?",
+        'Regret': "What past action are you holding onto?",
+        'Growth': "Where do you feel stuck in your journey?",
+        // Finance
         'Debt': "What specific financial worry is on your mind?",
+        'Budgeting': "Where is the stress coming from in your finances?",
+        'Spending': "What purchase are you feeling unsure about?",
+        'Future Security': "What 'what if' scenario is worrying you?",
+        'Income': "How is your current income affecting your peace of mind?"
       };
 
       const positivePrompts: Record<string, string> = {
-        'Imposter Syndrome': "How did you overcome that doubt today?",
-        'Burnout': "How are you finding balance today?",
+        // Work
         'Deadlines': "What progress are you celebrating?",
         'Conflict': "How did you handle that situation well?",
+        'Burnout': "How are you finding balance today?",
+        'Imposter Syndrome': "How did you overcome that doubt today?",
+        'Boredom': "What new interest is sparking your curiosity?",
+        // Relationships
         'Misunderstanding': "How did you find clarity?",
+        'Distance': "How are you bridging the gap today?",
         'Boundaries': "How did protecting your energy help you?",
+        'Loneliness': "Who made you feel seen today?",
+        'Trust': "What strengthened your trust today?",
+        // Health
         'Fatigue': "How are you prioritizing your rest?",
+        'Sleep': "How is your energy feeling after resting?",
+        'Diet': "How are you nourishing yourself today?",
+        'Body Image': "What do you appreciate about your body right now?",
+        'Pain': "How are you being gentle with yourself?",
+        // Self
         'Purpose': "What reinforced your sense of purpose today?",
+        'Motivation': "What is fueling your drive right now?",
+        'Self-Worth': "What reinforced your value today?",
+        'Regret': "What lesson have you made peace with?",
+        'Growth': "What small step forward did you take?",
+        // Finance
         'Debt': "What positive step did you take for your finances?",
-        'Self-Worth': "What reinforced your value today?"
+        'Budgeting': "How did you stay on track today?",
+        'Spending': "What purchase brought you genuine value?",
+        'Future Security': "What is making you feel secure right now?",
+        'Income': "What are you grateful for regarding your resources?"
       };
 
       const map = isPositive ? positivePrompts : negativePrompts;
       
       if (map[selectedTrigger]) return map[selectedTrigger];
 
-      // Fallback dynamic generation
-      return isPositive 
-        ? `How is ${selectedTrigger} supporting your ${selectedSentiment} feeling?`
-        : `How is ${selectedTrigger} causing you to feel ${selectedSentiment}?`;
+      // Fallback dynamic generation (Linguistically safe)
+      return `Tell me more about your ${selectedSentiment} feelings regarding ${selectedTrigger}.`;
   };
 
   const handleAnalyze = async () => {
