@@ -1,3 +1,4 @@
+
 // FIX: This file was previously empty. It has been implemented as the EntryCard component.
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Corrected the import path to be relative.
@@ -40,6 +41,9 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const isProcessing = entry.emoji === "⏳";
+  const isUnprocessed = entry.tags?.includes("Unprocessed");
+
   const entryTime = new Date(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -59,44 +63,54 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
   }, []);
 
   return (
-    <div className="bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02]">
+    <div className={`bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] ${isProcessing ? 'opacity-70' : ''}`}>
       
       <div className="flex justify-between items-start mb-3 gap-4">
-        <h3 className="flex-grow text-lg font-bold text-white">
-          {entry.emoji && <span className="mr-2">{entry.emoji}</span>}
-          {entry.title}
-        </h3>
+        <div className="flex-grow">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                {entry.emoji && <span>{entry.emoji}</span>}
+                <span>{entry.title}</span>
+                {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
+            </h3>
+            {isUnprocessed && (
+                <div className="text-xs text-gray-500 mt-1 italic">
+                    AI processing unavailable. Saved as draft.
+                </div>
+            )}
+        </div>
         
         <div className="flex items-center gap-2 flex-shrink-0">
           <time className="text-sm text-gray-400">{entryTime}</time>
           
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 -m-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
-              aria-label="More options"
-            >
-              <MoreOptionsIcon className="w-5 h-5" />
-            </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
+          {!isProcessing && (
+            <div className="relative" ref={menuRef}>
                 <button
-                  onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
-                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 -m-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+                aria-label="More options"
                 >
-                  <PencilIcon className="w-4 h-4" />
-                  Edit Entry
+                <MoreOptionsIcon className="w-5 h-5" />
                 </button>
-                <button
-                  onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
-                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
-                >
-                  <TrashIcon className="w-4 h-4" />
-                  Delete Entry
-                </button>
-              </div>
-            )}
-          </div>
+                {isMenuOpen && (
+                <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
+                    <button
+                    onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
+                    className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
+                    >
+                    <PencilIcon className="w-4 h-4" />
+                    Edit Entry
+                    </button>
+                    <button
+                    onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
+                    className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
+                    >
+                    <TrashIcon className="w-4 h-4" />
+                    Delete Entry
+                    </button>
+                </div>
+                )}
+            </div>
+          )}
         </div>
       </div>
       
@@ -104,7 +118,7 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
         {entry.text}
       </p>
 
-      {(entry.tags && entry.tags.length > 0) || entry.primary_sentiment ? (
+      {!isProcessing && ((entry.tags && entry.tags.length > 0) || entry.primary_sentiment) && (
         <div className="flex flex-wrap items-center gap-2">
            {entry.primary_sentiment && (
              <div className={`text-xs font-bold py-1 px-2 rounded-full ring-1 ring-inset ${getSentimentClasses(entry.primary_sentiment)}`}>
@@ -119,14 +133,14 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
           {entry.tags?.map((tag, index) => (
             <button
               key={index}
-              onClick={() => onTagClick?.(tag)}
-              className="text-xs bg-brand-teal/20 text-brand-teal font-medium py-1 px-2 rounded-full hover:bg-brand-teal/40 transition-colors"
+              onClick={() => tag !== "Unprocessed" && onTagClick?.(tag)}
+              className={`text-xs font-medium py-1 px-2 rounded-full transition-colors ${tag === "Unprocessed" ? 'bg-gray-700 text-gray-400 cursor-default' : 'bg-brand-teal/20 text-brand-teal hover:bg-brand-teal/40'}`}
             >
               {tag}
             </button>
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   );
 };
