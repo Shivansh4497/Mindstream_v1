@@ -1,7 +1,10 @@
+
 import React, { useState } from 'react';
 import { SearchIcon } from './icons/SearchIcon';
 import { useAuth } from '../context/AuthContext';
 import { LogoutIcon } from './icons/LogoutIcon';
+import { TrashIcon } from './icons/TrashIcon';
+import * as db from '../services/dbService';
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -9,8 +12,16 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
-  const { profile, logout } = useAuth();
+  const { profile, logout, user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (confirm("Are you sure you want to delete your account? This is irreversible.")) {
+      await db.deleteAccount(user.id);
+      await logout();
+    }
+  };
 
   return (
     <header className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-4 flex justify-between items-center border-b border-white/10 z-20">
@@ -32,16 +43,23 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
               <img src={profile.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${profile.email}`} alt="User avatar" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-dark-surface rounded-md shadow-lg py-1 z-30 animate-fade-in">
+              <div className="absolute right-0 mt-2 w-56 bg-dark-surface rounded-md shadow-lg py-1 z-30 animate-fade-in ring-1 ring-black ring-opacity-5">
                 <div className="px-4 py-2 text-sm text-gray-400 border-b border-white/10">
                   {profile.email}
                 </div>
                 <button
                   onClick={logout}
-                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10"
+                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
                 >
-                  <LogoutIcon className="w-5 h-5" />
+                  <LogoutIcon className="w-4 h-4" />
                   Logout
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                  Delete Account
                 </button>
               </div>
             )}
