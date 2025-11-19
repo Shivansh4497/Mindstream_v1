@@ -70,19 +70,30 @@ const generateActionableSuggestionsSchema = {
     }
 };
 
-export const generateInstantInsight = async (text: string, sentiment: string): Promise<InstantInsight> => {
+export const generateInstantInsight = async (text: string, sentiment: string, lifeArea: string, trigger: string): Promise<InstantInsight> => {
     if (!ai) throw new Error("AI functionality is disabled.");
     const model = 'gemini-2.5-flash';
 
-    const prompt = `You are an expert therapist and a wise, empathetic friend. The user is feeling "${sentiment}" because: "${text}".
+    const prompt = `You are an expert coach and a wise, empathetic friend. 
     
-    Your task is to provide an "Instant Insight".
-    1. Validate their feeling (make them feel seen).
-    2. Do NOT simply summarize what they wrote.
-    3. Offer a specific perspective shift, a comforting truth, or a gentle challenge.
-    4. Keep the insight under 3 sentences.
+    The user is in the middle of an onboarding session for a reflection app.
+    They have identified the following context about their state:
+    - Emotion: "${sentiment}"
+    - Life Domain: "${lifeArea}"
+    - Specific Trigger: "${trigger}"
     
-    Also, generate a gentle "followUpQuestion" that you would ask to help them dig deeper into this feeling in a chat session.
+    They elaborated with this text: "${text}".
+    
+    Your task is to provide an "Instant Insight" that creates an "Aha!" moment.
+    
+    Guidelines:
+    1. VALIDATE: Briefly acknowledge their feeling to make them feel seen.
+    2. PERSPECTIVE SHIFT: Do NOT simply summarize. Use the "Trigger" (${trigger}) to offer a reframing, a comforting truth, or a gentle challenge.
+       - Example: If they selected "Imposter Syndrome", remind them that doubt often signals growth.
+       - Example: If "Burnout", remind them that rest is productive.
+    3. LENGTH: Keep the insight concise (under 3 sentences).
+    
+    Also, generate a gentle "followUpQuestion" that you would ask to help them dig deeper into this specific trigger in a chat session.
     
     Respond with a JSON object containing "insight" and "followUpQuestion".`;
 
