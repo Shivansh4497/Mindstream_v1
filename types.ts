@@ -1,3 +1,4 @@
+
 // FIX: Define all necessary types for the application.
 
 export interface Profile {
@@ -63,4 +64,21 @@ export interface Intention {
     target_date: string | null;
     completed_at: string | null;
     created_at: string;
+}
+
+export interface Habit {
+  id: string;
+  user_id: string;
+  name: string;
+  emoji: string;
+  frequency: 'daily';
+  current_streak: number;
+  longest_streak: number;
+  created_at: string;
+}
+
+export interface HabitLog {
+  id: string;
+  habit_id: string;
+  completed_at: string;
 }
