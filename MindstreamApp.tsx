@@ -3,9 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency, EntrySuggestion } from './types';
-// Import the new type from dbService
-import type { UserContext } from './services/dbService';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency, EntrySuggestion, UserContext } from './types';
 import { getFormattedDate, getWeekId, getMonthId, isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from './utils/date';
 
 import { Header } from './components/Header';
