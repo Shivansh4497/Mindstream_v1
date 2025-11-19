@@ -18,7 +18,15 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
   const handleDeleteAccount = async () => {
     if (!user) return;
     if (confirm("Are you sure you want to delete your account? This is irreversible.")) {
+      // 1. Delete data from DB
       await db.deleteAccount(user.id);
+      
+      // 2. Clear local storage flags so the Onboarding Wizard triggers again
+      // upon the next login.
+      window.localStorage.removeItem('onboardingStep');
+      window.localStorage.removeItem('hasSeenPrivacy');
+      
+      // 3. Logout
       await logout();
     }
   };
