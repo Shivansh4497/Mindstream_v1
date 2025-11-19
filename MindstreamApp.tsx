@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog } from './types';
-import { getFormattedDate, getWeekId, getMonthId } from './utils/date';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency } from './types';
+import { getFormattedDate, getWeekId, getMonthId, isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from './utils/date';
 
 import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
@@ -120,7 +121,7 @@ export const MindstreamApp: React.FC = () => {
           db.getReflections(user.id),
           db.getIntentions(user.id),
           db.getHabits(user.id),
-          db.getTodaysHabitLogs(user.id)
+          db.getCurrentPeriodHabitLogs(user.id) // Fetches recent logs relevant for current stats
         ]);
         
         setEntries(userEntries);
@@ -471,12 +472,12 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
     }
   };
 
-  const handleAddHabit = async (name: string) => {
+  const handleAddHabit = async (name: string, frequency: HabitFrequency) => {
     if (!user || isAddingHabit) return;
     setIsAddingHabit(true);
     try {
-        const emoji = await gemini.generateHabitEmoji(name);
-        const newHabit = await db.addHabit(user.id, name, emoji);
+        const { emoji, category } = await gemini.analyzeHabit(name);
+        const newHabit = await db.addHabit(user.id, name, emoji, category, frequency);
         if (newHabit) {
             setHabits(prev => [...prev, newHabit]);
         }
@@ -488,16 +489,26 @@ const startNewChatSession = async (firstUserPrompt?: string) => {
   };
 
   const handleToggleHabit = async (habitId: string) => {
-      // Check if already logged today
-      const todayLog = habitLogs.find(l => l.habit_id === habitId);
       const habit = habits.find(h => h.id === habitId);
       if (!habit) return;
 
+      const now = new Date();
+
+      // Find if a relevant log exists based on frequency
+      const existingLog = habitLogs.find(l => {
+          if (l.habit_id !== habitId) return false;
+          const logDate = new Date(l.completed_at);
+          if (habit.frequency === 'daily') return isSameDay(logDate, now);
+          if (habit.frequency === 'weekly') return isDateInCurrentWeek(logDate);
+          if (habit.frequency === 'monthly') return isDateInCurrentMonth(logDate);
+          return false;
+      });
+
       try {
-          if (todayLog) {
+          if (existingLog) {
               // Uncheck
-              const { updatedHabit } = await db.uncheckHabit(todayLog.id, habitId, habit.current_streak);
-              setHabitLogs(prev => prev.filter(l => l.id !== todayLog.id));
+              const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak);
+              setHabitLogs(prev => prev.filter(l => l.id !== existingLog.id));
               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
           } else {
               // Check
