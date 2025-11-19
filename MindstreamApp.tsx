@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
 import * as gemini from './services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency } from './types';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency, EntrySuggestion } from './types';
 // Import the new type from dbService
 import type { UserContext } from './services/dbService';
 import { getFormattedDate, getWeekId, getMonthId, isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from './utils/date';
@@ -335,6 +335,19 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
 
         // 4. Reconcile State: Swap temp entry with real entry
         setEntries(prev => prev.map(e => e.id === tempId ? savedEntry : e));
+        
+        // 5. Phase 2: The Silent Observer (Async Suggestion Engine)
+        // Only trigger if text is substantial enough (> 5 words) and AI is ready.
+        if (aiStatus === 'ready' && text.split(' ').length > 5) {
+            gemini.generateEntrySuggestions(text).then(async (suggestions) => {
+                if (suggestions && suggestions.length > 0) {
+                    // Update DB
+                    await db.updateEntry(savedEntry.id, { suggestions });
+                    // Update UI to show Sparkle
+                    setEntries(prev => prev.map(e => e.id === savedEntry.id ? { ...e, suggestions } : e));
+                }
+            }).catch(err => console.error("Error generating background suggestions:", err));
+        }
 
     } catch (error) {
         console.error("Critical error saving entry:", error);
@@ -342,6 +355,44 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
         // Revert optimistic update on critical DB failure
         setEntries(prev => prev.filter(e => e.id !== tempId));
     }
+  };
+
+  const handleAcceptSuggestion = async (entryId: string, suggestion: EntrySuggestion) => {
+      // 1. Execute Action
+      switch (suggestion.type) {
+          case 'habit':
+              await handleAddHabit(suggestion.label, suggestion.data.frequency);
+              setToast({ message: 'Habit Created from Insight', id: Date.now() });
+              break;
+          case 'intention':
+              await handleAddIntention(suggestion.label, suggestion.data.timeframe);
+              setToast({ message: 'Goal Set from Insight', id: Date.now() });
+              break;
+          case 'reflection':
+              const prompt = suggestion.data.prompt || `I want to reflect on this: "${suggestion.label}"`;
+              startNewChatSession(prompt);
+              setView('chat');
+              break;
+      }
+
+      // 2. Remove suggestion from entry (cleanup)
+      // Optimistic update
+      setEntries(prev => prev.map(e => {
+          if (e.id === entryId && e.suggestions) {
+              return {
+                  ...e,
+                  suggestions: e.suggestions.filter(s => s !== suggestion)
+              };
+          }
+          return e;
+      }));
+      
+      // DB Sync (Silent)
+      const entry = entries.find(e => e.id === entryId);
+      if (entry && entry.suggestions) {
+          const newSuggestions = entry.suggestions.filter(s => s !== suggestion);
+          db.updateEntry(entryId, { suggestions: newSuggestions }).catch(console.error);
+      }
   };
 
   const handleUpdateEntry = async (entryId: string, newText: string) => {
@@ -612,24 +663,10 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
 
       try {
           if (existingLog) {
-              // Uncheck
-              // If the log being deleted was an optimistic one (temp-log), this might fail if called too fast,
-              // but the guard `processingHabits` prevents re-entry until complete.
-              // However, `existingLog.id` might be a temp ID if we didn't fetch from DB yet? 
-              // Ideally, we assume standard flow. If it's a temp ID, we can't call DB delete.
-              // But since we block interaction, by the time they click again, it should have reconciled?
-              // Wait... we aren't reconciling logs here, only fetching on mount. 
-              // So `existingLog` relies on what `checkHabit` returns.
-              // `checkHabit` returns the REAL log. So we need to update state with REAL log.
-              
               const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak);
-              // Reconcile (though optimistic update likely matches)
                setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
-               // We don't need to reconcile logs since we already removed it.
           } else {
-              // Check
               const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak);
-              // Reconcile Log: Swap temp ID for Real ID so future unchecks work
               setHabitLogs(prev => prev.map(l => l.id === tempLogId ? log : l));
               setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
           }
@@ -740,6 +777,7 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
                         onTagClick={handleTagClick} 
                         onEditEntry={(entry) => setEntryToEdit(entry)}
                         onDeleteEntry={(entry) => setEntryToDelete(entry)}
+                        onAcceptSuggestion={handleAcceptSuggestion}
                      />;
           case 'reflections':
               return <ReflectionsView 
@@ -773,6 +811,7 @@ const startNewChatSession = async (firstUserPrompt?: string, initialAiMessage?: 
                         onTagClick={handleTagClick} 
                         onEditEntry={(entry) => setEntryToEdit(entry)}
                         onDeleteEntry={(entry) => setEntryToDelete(entry)}
+                        onAcceptSuggestion={handleAcceptSuggestion}
                      />;
       }
   };
