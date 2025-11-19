@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import * as db from './services/dbService';
@@ -61,8 +60,10 @@ export const MindstreamApp: React.FC = () => {
   const [chatStarters, setChatStarters] = useState<string[]>([]);
   const [isGeneratingStarters, setIsGeneratingStarters] = useState(false);
   
-  // Replaces hasSeenPrivacy with a numeric step
-  const [onboardingStep, setOnboardingStep] = useLocalStorage<number>('onboardingStep', 0);
+  // Replaces hasSeenPrivacy with a numeric step, namespaced by user ID
+  const onboardingKey = user ? `onboardingStep_${user.id}` : 'onboardingStep';
+  const [onboardingStep, setOnboardingStep] = useLocalStorage<number>(onboardingKey, 0);
+  
   // Legacy support: If user previously saw privacy modal, mark as complete
   const [legacyPrivacy] = useLocalStorage('hasSeenPrivacy', false);
   
