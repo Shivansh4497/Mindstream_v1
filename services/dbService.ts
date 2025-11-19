@@ -1,8 +1,7 @@
 
-
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
-import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog } from '../types';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
 
 // Profile Functions
@@ -281,11 +280,16 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
     return data || [];
 }
 
-export const getTodaysHabitLogs = async (userId: string): Promise<HabitLog[]> => {
+/**
+ * Fetches habit logs relevant for the current period.
+ * We fetch logs from the start of the current month to handle Daily, Weekly, and Monthly statuses.
+ */
+export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLog[]> => {
     if (!supabase) return [];
     
-    const todayStart = new Date();
-    todayStart.setHours(0,0,0,0);
+    const now = new Date();
+    // Set to first day of the current month
+    const startOfPeriod = new Date(now.getFullYear(), now.getMonth(), 1);
     
     // Workaround: We first get the user's habit IDs, then find logs for those IDs.
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
@@ -298,7 +302,7 @@ export const getTodaysHabitLogs = async (userId: string): Promise<HabitLog[]> =>
         .from('habit_logs')
         .select('*')
         .in('habit_id', habitIds)
-        .gte('completed_at', todayStart.toISOString());
+        .gte('completed_at', startOfPeriod.toISOString());
         
     if (error) {
         console.error('Error fetching habit logs:', error);
@@ -307,7 +311,7 @@ export const getTodaysHabitLogs = async (userId: string): Promise<HabitLog[]> =>
     return data || [];
 }
 
-export const addHabit = async (userId: string, name: string, emoji: string): Promise<Habit | null> => {
+export const addHabit = async (userId: string, name: string, emoji: string, category: HabitCategory, frequency: HabitFrequency): Promise<Habit | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase
         .from('habits')
@@ -315,7 +319,8 @@ export const addHabit = async (userId: string, name: string, emoji: string): Pro
             user_id: userId,
             name,
             emoji,
-            frequency: 'daily',
+            category,
+            frequency,
             current_streak: 0,
             longest_streak: 0
         } as any)
@@ -350,7 +355,7 @@ export const checkHabit = async (habitId: string, currentStreak: number): Promis
         
     if (logError) throw logError;
     
-    // 2. Update Streak (Optimistic increment for 'daily' habits)
+    // 2. Update Streak (Naive increment - complex logic handled in client or DB triggers preferred for prod)
     const newStreak = currentStreak + 1;
     
     const { data: habit, error: habitError } = await supabase
