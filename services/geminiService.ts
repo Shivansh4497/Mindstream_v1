@@ -445,12 +445,15 @@ Respond with only a JSON object.`;
 export const generateEntrySuggestions = async (entryText: string): Promise<EntrySuggestion[] | null> => {
     if (!ai) return null;
 
+    const isTest = entryText.startsWith("TEST:");
+    console.log(`[SILENT OBSERVER] 1. Starting analysis... Test Mode: ${isTest}`);
+
     const prompt = `Analyze the following journal entry. Does the user express a clear need or desire that could be turned into a Habit, an Intention (Goal), or a deeper Reflection (Chat)?
     
     Entry: "${entryText}"
     
     Rules:
-    1. Be Strict: Only suggest if the user clearly implies a desire to change, achieve, or explore. If they are just logging/venting, return an empty list.
+    1. ${isTest ? "TEST MODE ENABLED: FORCE A SUGGESTION. IGNORE STRICTNESS." : "Be Strict: Only suggest if the user clearly implies a desire to change, achieve, or explore. If they are just logging/venting, return an empty list."}
     2. Suggest ONLY 1 or 2 items maximum.
     3. Output format: A JSON object with a "suggestions" array.
     
@@ -464,6 +467,7 @@ export const generateEntrySuggestions = async (entryText: string): Promise<Entry
 
     try {
         return await callWithFallback(async (model) => {
+            console.log(`[SILENT OBSERVER] 2. Sending to Gemini (${model})...`);
             // @ts-ignore
             const response = await ai.models.generateContent({
                 model, // Use backup model (1.5-flash) preferably for cost/speed via callWithFallback logic if setup
@@ -490,11 +494,14 @@ export const generateEntrySuggestions = async (entryText: string): Promise<Entry
                     }
                 }
             });
+            console.log(`[SILENT OBSERVER] 3. Raw AI Response:`, response.text);
             const result = parseGeminiJson<{ suggestions: EntrySuggestion[] }>(response.text);
-            return result.suggestions && result.suggestions.length > 0 ? result.suggestions : null;
+            const finalSuggestions = result.suggestions && result.suggestions.length > 0 ? result.suggestions : null;
+            console.log(`[SILENT OBSERVER] 4. Parsed suggestions:`, finalSuggestions);
+            return finalSuggestions;
         });
     } catch (e) {
-        console.warn("Silent observer failed (non-critical):", e);
+        console.warn("[SILENT OBSERVER] Failed (non-critical):", e);
         return null;
     }
 }
