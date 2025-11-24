@@ -4,11 +4,24 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Entry, Message, Reflection, Intention, AISuggestion, GranularSentiment, Habit, HabitLog, HabitCategory, InstantInsight, EntrySuggestion, UserContext } from '../types';
 import { getDisplayDate } from "../utils/date";
 
+// Helper function to robustly get environment variables in various environments
+const getEnvVar = (key: string) => {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+    return (import.meta as any).env[key];
+  }
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
+  return undefined;
+};
+
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
 
 // FIX: Reverted to VITE_ prefix as required by the Vite build tool for client-side exposure.
-const GEMINI_API_KEY = (import.meta as any).env?.VITE_API_KEY;
+const GEMINI_API_KEY = getEnvVar('VITE_API_KEY');
 
 if (GEMINI_API_KEY) {
   try {
