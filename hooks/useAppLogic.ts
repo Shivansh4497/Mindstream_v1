@@ -32,6 +32,9 @@ export const useAppLogic = () => {
   // Debounce timers for habit toggling to prevent network spam
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
   
+  // Ref to hold the synchronous state of logs for rapid toggling
+  const habitLogsRef = useRef<HabitLog[]>([]);
+
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -46,6 +49,11 @@ export const useAppLogic = () => {
       Object.values(debounceTimers.current).forEach(clearTimeout);
     };
   }, []);
+
+  // Sync Ref with State when State updates (e.g. from DB fetch)
+  useEffect(() => {
+    habitLogsRef.current = habitLogs;
+  }, [habitLogs]);
 
   const showToast = (message: string) => {
     if (isMounted.current) {
@@ -77,6 +85,7 @@ export const useAppLogic = () => {
             setIntentions(userIntentions);
             setHabits(userHabits);
             setHabitLogs(userHabitLogs);
+            // Ref will sync via effect
         }
 
         try { 
@@ -171,7 +180,7 @@ export const useAppLogic = () => {
     }
   };
 
-  // ZERO-LATENCY DEBOUNCED HABIT TOGGLE
+  // ZERO-LATENCY DEBOUNCED HABIT TOGGLE WITH REF-BASED STATE
   const handleToggleHabit = async (habitId: string, dateString?: string) => {
     if (!user) return;
     
@@ -180,9 +189,12 @@ export const useAppLogic = () => {
 
     const targetDate = dateString ? new Date(dateString) : new Date();
     
-    // 1. Determine Current Local State (Checked or Unchecked?)
-    // This logic must match the server's "period" logic exactly.
-    const existingLogIndex = habitLogs.findIndex(l => {
+    // 1. Determine State using REF (Synchronous Source of Truth)
+    // We must use the Ref because rapid clicks might happen before State updates,
+    // causing stale closures to wipe out previous rapid clicks.
+    const currentLogs = habitLogsRef.current;
+    
+    const existingLogIndex = currentLogs.findIndex(l => {
         if (l.habit_id !== habitId) return false;
         const logDate = new Date(l.completed_at);
         
@@ -193,39 +205,43 @@ export const useAppLogic = () => {
     });
 
     const isCurrentlyCompleted = existingLogIndex !== -1;
-    const willBeCompleted = !isCurrentlyCompleted; // Toggle
+    const willBeCompleted = !isCurrentlyCompleted; // Toggle logic
 
-    // 2. Optimistic Update (Immediate Visual Feedback)
-    let newLogs = [...habitLogs];
+    // 2. Modify Ref Immediately
+    let newLogs = [...currentLogs];
     if (willBeCompleted) {
-        // Add a temp log
         newLogs.push({ 
             id: `temp-${Date.now()}-${Math.random()}`, 
             habit_id: habitId, 
             completed_at: targetDate.toISOString() 
         });
     } else {
-        // Remove the log
         newLogs.splice(existingLogIndex, 1);
     }
+    
+    // Update Ref
+    habitLogsRef.current = newLogs;
+    // Update State (to trigger render)
     setHabitLogs(newLogs);
 
-    // 3. Client-Side Streak Calculation (Immediate Numeric Feedback)
+    // 3. Client-Side Streak Calculation (Derived from Ref)
+    // We update the habit state immediately so the number flips instantly.
+    // NOTE: HabitCard also calculates this derived state for the visual, but we keep this
+    // to maintain data consistency in the app state.
     const habitSpecificLogs = newLogs.filter(l => l.habit_id === habitId).map(l => new Date(l.completed_at));
     const optimisticStreak = calculateStreak(habitSpecificLogs, habit.frequency);
     setHabits(prev => prev.map(h => h.id === habitId ? { ...h, current_streak: optimisticStreak } : h));
 
     // 4. Debounce Network Sync
-    // Cancel any pending sync for this specific habit
     if (debounceTimers.current[habitId]) {
         clearTimeout(debounceTimers.current[habitId]);
     }
 
-    // Set a new timer to sync the FINAL state after 1 second of inactivity
     debounceTimers.current[habitId] = setTimeout(async () => {
         try {
-            // We send "willBeCompleted" because that is the state we just set optimistically.
-            // If the user clicks 5 times rapidly, this function only runs once with the final state.
+            // IDEMPOTENT SYNC
+            // We pass the explicit 'willBeCompleted' state.
+            // Even if the user clicked 20 times, this final call enforces the final state.
             const { updatedHabit } = await db.syncHabitCompletion(
                 user.id, 
                 habitId, 
@@ -236,7 +252,7 @@ export const useAppLogic = () => {
             
             if (isMounted.current) {
                 // Reconcile Streak (Self-Healing)
-                // If the server's calc differs from our optimistic math, trust the server.
+                // If the server's authoritative calc differs from our optimistic math, trust the server.
                 if (updatedHabit.current_streak !== optimisticStreak) {
                     setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
                 }
@@ -244,14 +260,12 @@ export const useAppLogic = () => {
         } catch (error) {
             console.error("Error syncing habit:", error);
             if (isMounted.current) {
-                // Rollback would go here, but with idempotent sync, 
-                // a simple re-fetch or toast is usually sufficient.
                 showToast("Failed to sync habit changes.");
             }
         } finally {
             delete debounceTimers.current[habitId];
         }
-    }, 1000); // 1000ms debounce window
+    }, 1000); // 1000ms debounce
   };
 
   const handleEditHabit = async (habitId: string, name: string, emoji: string, category: HabitCategory) => {
