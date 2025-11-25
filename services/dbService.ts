@@ -381,7 +381,8 @@ export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLo
     
     const habitIds = habits.map((h: any) => h.id);
     
-    const { data, error } = await supabase
+    // FIX: Cast supabase to any to resolve type errors with 'in' method
+    const { data, error } = await (supabase as any)
         .from('habit_logs')
         .select('*')
         .in('habit_id', habitIds)
@@ -393,7 +394,8 @@ export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLo
 
 export const addHabit = async (userId: string, name: string, emoji: string, category: HabitCategory, frequency: HabitFrequency): Promise<Habit | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase
+    // FIX: Cast supabase to any to resolve type errors with 'insert' method (line 360 fix)
+    const { data, error } = await (supabase as any)
         .from('habits')
         .insert({
             user_id: userId,
@@ -416,7 +418,8 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
 
 export const deleteHabit = async (habitId: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { error } = await supabase.from('habits').delete().eq('id', habitId);
+    // FIX: Cast supabase to any
+    const { error } = await (supabase as any).from('habits').delete().eq('id', habitId);
     if (error) return false;
     return true;
 }
@@ -463,7 +466,8 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
     endDateStr = end.toISOString();
 
     // 2. Check for existing log in this period
-    const { data: existingLogs } = await supabase
+    // FIX: Cast supabase to any
+    const { data: existingLogs } = await (supabase as any)
         .from('habit_logs')
         .select('id')
         .eq('habit_id', habitId)
@@ -477,11 +481,13 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
     if (hasLog) {
         // Uncheck: Delete the log(s) for this period
         // FIX: Cast existingLogs to any[] to avoid 'never' type error
-        await supabase.from('habit_logs').delete().in('id', (existingLogs as any[]).map(l => l.id));
+        // FIX: Cast supabase to any
+        await (supabase as any).from('habit_logs').delete().in('id', (existingLogs as any[]).map(l => l.id));
         action = 'unchecked';
     } else {
         // Check: Insert new log
-        await supabase.from('habit_logs').insert({ habit_id: habitId, user_id: userId, completed_at: targetIso } as any);
+        // FIX: Cast supabase to any
+        await (supabase as any).from('habit_logs').insert({ habit_id: habitId, user_id: userId, completed_at: targetIso } as any);
         action = 'checked';
     }
 
@@ -489,7 +495,8 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
     // Fetch last year's logs again to be safe
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 365);
-    const { data: allLogs } = await supabase
+    // FIX: Cast supabase to any
+    const { data: allLogs } = await (supabase as any)
         .from('habit_logs')
         .select('completed_at')
         .eq('habit_id', habitId)
@@ -500,10 +507,11 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
     const newStreak = calculateStreak(logDates, frequency);
 
     // 5. Update Habit in DB
-    const { data: updatedHabit, error } = await supabase
+    // FIX: Cast supabase to any
+    const { data: updatedHabit, error } = await (supabase as any)
         .from('habits')
         // @ts-ignore
-        .update({ current_streak: newStreak })
+        .update({ current_streak: newStreak } as any)
         .eq('id', habitId)
         .select()
         .single();
