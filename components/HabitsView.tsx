@@ -7,13 +7,15 @@ interface HabitsViewProps {
   habits: Habit[];
   todaysLogs: HabitLog[];
   onToggle: (habitId: string, dateString?: string) => void;
+  onEdit: (habit: Habit) => void;
   onDelete: (habitId: string) => void;
 }
 
 export const HabitsView: React.FC<HabitsViewProps> = ({ 
     habits, 
     todaysLogs, 
-    onToggle, 
+    onToggle,
+    onEdit, 
     onDelete
 }) => {
     
@@ -63,6 +65,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                     habit={habit} 
                                     logs={todaysLogs.filter(l => l.habit_id === habit.id)}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
                                 />
                             ))}
@@ -81,6 +84,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                     habit={habit} 
                                     logs={todaysLogs.filter(l => l.habit_id === habit.id)}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
                                 />
                             ))}
@@ -99,6 +103,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                     habit={habit} 
                                     logs={todaysLogs.filter(l => l.habit_id === habit.id)}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
                                 />
                             ))}
