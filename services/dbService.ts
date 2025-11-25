@@ -554,21 +554,26 @@ export const syncHabitCompletion = async (
 // ============================================
 
 export const getInsightCards = async (userId: string): Promise<any[]> => {
-    if (!supabase) throw new Error("Supabase not initialized");
+    if (!supabase) return [];
 
-    const { data, error } = await (supabase as any)
-        .from('insight_cards')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('dismissed', false)
-        .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await (supabase as any)
+            .from('insight_cards')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('dismissed', false)
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('Error fetching insight cards:', error);
-        throw error;
+        if (error) {
+            console.warn('insight_cards table not found or query failed (safe to ignore if migration pending):', error.message);
+            return [];
+        }
+
+        return data || [];
+    } catch (e) {
+        console.warn('Failed to fetch insight cards, returning empty array:', e);
+        return [];
     }
-
-    return data || [];
 };
 
 export const createInsightCard = async (
@@ -615,22 +620,27 @@ export const dismissInsightCard = async (insightId: string): Promise<void> => {
 };
 
 export const getAutoReflections = async (userId: string, limit: number = 1): Promise<any[]> => {
-    if (!supabase) throw new Error("Supabase not initialized");
+    if (!supabase) return [];
 
-    const { data, error } = await (supabase as any)
-        .from('reflections')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('auto_generated', true)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    try {
+        const { data, error } = await (supabase as any)
+            .from('reflections')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('auto_generated', true)
+            .order('timestamp', { ascending: false })
+            .limit(limit);
 
-    if (error) {
-        console.error('Error fetching auto-reflections:', error);
-        throw error;
+        if (error) {
+            console.warn('Auto-reflections query failed (safe to ignore if column pending):', error.message);
+            return [];
+        }
+
+        return data || [];
+    } catch (e) {
+        console.warn('Failed to fetch auto-reflections, returning empty array:', e);
+        return [];
     }
-
-    return data || [];
 };
 
 export const getUserContext = async (userId: string): Promise<UserContext> => {
