@@ -72,7 +72,6 @@ export const useAppLogic = () => {
             setIntentions(userIntentions);
             setHabits(userHabits);
             setHabitLogs(userHabitLogs);
-            setIsDataLoaded(true);
         }
 
         try { 
@@ -89,6 +88,10 @@ export const useAppLogic = () => {
       } catch (error) {
         console.error("Error loading data:", error);
         showToast("Failed to load data. Please refresh.");
+      } finally {
+        if (isMounted.current) {
+            setIsDataLoaded(true);
+        }
       }
     };
     fetchDataAndVerifyAI();
