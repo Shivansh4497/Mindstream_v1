@@ -58,13 +58,18 @@ export const deleteAccount = async (userId: string): Promise<boolean> => {
 };
 
 // Entry Functions
-export const getEntries = async (userId: string): Promise<Entry[]> => {
+export const getEntries = async (userId: string, page: number = 0, pageSize: number = 20): Promise<Entry[]> => {
   if (!supabase) return [];
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  
   const { data, error } = await supabase
     .from('entries')
     .select('*')
     .eq('user_id', userId)
-    .order('timestamp', { ascending: false });
+    .order('timestamp', { ascending: false })
+    .range(from, to);
+    
   if (error) {
     console.error('Error fetching entries:', error);
     return [];
@@ -366,9 +371,6 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
     // 3. Persist corrections to DB (Self-Healing)
     if (habitsToUpdate.length > 0) {
         console.log(`[Streak Doctor] Repairing ${habitsToUpdate.length} broken streaks...`);
-        // We use fire-and-forget here to not block the UI load time significantly, 
-        // or we could await if strict consistency is required immediately. 
-        // Since we return the corrected objects to the UI, the user sees the fix instantly.
         supabase
             .from('habits')
             // @ts-ignore
@@ -513,7 +515,7 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
     
     const [entries, intentions, habits, reflections] = await Promise.all([
-        getEntries(userId),
+        getEntries(userId, 0, 15), // Fetch only recent 15 entries for Chat context
         getIntentions(userId),
         getHabits(userId),
         getReflections(userId)
@@ -521,7 +523,7 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
     
     // Note: searchResults is populated dynamically during chat
     return {
-        recentEntries: entries.slice(0, 15),
+        recentEntries: entries,
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
         activeHabits: habits,
         latestReflection: reflections.length > 0 ? reflections[0] : null
