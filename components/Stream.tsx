@@ -12,9 +12,22 @@ interface StreamProps {
   onEditEntry: (entry: Entry) => void;
   onDeleteEntry: (entry: Entry) => void;
   onAcceptSuggestion: (entryId: string, suggestion: EntrySuggestion) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
-export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick, onEditEntry, onDeleteEntry, onAcceptSuggestion }) => {
+export const Stream: React.FC<StreamProps> = ({ 
+    entries, 
+    intentions, 
+    onTagClick, 
+    onEditEntry, 
+    onDeleteEntry, 
+    onAcceptSuggestion,
+    onLoadMore,
+    hasMore,
+    isLoadingMore
+}) => {
   const groupedEntries = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(entry => {
@@ -77,6 +90,26 @@ export const Stream: React.FC<StreamProps> = ({ entries, intentions, onTagClick,
             </div>
           );
         })}
+
+        {/* Load More Button */}
+        {hasMore && (
+            <div className="flex justify-center mt-6 pb-20">
+                <button
+                    onClick={onLoadMore}
+                    disabled={isLoadingMore}
+                    className="px-6 py-2 bg-dark-surface hover:bg-white/10 text-brand-teal text-sm font-semibold rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait"
+                >
+                    {isLoadingMore ? (
+                        <div className="flex items-center gap-2">
+                             <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+                             <span>Loading older thoughts...</span>
+                        </div>
+                    ) : (
+                        "Load older thoughts"
+                    )}
+                </button>
+            </div>
+        )}
       </div>
     </div>
   );
