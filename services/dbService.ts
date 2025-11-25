@@ -41,11 +41,11 @@ export const deleteAccount = async (userId: string): Promise<boolean> => {
   if (!supabase) return false;
   
   try {
-    await supabase.from('habits').delete().eq('user_id', userId);
-    await supabase.from('intentions').delete().eq('user_id', userId);
-    await supabase.from('reflections').delete().eq('user_id', userId);
-    await supabase.from('entries').delete().eq('user_id', userId);
-    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    await (supabase as any).from('habits').delete().eq('user_id', userId);
+    await (supabase as any).from('intentions').delete().eq('user_id', userId);
+    await (supabase as any).from('reflections').delete().eq('user_id', userId);
+    await (supabase as any).from('entries').delete().eq('user_id', userId);
+    const { error } = await (supabase as any).from('profiles').delete().eq('id', userId);
     
     if (error) {
       console.error("Error deleting profile:", error);
@@ -96,9 +96,8 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
 
 export const updateEntry = async (entryId: string, updatedData: Partial<Entry>): Promise<Entry> => {
     if (!supabase) throw new Error("Supabase client not initialized");
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
         .from('entries')
-        // @ts-ignore
         .update(updatedData)
         .eq('id', entryId)
         .select()
@@ -112,7 +111,7 @@ export const updateEntry = async (entryId: string, updatedData: Partial<Entry>):
 
 export const deleteEntry = async (entryId: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { error } = await supabase
+    const { error } = await (supabase as any)
         .from('entries')
         .delete()
         .eq('id', entryId);
@@ -160,7 +159,7 @@ export const addWelcomeEntry = async (userId: string): Promise<void> => {
     emoji: "👋",
     user_id: userId,
   };
-   const { error } = await supabase.from('entries').insert(welcomeData as any);
+   const { error } = await (supabase as any).from('entries').insert(welcomeData as any);
    if (error) {
      console.error("Failed to add welcome entry:", error);
      throw error;
@@ -228,7 +227,7 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
         suggestions: reflectionData.suggestions || null, 
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
         .from('reflections')
         .insert(dbPayload as any)
         .select()
@@ -259,7 +258,7 @@ export const getIntentions = async (userId: string): Promise<Intention[]> => {
 
 export const addIntention = async (userId: string, text: string, timeframe: IntentionTimeframe): Promise<Intention | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
         .from('intentions')
         .insert({ 
             user_id: userId, 
@@ -283,9 +282,8 @@ export const updateIntentionStatus = async (id: string, status: IntentionStatus)
         status,
         completed_at: status === 'completed' ? new Date().toISOString() : null,
     };
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
         .from('intentions')
-        // @ts-ignore
         .update(updatePayload)
         .eq('id', id)
         .select()
@@ -299,7 +297,7 @@ export const updateIntentionStatus = async (id: string, status: IntentionStatus)
 
 export const deleteIntention = async (id: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { error } = await supabase
+    const { error } = await (supabase as any)
         .from('intentions')
         .delete()
         .eq('id', id);
@@ -360,7 +358,7 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         // We update individually or batch if we had an upsert. 
         // For simplicity, fire-and-forget individual updates or simple map.
         Promise.all(habitsToUpdate.map(h => 
-            supabase!.from('habits').update({ current_streak: h.streak } as any).eq('id', h.id)
+            (supabase as any).from('habits').update({ current_streak: h.streak } as any).eq('id', h.id)
         )).catch(e => console.error("Error syncing calculated streaks:", e));
     }
 
