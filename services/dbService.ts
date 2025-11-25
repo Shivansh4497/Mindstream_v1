@@ -486,12 +486,14 @@ export const syncHabitCompletion = async (
     // 2. Perform DB Mutation (Upsert or Delete)
     if (isCompleted) {
         // Upsert logic: Check existence first to be safe
-        const { data: existing } = await (supabase as any)
+        const { data: existing, error: fetchError } = await (supabase as any)
             .from('habit_logs')
             .select('id')
             .eq('habit_id', habitId)
             .gte('completed_at', startDateStr)
             .lte('completed_at', endDateStr);
+
+        if (fetchError) console.error("Error fetching existence:", fetchError);
 
         if (!existing || existing.length === 0) {
             const { error } = await (supabase as any).from('habit_logs').insert({ 
