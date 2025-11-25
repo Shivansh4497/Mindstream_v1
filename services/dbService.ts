@@ -548,6 +548,91 @@ export const syncHabitCompletion = async (
 }
 
 
+
+// ============================================
+// Insight Cards Functions
+// ============================================
+
+export const getInsightCards = async (userId: string): Promise<any[]> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    const { data, error } = await (supabase as any)
+        .from('insight_cards')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('dismissed', false)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching insight cards:', error);
+        throw error;
+    }
+
+    return data || [];
+};
+
+export const createInsightCard = async (
+    userId: string,
+    type: string,
+    title: string,
+    content: string,
+    metadata?: any
+): Promise<any> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    const { data, error } = await (supabase as any)
+        .from('insight_cards')
+        .insert({
+            user_id: userId,
+            type,
+            title,
+            content,
+            metadata
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating insight card:', error);
+        throw error;
+    }
+
+    return data;
+};
+
+export const dismissInsightCard = async (insightId: string): Promise<void> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    const { error } = await (supabase as any)
+        .from('insight_cards')
+        .update({ dismissed: true })
+        .eq('id', insightId);
+
+    if (error) {
+        console.error('Error dismissing insight card:', error);
+        throw error;
+    }
+};
+
+export const getAutoReflections = async (userId: string, limit: number = 1): Promise<any[]> => {
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    const { data, error } = await (supabase as any)
+        .from('reflections')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('auto_generated', true)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('Error fetching auto-reflections:', error);
+        throw error;
+    }
+
+    return data || [];
+};
+
 export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
 

@@ -42,6 +42,25 @@ export interface Reflection {
   summary: string;
   suggestions?: AISuggestion[] | null;
   timestamp: string;
+  auto_generated?: boolean;
+}
+
+export type InsightType = 'correlation' | 'pattern' | 'milestone' | 'thematic';
+
+export interface InsightCard {
+  id: string;
+  user_id: string;
+  type: InsightType;
+  title: string;
+  content: string;
+  metadata?: {
+    tags?: string[];
+    sentiment_shift?: number;
+    habit_ids?: string[];
+    [key: string]: any;
+  };
+  created_at: string;
+  dismissed: boolean;
 }
 
 export type IntentionTimeframe = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'life';
