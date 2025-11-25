@@ -446,23 +446,23 @@ export const deleteHabit = async (habitId: string): Promise<boolean> => {
 }
 
 /**
- * INTELLIGENT TOGGLE:
- * Checks if a log exists for the given period. 
- * If yes -> Delete it.
- * If no -> Create it.
- * Then recalculates and returns the new streak.
+ * IDEMPOTENT SYNC:
+ * Ensures a habit is marked completed (or not) for a specific period.
+ * Replaces the old toggle logic to support debounced UI.
  */
-export const toggleHabit = async (userId: string, habitId: string, frequency: HabitFrequency, dateString?: string): Promise<{ updatedHabit: Habit, action: 'checked' | 'unchecked' }> => {
+export const syncHabitCompletion = async (
+    userId: string, 
+    habitId: string, 
+    frequency: HabitFrequency, 
+    dateString: string | undefined,
+    isCompleted: boolean
+): Promise<{ updatedHabit: Habit }> => {
     if (!supabase) throw new Error("Supabase not initialized");
     
     const targetDate = dateString ? new Date(dateString) : new Date();
     const targetIso = targetDate.toISOString();
     
-    // 1. Determine the "period identifier" to check for duplicates.
-    // Daily: Same Day. Weekly: Same Week. Monthly: Same Month.
-    let startDateStr = '';
-    let endDateStr = '';
-    
+    // 1. Determine the "period identifier" to prevent duplicates.
     const start = new Date(targetDate);
     const end = new Date(targetDate);
     
@@ -480,52 +480,49 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
         end.setMonth(end.getMonth() + 1); end.setDate(0); end.setHours(23,59,59,999);
     }
     
-    startDateStr = start.toISOString();
-    endDateStr = end.toISOString();
+    const startDateStr = start.toISOString();
+    const endDateStr = end.toISOString();
 
-    // 2. Check for existing log in this period
-    // FIX: Cast supabase to any
-    const { data: existingLogs } = await (supabase as any)
-        .from('habit_logs')
-        .select('id')
-        .eq('habit_id', habitId)
-        .gte('completed_at', startDateStr)
-        .lte('completed_at', endDateStr);
+    // 2. Perform DB Mutation (Upsert or Delete)
+    if (isCompleted) {
+        // Upsert logic: Check existence first to be safe
+        const { data: existing } = await (supabase as any)
+            .from('habit_logs')
+            .select('id')
+            .eq('habit_id', habitId)
+            .gte('completed_at', startDateStr)
+            .lte('completed_at', endDateStr);
 
-    const hasLog = existingLogs && existingLogs.length > 0;
-    let action: 'checked' | 'unchecked' = 'checked';
-
-    // 3. Perform Mutation
-    if (hasLog) {
-        // Uncheck: Delete the log(s) for this period
-        // FIX: Cast existingLogs to any[] to avoid 'never' type error
-        // FIX: Cast supabase to any
-        await (supabase as any).from('habit_logs').delete().in('id', (existingLogs as any[]).map(l => l.id));
-        action = 'unchecked';
+        if (!existing || existing.length === 0) {
+            await (supabase as any).from('habit_logs').insert({ 
+                habit_id: habitId, 
+                user_id: userId, 
+                completed_at: targetIso 
+            } as any);
+        }
     } else {
-        // Check: Insert new log
-        // FIX: Cast supabase to any
-        await (supabase as any).from('habit_logs').insert({ habit_id: habitId, user_id: userId, completed_at: targetIso } as any);
-        action = 'checked';
+        // Delete logic: Remove any logs in this period
+        await (supabase as any)
+            .from('habit_logs')
+            .delete()
+            .eq('habit_id', habitId)
+            .gte('completed_at', startDateStr)
+            .lte('completed_at', endDateStr);
     }
 
-    // 4. Recalculate Streak using the robust calculator
-    // Fetch last year's logs again to be safe
+    // 3. Recalculate Streak (Authoritative)
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 365);
-    // FIX: Cast supabase to any
     const { data: allLogs } = await (supabase as any)
         .from('habit_logs')
         .select('completed_at')
         .eq('habit_id', habitId)
         .gte('completed_at', cutoffDate.toISOString());
 
-    // FIX: Cast allLogs to any[] to avoid 'never' type error
     const logDates = ((allLogs as any[]) || []).map(l => new Date(l.completed_at));
     const newStreak = calculateStreak(logDates, frequency);
 
-    // 5. Update Habit in DB
-    // FIX: Cast supabase to any
+    // 4. Update Habit in DB
     const { data: updatedHabit, error } = await (supabase as any)
         .from('habits')
         // @ts-ignore
@@ -536,7 +533,7 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
 
     if (error || !updatedHabit) throw new Error("Failed to update habit streak");
 
-    return { updatedHabit, action };
+    return { updatedHabit };
 }
 
 
