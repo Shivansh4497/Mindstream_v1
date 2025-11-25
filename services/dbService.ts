@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext } from '../types';
@@ -80,9 +79,11 @@ export const getEntries = async (userId: string, page: number = 0, pageSize: num
 
 export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
   if (!supabase) throw new Error("Supabase client not initialized");
-  const { data, error } = await supabase
+  // Explicitly cast to any to avoid 'never' type errors on insert
+  const client: any = supabase;
+  const { data, error } = await client
     .from('entries')
-    .insert({ ...entryData, user_id: userId } as any)
+    .insert({ ...entryData, user_id: userId })
     .select()
     .single();
   if (error) {
@@ -337,7 +338,8 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         .gte('completed_at', cutoffDate.toISOString())
         .order('completed_at', { ascending: false });
 
-    const logs = logsData as { habit_id: string; completed_at: string }[];
+    // FIX: Add default empty array if logsData is null
+    const logs = (logsData || []) as { habit_id: string; completed_at: string }[];
     const habitsToUpdate: { id: string, streak: number }[] = [];
 
     // 3. Recalculate Streaks for every habit (Derived Strategy)
@@ -394,8 +396,10 @@ export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLo
 
 export const addHabit = async (userId: string, name: string, emoji: string, category: HabitCategory, frequency: HabitFrequency): Promise<Habit | null> => {
     if (!supabase) return null;
-    // FIX: Cast supabase to any to resolve type errors with 'insert' method (line 360 fix)
-    const { data, error } = await (supabase as any)
+    
+    // FIX: Explicitly cast to any to resolve 'never' type errors on insert
+    const client: any = supabase;
+    const { data, error } = await client
         .from('habits')
         .insert({
             user_id: userId,
@@ -405,7 +409,7 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
             frequency,
             current_streak: 0,
             longest_streak: 0
-        } as any)
+        })
         .select()
         .single();
         
