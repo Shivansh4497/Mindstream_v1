@@ -97,4 +97,7 @@ export interface UserContext {
   pendingIntentions: Intention[];
   activeHabits: Habit[];
   latestReflection: Reflection | null;
+  searchResults?: Entry[]; // RAG: Historical entries matching the current conversation
 }
+
+export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
