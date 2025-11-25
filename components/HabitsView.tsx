@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import type { Habit, HabitLog, HabitFrequency } from '../types';
 import { HabitCard } from './HabitCard';
 
@@ -49,7 +49,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
     const hasHabits = habits.length > 0;
 
     return (
-        <div className="flex-grow min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {hasHabits && (
                 <header className="flex-shrink-0 p-6 pb-2">
                      <h2 className="text-xl font-bold font-display text-white">Your Systems</h2>
