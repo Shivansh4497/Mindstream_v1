@@ -5,11 +5,11 @@ import { IntentionCard } from './IntentionCard';
 import { getDisplayDate, getFormattedDate } from '../utils/date';
 
 interface IntentionsViewProps {
-  intentions: Intention[];
-  onToggle: (id: string, currentStatus: Intention['status']) => void;
-  onDelete: (id: string) => void;
-  activeTimeframe: IntentionTimeframe;
-  onTimeframeChange: (timeframe: IntentionTimeframe) => void;
+    intentions: Intention[];
+    onToggle: (id: string, currentStatus: Intention['status']) => void;
+    onDelete: (id: string) => void;
+    activeTimeframe: IntentionTimeframe;
+    onTimeframeChange: (timeframe: IntentionTimeframe) => void;
 }
 
 const timeframes: { id: IntentionTimeframe; label: string }[] = [
@@ -20,17 +20,17 @@ const timeframes: { id: IntentionTimeframe; label: string }[] = [
     { id: 'life', label: 'Life' },
 ];
 
-export const IntentionsView: React.FC<IntentionsViewProps> = ({ 
-    intentions, 
-    onToggle, 
+export const IntentionsView: React.FC<IntentionsViewProps> = ({
+    intentions,
+    onToggle,
     onDelete,
     activeTimeframe,
     onTimeframeChange
 }) => {
-    
+
     const groupedIntentions = useMemo(() => {
         const filtered = intentions.filter(i => i.timeframe === activeTimeframe);
-        
+
         const groups: Record<string, { pending: Intention[], completed: Intention[] }> = {};
 
         filtered.forEach(intention => {
@@ -53,18 +53,17 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     }, [groupedIntentions]);
 
     return (
-        <div className="flex-grow h-0 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-grow flex flex-col overflow-hidden">
             <header className="flex-shrink-0 p-4 border-b border-white/10 flex items-center overflow-x-auto">
                 <div className="flex items-center gap-2">
                     {timeframes.map(tf => (
                         <button
                             key={tf.id}
                             onClick={() => onTimeframeChange(tf.id)}
-                            className={`py-2 px-4 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-                                activeTimeframe === tf.id
-                                ? 'bg-brand-teal text-brand-indigo'
-                                : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                            }`}
+                            className={`py-2 px-4 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${activeTimeframe === tf.id
+                                    ? 'bg-brand-teal text-brand-indigo'
+                                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                                }`}
                         >
                             {tf.label}
                         </button>
@@ -74,18 +73,18 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
 
             <main className="flex-grow overflow-y-auto p-4">
                 {sortedDates.length === 0 && (
-                     <div className="h-full flex items-center justify-center text-center text-gray-400">
+                    <div className="h-full flex items-center justify-center text-center text-gray-400">
                         <div>
                             <h3 className="text-2xl font-bold font-display text-white mb-2">No '{activeTimeframe}' Intentions Yet</h3>
-                            <p>Set a new intention using the bar below.<br/>What do you want to accomplish?</p>
+                            <p>Set a new intention using the bar below.<br />What do you want to accomplish?</p>
                         </div>
                     </div>
                 )}
-                
+
                 {sortedDates.map(date => (
                     <div key={date} className="mb-8">
                         <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
-                        
+
                         {groupedIntentions[date].pending.length > 0 && (
                             groupedIntentions[date].pending.map(intention => (
                                 <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
@@ -95,7 +94,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                         {groupedIntentions[date].completed.length > 0 && (
                             <div className="mt-4">
                                 {groupedIntentions[date].pending.length > 0 && (
-                                     <div className="border-b border-white/10 my-3"></div>
+                                    <div className="border-b border-white/10 my-3"></div>
                                 )}
                                 {groupedIntentions[date].completed.map(intention => (
                                     <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />

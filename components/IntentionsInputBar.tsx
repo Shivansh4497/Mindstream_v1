@@ -18,9 +18,9 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
       setText('');
     }
   };
-  
+
   const getPlaceholder = () => {
-    switch(activeTimeframe) {
+    switch (activeTimeframe) {
       case 'daily': return 'Set a new intention for today...';
       case 'weekly': return 'Add a new goal for this week...';
       case 'monthly': return 'Add a new target for this month...';
@@ -31,7 +31,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
   }
 
   return (
-    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-30">
+    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-40">
       <form onSubmit={handleSubmit} className="flex items-center gap-3">
         <input
           type="text"
@@ -40,8 +40,8 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
           placeholder={getPlaceholder()}
           className="w-full bg-dark-surface-light rounded-lg p-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none transition-shadow"
         />
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           className="bg-brand-teal p-3 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
           aria-label="Add intention"
           disabled={!text.trim()}
