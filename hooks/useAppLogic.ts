@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import * as db from '../services/dbService';
 import * as gemini from '../services/geminiService';
 import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext, HabitCategory } from '../types';
-import { isSameDay } from '../utils/date';
+import { isSameDay, getWeekId, getMonthId } from '../utils/date';
+import { calculateStreak } from '../utils/streak';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
 const PAGE_SIZE = 20;
@@ -166,53 +167,84 @@ export const useAppLogic = () => {
     }
   };
 
-  // Upgraded Habit Toggle with Retroactive Logic
+  // Upgraded Habit Toggle with ZERO-LATENCY Optimistic Logic
   const handleToggleHabit = async (habitId: string, dateString?: string) => {
     if (!user || processingHabits.current.has(habitId)) return;
     
     const habit = habits.find(h => h.id === habitId);
     if (!habit) return;
 
-    // Optimistic UI update? 
-    // Complex because recalculating streak client-side perfectly is hard without all logic.
-    // We will rely on the fast server response for the streak number, 
-    // but we can toggle the log checkmark immediately.
     const targetDate = dateString ? new Date(dateString) : new Date();
-    const tempLogId = `temp-${Date.now()}`;
     
-    // Check if we are adding or removing
-    // This is a rough check for optimistic UI, the server is the source of truth
-    const isAdding = !habitLogs.some(l => l.habit_id === habitId && isSameDay(new Date(l.completed_at), targetDate)); // Approximation for daily
+    // 1. Calculate the Visual Toggle State locally (Context-Aware)
+    // We check if a log exists for the relevant period (Day/Week/Month)
+    const existingLogIndex = habitLogs.findIndex(l => {
+        if (l.habit_id !== habitId) return false;
+        const logDate = new Date(l.completed_at);
+        
+        if (habit.frequency === 'daily') return isSameDay(logDate, targetDate);
+        if (habit.frequency === 'weekly') return getWeekId(logDate) === getWeekId(targetDate);
+        if (habit.frequency === 'monthly') return getMonthId(logDate) === getMonthId(targetDate);
+        return false;
+    });
 
+    const isAdding = existingLogIndex === -1;
+    let newLogs = [...habitLogs];
+
+    // 2. Update Logs Optimistically
     if (isAdding) {
-        setHabitLogs(prev => [...prev, { id: tempLogId, habit_id: habitId, completed_at: targetDate.toISOString() }]);
+        newLogs.push({ 
+            id: `temp-${Date.now()}`, 
+            habit_id: habitId, 
+            completed_at: targetDate.toISOString() 
+        });
     } else {
-        // We filter out logs that match roughly. The server handles precise logic.
-        // For visual feedback this is usually enough.
-        setHabitLogs(prev => prev.filter(l => !(l.habit_id === habitId && isSameDay(new Date(l.completed_at), targetDate))));
+        newLogs.splice(existingLogIndex, 1);
     }
+    
+    setHabitLogs(newLogs);
 
+    // 3. Update Streak Optimistically (Client-Side Math)
+    const habitSpecificLogs = newLogs.filter(l => l.habit_id === habitId).map(l => new Date(l.completed_at));
+    const optimisticStreak = calculateStreak(habitSpecificLogs, habit.frequency);
+    
+    setHabits(prev => prev.map(h => h.id === habitId ? { ...h, current_streak: optimisticStreak } : h));
+
+    // 4. Fire Network Request (Background)
     processingHabits.current.add(habitId);
     
     try {
         const { updatedHabit, action } = await db.toggleHabit(user.id, habitId, habit.frequency, dateString);
         
         if (isMounted.current) {
-            // Update the habit with the new streak from server
-            setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            // Self-Healing: Sync Streak if server calculation differs
+            if (updatedHabit.current_streak !== optimisticStreak) {
+                setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            }
             
-            // Sync up logs with server action if we guessed wrong
+            // Self-Healing: Sync Logs if server action differs from our guess
+            // (e.g., we thought we were adding, but server said we unchecked)
             if (isAdding && action === 'unchecked') {
-                 setHabitLogs(prev => prev.filter(l => l.id !== tempLogId));
+                 // Revert the add (remove logs for this period)
+                 setHabitLogs(prev => prev.filter(l => {
+                    if (l.habit_id !== habitId) return true;
+                    const d = new Date(l.completed_at);
+                    if (habit.frequency === 'daily') return !isSameDay(d, targetDate);
+                    if (habit.frequency === 'weekly') return getWeekId(d) !== getWeekId(targetDate);
+                    if (habit.frequency === 'monthly') return getMonthId(d) !== getMonthId(targetDate);
+                    return true;
+                 }));
             } else if (!isAdding && action === 'checked') {
-                 setHabitLogs(prev => [...prev, { id: tempLogId, habit_id: habitId, completed_at: targetDate.toISOString() }]);
+                 // Revert the remove (add it back)
+                 setHabitLogs(prev => [...prev, { id: `restored-${Date.now()}`, habit_id: habitId, completed_at: targetDate.toISOString() }]);
             }
         }
     } catch (error) {
         console.error("Error toggling habit:", error);
         if (isMounted.current) {
-            // Rollback
-            if (isAdding) setHabitLogs(prev => prev.filter(l => l.id !== tempLogId));
+            // Full Rollback on Error
+            setHabitLogs(habitLogs); 
+            setHabits(prev => prev.map(h => h.id === habitId ? habit : h)); 
             showToast("Failed to update habit.");
         }
     } finally {
