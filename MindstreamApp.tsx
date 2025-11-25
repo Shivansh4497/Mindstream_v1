@@ -23,6 +23,7 @@ import { HabitsInputBar } from './components/HabitsInputBar';
 import { useAppLogic } from './hooks/useAppLogic';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import * as gemini from './services/geminiService';
+import * as reflections from './services/reflectionService';
 import * as db from './services/dbService';
 import type { Entry, IntentionTimeframe } from './types';
 
@@ -54,11 +55,11 @@ export const MindstreamApp: React.FC = () => {
       if (legacyPrivacy && onboardingStep === 0) setOnboardingStep(ONBOARDING_COMPLETE_STEP);
   }, [legacyPrivacy, onboardingStep]);
 
-  // Chat Starters
+  // Chat Starters - Using the new reflectionService
   useEffect(() => {
       if (view === 'chat' && state.messages.length === 1 && chatStarters.length === 0 && state.aiStatus === 'ready') {
           setIsGeneratingStarters(true);
-          gemini.generateChatStarters(state.entries, state.intentions)
+          reflections.generateChatStarters(state.entries, state.intentions)
               .then(res => setChatStarters(res.starters))
               .catch(console.error)
               .finally(() => setIsGeneratingStarters(false));
@@ -97,8 +98,11 @@ export const MindstreamApp: React.FC = () => {
                         onDeleteEntry={setEntryToDelete}
                         onAcceptSuggestion={async (id, suggestion) => {
                             const type = await actions.handleAcceptSuggestion(id, suggestion);
-                            if (type === 'reflection') setView('chat'); // Chat nav is UI logic, needs to be here
+                            if (type === 'reflection') setView('chat');
                         }}
+                        onLoadMore={actions.handleLoadMore}
+                        hasMore={state.hasMore}
+                        isLoadingMore={state.isLoadingMore}
                     />
                 </div>
                 <InputBar onAddEntry={actions.handleAddEntry} />
@@ -145,21 +149,21 @@ export const MindstreamApp: React.FC = () => {
                 reflections={state.reflections}
                 onGenerateDaily={async (date, dayEntries) => {
                     actions.setIsGeneratingReflection(date);
-                    const res = await gemini.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
+                    const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
                     await db.addReflection(user!.id, { ...res, date, type: 'daily' });
                     actions.setIsGeneratingReflection(null);
-                    window.location.reload(); // Simple reload to refresh data for now
+                    window.location.reload();
                 }}
                 onGenerateWeekly={async (weekId, weekEntries) => {
                     actions.setIsGeneratingReflection(weekId);
-                    const res = await gemini.generateWeeklyReflection(weekEntries, state.intentions);
+                    const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
                     await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
                     actions.setIsGeneratingReflection(null);
                     window.location.reload();
                 }}
                 onGenerateMonthly={async (monthId, monthEntries) => {
                     actions.setIsGeneratingReflection(monthId);
-                    const res = await gemini.generateMonthlyReflection(monthEntries, state.intentions);
+                    const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
                     await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
                     actions.setIsGeneratingReflection(null);
                     window.location.reload();
@@ -171,7 +175,7 @@ export const MindstreamApp: React.FC = () => {
                 isGenerating={state.isGeneratingReflection}
                 onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
                 aiStatus={state.aiStatus}
-                onDebug={() => gemini.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({message: "Debug check console", id: 1}))}
+                onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({message: "Debug check console", id: 1}))}
                 debugOutput={null}
             />
         )}
@@ -188,10 +192,10 @@ export const MindstreamApp: React.FC = () => {
           <ThematicModal 
             tag={selectedTag} 
             onClose={() => setShowThematicModal(false)}
-            onViewEntries={() => { setShowSearchModal(true); setShowThematicModal(false); }} // In real app, pass query
+            onViewEntries={() => { setShowSearchModal(true); setShowThematicModal(false); }}
             onGenerateReflection={async () => {
                 setIsGeneratingThematic(true);
-                const res = await gemini.generateThematicReflection(selectedTag, state.entries);
+                const res = await reflections.generateThematicReflection(selectedTag, state.entries);
                 setThematicReflection(res);
                 setIsGeneratingThematic(false);
             }}
