@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as db from '../services/dbService';
@@ -33,8 +32,20 @@ export const useAppLogic = () => {
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
+  // Silent Observer Resilience: Track mounting status
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   const showToast = (message: string) => {
-    setToast({ message, id: Date.now() });
+    if (isMounted.current) {
+        setToast({ message, id: Date.now() });
+    }
   };
 
   useEffect(() => {
@@ -51,20 +62,30 @@ export const useAppLogic = () => {
           db.getCurrentPeriodHabitLogs(user.id),
         ]);
 
-        setEntries(userEntries);
-        // If we got fewer than PAGE_SIZE, we reached the end
-        if (userEntries.length < PAGE_SIZE) {
-            setHasMore(false);
+        if (isMounted.current) {
+            setEntries(userEntries);
+            // If we got fewer than PAGE_SIZE, we reached the end
+            if (userEntries.length < PAGE_SIZE) {
+                setHasMore(false);
+            }
+
+            setReflections(userReflections);
+            setIntentions(userIntentions);
+            setHabits(userHabits);
+            setHabitLogs(userHabitLogs);
+            setIsDataLoaded(true);
         }
 
-        setReflections(userReflections);
-        setIntentions(userIntentions);
-        setHabits(userHabits);
-        setHabitLogs(userHabitLogs);
-        setIsDataLoaded(true);
-
-        try { await gemini.verifyApiKey(); setAiStatus('ready'); } 
-        catch (e: any) { setAiStatus('error'); setAiError(e.message); }
+        try { 
+            await gemini.verifyApiKey(); 
+            if (isMounted.current) setAiStatus('ready'); 
+        } 
+        catch (e: any) { 
+            if (isMounted.current) {
+                setAiStatus('error'); 
+                setAiError(e.message); 
+            }
+        }
 
       } catch (error) {
         console.error("Error loading data:", error);
@@ -81,6 +102,8 @@ export const useAppLogic = () => {
           const nextPage = page + 1;
           const newEntries = await db.getEntries(user.id, nextPage, PAGE_SIZE);
           
+          if (!isMounted.current) return;
+
           if (newEntries.length < PAGE_SIZE) {
               setHasMore(false);
           }
@@ -91,7 +114,7 @@ export const useAppLogic = () => {
           console.error("Error loading more entries:", error);
           showToast("Failed to load older entries.");
       } finally {
-          setIsLoadingMore(false);
+          if (isMounted.current) setIsLoadingMore(false);
       }
   };
 
@@ -112,22 +135,33 @@ export const useAppLogic = () => {
             catch (error) { console.warn("AI processing failed"); }
         }
 
+        if (!isMounted.current) return;
+
         const savedEntry = await db.addEntry(user.id, { ...processedData, text, timestamp: tempEntry.timestamp });
-        setEntries(prev => prev.map(e => e.id === tempId ? savedEntry : e));
+        
+        if (isMounted.current) {
+            setEntries(prev => prev.map(e => e.id === tempId ? savedEntry : e));
+        }
 
         if (aiStatus === 'ready' && text.split(' ').length > 3) {
             gemini.generateEntrySuggestions(text).then(async (suggestions) => {
+                if (!isMounted.current) return;
+                
                 if (suggestions && suggestions.length > 0) {
                     await db.updateEntry(savedEntry.id, { suggestions });
-                    setEntries(prev => prev.map(e => e.id === savedEntry.id ? { ...e, suggestions } : e));
+                    if (isMounted.current) {
+                        setEntries(prev => prev.map(e => e.id === savedEntry.id ? { ...e, suggestions } : e));
+                    }
                 } else if (text.startsWith("TEST:")) {
                     showToast("AI Analysis: No suggestions found.");
                 }
             }).catch(console.error);
         }
     } catch (error) {
-        setEntries(prev => prev.filter(e => e.id !== tempId));
-        showToast("Failed to save entry.");
+        if (isMounted.current) {
+            setEntries(prev => prev.filter(e => e.id !== tempId));
+            showToast("Failed to save entry.");
+        }
     }
   };
 
@@ -142,6 +176,7 @@ export const useAppLogic = () => {
 
     const originalLogs = [...habitLogs];
     
+    // Optimistic Update
     if (existingLog) {
         setHabitLogs(prev => prev.filter(l => l.id !== existingLog.id));
         if (isToday) setHabits(prev => prev.map(h => h.id === habitId ? { ...h, current_streak: Math.max(0, h.current_streak - 1) } : h));
@@ -154,15 +189,21 @@ export const useAppLogic = () => {
     try {
         if (existingLog) {
             const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak, dateString);
-            setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            if (isMounted.current) {
+                setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            }
         } else {
             const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak, dateString);
-            setHabitLogs(prev => prev.map(l => l.id.startsWith('temp') && l.habit_id === habitId ? log : l));
-            setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            if (isMounted.current) {
+                setHabitLogs(prev => prev.map(l => l.id.startsWith('temp') && l.habit_id === habitId ? log : l));
+                setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+            }
         }
     } catch (error) {
-        setHabitLogs(originalLogs);
-        showToast("Failed to update habit.");
+        if (isMounted.current) {
+            setHabitLogs(originalLogs);
+            showToast("Failed to update habit.");
+        }
     } finally {
         processingHabits.current.delete(habitId);
     }
@@ -177,6 +218,8 @@ export const useAppLogic = () => {
       try {
           const context = initialContext || await db.getUserContext(user.id);
           
+          if (!isMounted.current) return;
+
           if (aiStatus === 'ready' && !initialContext) {
               try {
                   const keywords = await gemini.extractSearchKeywords(text);
@@ -190,12 +233,15 @@ export const useAppLogic = () => {
               }
           }
           
+          if (!isMounted.current) return;
+
           const stream = await gemini.getChatResponseStream([...messages, newUserMsg], context);
           
           let fullResponse = '';
           setMessages(prev => [...prev, { sender: 'ai', text: '' }]);
           
           for await (const chunk of stream) {
+              if (!isMounted.current) break;
               const chunkText = chunk.text;
               if (chunkText) {
                 fullResponse += chunkText;
@@ -207,21 +253,34 @@ export const useAppLogic = () => {
               }
           }
       } catch (error) {
-          setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble connecting right now." }]);
+          if (isMounted.current) {
+              setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble connecting right now." }]);
+          }
       } finally {
-          setIsChatLoading(false);
+          if (isMounted.current) setIsChatLoading(false);
       }
   };
 
   const handleAddHabit = async (n: string, f: HabitFrequency) => { 
-      if (!user) return; setIsAddingHabit(true);
-      try { await db.addHabit(user.id, n, "⚡️", "System", f).then(h => h && setHabits(prev => [...prev, h])); }
-      finally { setIsAddingHabit(false); }
+      if (!user) return; 
+      setIsAddingHabit(true);
+      try { 
+          await db.addHabit(user.id, n, "⚡️", "System", f).then(h => {
+             if (isMounted.current && h) setHabits(prev => [...prev, h]);
+          }); 
+      }
+      finally { 
+          if (isMounted.current) setIsAddingHabit(false); 
+      }
   };
+
   const handleAddIntention = async (t: string, tf: IntentionTimeframe) => {
       if (!user) return;
-      await db.addIntention(user.id, t, tf).then(i => i && setIntentions(prev => [i, ...prev]));
+      await db.addIntention(user.id, t, tf).then(i => {
+          if (isMounted.current && i) setIntentions(prev => [i, ...prev]);
+      });
   };
+
   const handleToggleIntention = async (id: string, s: string) => {
       const ns = s === 'pending' ? 'completed' : 'pending';
       setIntentions(prev => prev.map(i => i.id === id ? { ...i, status: ns as any } : i));
@@ -229,7 +288,12 @@ export const useAppLogic = () => {
   };
   const handleDeleteIntention = async (id: string) => { setIntentions(prev => prev.filter(i => i.id !== id)); db.deleteIntention(id); };
   const handleDeleteHabit = async (id: string) => { setHabits(prev => prev.filter(h => h.id !== id)); db.deleteHabit(id); };
-  const handleEditEntry = async (e: Entry, t: string) => { /* ... impl ... */ };
+  const handleEditEntry = async (e: Entry, t: string) => { 
+      const updated = await db.updateEntry(e.id, { text: t });
+      if (isMounted.current) {
+         setEntries(prev => prev.map(ent => ent.id === e.id ? updated : ent));
+      }
+  };
   const handleDeleteEntry = async (e: Entry) => { setEntries(prev => prev.filter(x => x.id !== e.id)); db.deleteEntry(e.id); };
   
   const handleAcceptSuggestion = async (id: string, s: EntrySuggestion) => {
