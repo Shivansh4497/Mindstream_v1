@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as db from '../services/dbService';
 import * as gemini from '../services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext } from '../types';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext, HabitCategory } from '../types';
 import { isSameDay } from '../utils/date';
 
 const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
@@ -201,18 +201,10 @@ export const useAppLogic = () => {
             // Update the habit with the new streak from server
             setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
             
-            // Re-fetch logs or correct the temp log? 
-            // The simplest way to be perfectly consistent is to update the log ID if it was an insert.
-            // But since logs are mostly for display, we can just ensure we have the authoritative list.
-            // For now, let's keep the optimistic state unless we want to refetch all logs (heavy).
-            // A better approach: toggleHabit returns the action performed.
-            
-            // If we guessed wrong on "isAdding", correct it.
+            // Sync up logs with server action if we guessed wrong
             if (isAdding && action === 'unchecked') {
-                // We added, but server unchecked? Means we were out of sync. Remove it.
                  setHabitLogs(prev => prev.filter(l => l.id !== tempLogId));
             } else if (!isAdding && action === 'checked') {
-                // We removed, but server checked? Add it back.
                  setHabitLogs(prev => [...prev, { id: tempLogId, habit_id: habitId, completed_at: targetDate.toISOString() }]);
             }
         }
@@ -221,12 +213,24 @@ export const useAppLogic = () => {
         if (isMounted.current) {
             // Rollback
             if (isAdding) setHabitLogs(prev => prev.filter(l => l.id !== tempLogId));
-            // else... rollback removal is harder without the original obj. 
-            // In a real app we'd reload logs here.
             showToast("Failed to update habit.");
         }
     } finally {
         processingHabits.current.delete(habitId);
+    }
+  };
+
+  const handleEditHabit = async (habitId: string, name: string, emoji: string, category: HabitCategory) => {
+    if (!user) return;
+    try {
+        const updated = await db.updateHabit(habitId, { name, emoji, category });
+        if (updated && isMounted.current) {
+            setHabits(prev => prev.map(h => h.id === habitId ? updated : h));
+            showToast("Habit updated.");
+        }
+    } catch (error) {
+        console.error("Error updating habit:", error);
+        showToast("Failed to update habit.");
     }
   };
 
@@ -324,6 +328,6 @@ export const useAppLogic = () => {
 
   return {
     state: { entries, reflections, intentions, habits, habitLogs, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore },
-    actions: { handleAddEntry, handleToggleHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, setToast, setMessages, setIsGeneratingReflection, handleLoadMore }
+    actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, setToast, setMessages, setIsGeneratingReflection, handleLoadMore }
   };
 };
