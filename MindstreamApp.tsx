@@ -96,6 +96,8 @@ export const MindstreamApp: React.FC = () => {
                             <Stream
                                 entries={state.entries}
                                 intentions={state.intentions}
+                                insights={state.insights}
+                                autoReflections={state.autoReflections}
                                 onTagClick={(tag) => { setSelectedTag(tag); setShowThematicModal(true); }}
                                 onEditEntry={setEntryToEdit}
                                 onDeleteEntry={setEntryToDelete}
@@ -103,6 +105,7 @@ export const MindstreamApp: React.FC = () => {
                                     const type = await actions.handleAcceptSuggestion(id, suggestion);
                                     if (type === 'reflection') setView('chat');
                                 }}
+                                onDismissInsight={actions.handleDismissInsight}
                                 onLoadMore={actions.handleLoadMore}
                                 hasMore={state.hasMore}
                                 isLoadingMore={state.isLoadingMore}
