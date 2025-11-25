@@ -61,8 +61,8 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                             key={tf.id}
                             onClick={() => onTimeframeChange(tf.id)}
                             className={`py-2 px-4 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${activeTimeframe === tf.id
-                                    ? 'bg-brand-teal text-brand-indigo'
-                                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                                ? 'bg-brand-teal text-brand-indigo'
+                                : 'text-gray-300 hover:bg-white/10 hover:text-white'
                                 }`}
                         >
                             {tf.label}
