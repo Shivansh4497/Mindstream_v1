@@ -49,7 +49,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
     const hasHabits = habits.length > 0;
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="flex-grow min-h-0 flex flex-col">
             {hasHabits && (
                 <header className="flex-shrink-0 p-6 pb-2">
                      <h2 className="text-xl font-bold font-display text-white">Your Systems</h2>
