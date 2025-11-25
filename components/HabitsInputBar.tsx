@@ -28,7 +28,7 @@ export const HabitsInputBar: React.FC<HabitsInputBarProps> = ({ onAddHabit, isLo
   };
 
   return (
-    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-10 flex flex-col gap-2">
+    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-30 flex flex-col gap-2">
       {/* Frequency Toggles */}
       <div className="flex items-center gap-2 px-1">
           {frequencies.map(freq => (
