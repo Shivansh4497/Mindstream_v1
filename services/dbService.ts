@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext } from '../types';
@@ -420,6 +421,24 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
     return data;
 }
 
+export const updateHabit = async (habitId: string, updates: Partial<Habit>): Promise<Habit | null> => {
+    if (!supabase) return null;
+    
+    // FIX: Cast supabase to any to bypass strict typing on update payload
+    const { data, error } = await (supabase as any)
+        .from('habits')
+        .update(updates)
+        .eq('id', habitId)
+        .select()
+        .single();
+        
+    if (error) {
+        console.error('Error updating habit:', error);
+        throw error;
+    }
+    return data as Habit;
+};
+
 export const deleteHabit = async (habitId: string): Promise<boolean> => {
     if (!supabase) return false;
     // FIX: Cast supabase to any
@@ -453,9 +472,6 @@ export const toggleHabit = async (userId: string, habitId: string, frequency: Ha
         start.setHours(0,0,0,0);
         end.setHours(23,59,59,999);
     } else if (frequency === 'weekly') {
-        // Find start/end of week? 
-        // Simpler: Just check if we have a log in the same ISO week ID.
-        // But for DB query, we need a range.
         const day = start.getDay() || 7; 
         if (day !== 1) start.setHours(-24 * (day - 1)); 
         else start.setHours(0,0,0,0);
