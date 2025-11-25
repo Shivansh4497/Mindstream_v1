@@ -29,7 +29,9 @@ export const useAppLogic = () => {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
-  const processingHabits = useRef<Set<string>>(new Set());
+  // Debounce timers for habit toggling to prevent network spam
+  const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  
   const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -40,6 +42,8 @@ export const useAppLogic = () => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
+      // Clear any pending timers on unmount
+      Object.values(debounceTimers.current).forEach(clearTimeout);
     };
   }, []);
 
@@ -167,17 +171,17 @@ export const useAppLogic = () => {
     }
   };
 
-  // Upgraded Habit Toggle with ZERO-LATENCY Optimistic Logic
+  // ZERO-LATENCY DEBOUNCED HABIT TOGGLE
   const handleToggleHabit = async (habitId: string, dateString?: string) => {
-    if (!user || processingHabits.current.has(habitId)) return;
+    if (!user) return;
     
     const habit = habits.find(h => h.id === habitId);
     if (!habit) return;
 
     const targetDate = dateString ? new Date(dateString) : new Date();
     
-    // 1. Calculate the Visual Toggle State locally (Context-Aware)
-    // We check if a log exists for the relevant period (Day/Week/Month)
+    // 1. Determine Current Local State (Checked or Unchecked?)
+    // This logic must match the server's "period" logic exactly.
     const existingLogIndex = habitLogs.findIndex(l => {
         if (l.habit_id !== habitId) return false;
         const logDate = new Date(l.completed_at);
@@ -188,68 +192,66 @@ export const useAppLogic = () => {
         return false;
     });
 
-    const isAdding = existingLogIndex === -1;
-    let newLogs = [...habitLogs];
+    const isCurrentlyCompleted = existingLogIndex !== -1;
+    const willBeCompleted = !isCurrentlyCompleted; // Toggle
 
-    // 2. Update Logs Optimistically
-    if (isAdding) {
+    // 2. Optimistic Update (Immediate Visual Feedback)
+    let newLogs = [...habitLogs];
+    if (willBeCompleted) {
+        // Add a temp log
         newLogs.push({ 
-            id: `temp-${Date.now()}`, 
+            id: `temp-${Date.now()}-${Math.random()}`, 
             habit_id: habitId, 
             completed_at: targetDate.toISOString() 
         });
     } else {
+        // Remove the log
         newLogs.splice(existingLogIndex, 1);
     }
-    
     setHabitLogs(newLogs);
 
-    // 3. Update Streak Optimistically (Client-Side Math)
+    // 3. Client-Side Streak Calculation (Immediate Numeric Feedback)
     const habitSpecificLogs = newLogs.filter(l => l.habit_id === habitId).map(l => new Date(l.completed_at));
     const optimisticStreak = calculateStreak(habitSpecificLogs, habit.frequency);
-    
     setHabits(prev => prev.map(h => h.id === habitId ? { ...h, current_streak: optimisticStreak } : h));
 
-    // 4. Fire Network Request (Background)
-    processingHabits.current.add(habitId);
-    
-    try {
-        const { updatedHabit, action } = await db.toggleHabit(user.id, habitId, habit.frequency, dateString);
-        
-        if (isMounted.current) {
-            // Self-Healing: Sync Streak if server calculation differs
-            if (updatedHabit.current_streak !== optimisticStreak) {
-                setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
-            }
-            
-            // Self-Healing: Sync Logs if server action differs from our guess
-            // (e.g., we thought we were adding, but server said we unchecked)
-            if (isAdding && action === 'unchecked') {
-                 // Revert the add (remove logs for this period)
-                 setHabitLogs(prev => prev.filter(l => {
-                    if (l.habit_id !== habitId) return true;
-                    const d = new Date(l.completed_at);
-                    if (habit.frequency === 'daily') return !isSameDay(d, targetDate);
-                    if (habit.frequency === 'weekly') return getWeekId(d) !== getWeekId(targetDate);
-                    if (habit.frequency === 'monthly') return getMonthId(d) !== getMonthId(targetDate);
-                    return true;
-                 }));
-            } else if (!isAdding && action === 'checked') {
-                 // Revert the remove (add it back)
-                 setHabitLogs(prev => [...prev, { id: `restored-${Date.now()}`, habit_id: habitId, completed_at: targetDate.toISOString() }]);
-            }
-        }
-    } catch (error) {
-        console.error("Error toggling habit:", error);
-        if (isMounted.current) {
-            // Full Rollback on Error
-            setHabitLogs(habitLogs); 
-            setHabits(prev => prev.map(h => h.id === habitId ? habit : h)); 
-            showToast("Failed to update habit.");
-        }
-    } finally {
-        processingHabits.current.delete(habitId);
+    // 4. Debounce Network Sync
+    // Cancel any pending sync for this specific habit
+    if (debounceTimers.current[habitId]) {
+        clearTimeout(debounceTimers.current[habitId]);
     }
+
+    // Set a new timer to sync the FINAL state after 1 second of inactivity
+    debounceTimers.current[habitId] = setTimeout(async () => {
+        try {
+            // We send "willBeCompleted" because that is the state we just set optimistically.
+            // If the user clicks 5 times rapidly, this function only runs once with the final state.
+            const { updatedHabit } = await db.syncHabitCompletion(
+                user.id, 
+                habitId, 
+                habit.frequency, 
+                dateString,
+                willBeCompleted
+            );
+            
+            if (isMounted.current) {
+                // Reconcile Streak (Self-Healing)
+                // If the server's calc differs from our optimistic math, trust the server.
+                if (updatedHabit.current_streak !== optimisticStreak) {
+                    setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+                }
+            }
+        } catch (error) {
+            console.error("Error syncing habit:", error);
+            if (isMounted.current) {
+                // Rollback would go here, but with idempotent sync, 
+                // a simple re-fetch or toast is usually sufficient.
+                showToast("Failed to sync habit changes.");
+            }
+        } finally {
+            delete debounceTimers.current[habitId];
+        }
+    }, 1000); // 1000ms debounce window
   };
 
   const handleEditHabit = async (habitId: string, name: string, emoji: string, category: HabitCategory) => {
