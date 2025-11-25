@@ -90,7 +90,7 @@ export const MindstreamApp: React.FC = () => {
 
       <main className="flex-grow overflow-hidden relative">
         {view === 'stream' && (
-            <div className="h-full flex flex-col">
+            <div className="absolute inset-0 flex flex-col">
                 <div className="flex-grow overflow-y-auto">
                     <Stream 
                         entries={state.entries} 
@@ -112,7 +112,7 @@ export const MindstreamApp: React.FC = () => {
         )}
 
         {view === 'habits' && (
-            <div className="h-full flex flex-col">
+            <div className="absolute inset-0 flex flex-col">
                 <HabitsView 
                     habits={state.habits} 
                     todaysLogs={state.habitLogs}
@@ -125,7 +125,7 @@ export const MindstreamApp: React.FC = () => {
         )}
 
         {view === 'intentions' && (
-            <div className="h-full flex flex-col">
+            <div className="absolute inset-0 flex flex-col">
                 <IntentionsView 
                     intentions={state.intentions} 
                     onToggle={actions.handleToggleIntention} 
@@ -138,7 +138,7 @@ export const MindstreamApp: React.FC = () => {
         )}
 
         {view === 'chat' && (
-            <div className="h-full flex flex-col">
+            <div className="absolute inset-0 flex flex-col">
                 <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => {}} />
                 {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
                 <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
@@ -146,41 +146,43 @@ export const MindstreamApp: React.FC = () => {
         )}
 
         {view === 'reflections' && (
-            <ReflectionsView 
-                entries={state.entries}
-                intentions={state.intentions}
-                reflections={state.reflections}
-                onGenerateDaily={async (date, dayEntries) => {
-                    actions.setIsGeneratingReflection(date);
-                    const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
-                    await db.addReflection(user!.id, { ...res, date, type: 'daily' });
-                    actions.setIsGeneratingReflection(null);
-                    window.location.reload();
-                }}
-                onGenerateWeekly={async (weekId, weekEntries) => {
-                    actions.setIsGeneratingReflection(weekId);
-                    const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
-                    await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
-                    actions.setIsGeneratingReflection(null);
-                    window.location.reload();
-                }}
-                onGenerateMonthly={async (monthId, monthEntries) => {
-                    actions.setIsGeneratingReflection(monthId);
-                    const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
-                    await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
-                    actions.setIsGeneratingReflection(null);
-                    window.location.reload();
-                }}
-                onExploreInChat={(summary) => {
-                    setView('chat');
-                    actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
-                }}
-                isGenerating={state.isGeneratingReflection}
-                onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
-                aiStatus={state.aiStatus}
-                onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({message: "Debug check console", id: 1}))}
-                debugOutput={null}
-            />
+             <div className="absolute inset-0 flex flex-col">
+                <ReflectionsView 
+                    entries={state.entries}
+                    intentions={state.intentions}
+                    reflections={state.reflections}
+                    onGenerateDaily={async (date, dayEntries) => {
+                        actions.setIsGeneratingReflection(date);
+                        const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
+                        await db.addReflection(user!.id, { ...res, date, type: 'daily' });
+                        actions.setIsGeneratingReflection(null);
+                        window.location.reload();
+                    }}
+                    onGenerateWeekly={async (weekId, weekEntries) => {
+                        actions.setIsGeneratingReflection(weekId);
+                        const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
+                        await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
+                        actions.setIsGeneratingReflection(null);
+                        window.location.reload();
+                    }}
+                    onGenerateMonthly={async (monthId, monthEntries) => {
+                        actions.setIsGeneratingReflection(monthId);
+                        const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
+                        await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
+                        actions.setIsGeneratingReflection(null);
+                        window.location.reload();
+                    }}
+                    onExploreInChat={(summary) => {
+                        setView('chat');
+                        actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
+                    }}
+                    isGenerating={state.isGeneratingReflection}
+                    onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
+                    aiStatus={state.aiStatus}
+                    onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({message: "Debug check console", id: 1}))}
+                    debugOutput={null}
+                />
+            </div>
         )}
       </main>
 
