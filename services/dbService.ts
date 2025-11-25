@@ -115,6 +115,29 @@ export const deleteEntry = async (entryId: string): Promise<boolean> => {
     return true;
 };
 
+// RAG: Keyword Search
+export const searchEntries = async (userId: string, keywords: string[]): Promise<Entry[]> => {
+    if (!supabase) return [];
+    if (!keywords || keywords.length === 0) return [];
+
+    // Create a simple OR query for title or text matches
+    // Syntax: column.ilike.%keyword%
+    const conditions = keywords.map(k => `text.ilike.%${k}%,title.ilike.%${k}%`).join(',');
+
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('user_id', userId)
+        .or(conditions)
+        .limit(10); // Limit to top 10 matches to prevent token overload
+
+    if (error) {
+        console.error("Error searching entries:", error);
+        return [];
+    }
+    return data || [];
+};
+
 
 // Onboarding Functions
 export const addWelcomeEntry = async (userId: string): Promise<void> => {
@@ -297,14 +320,13 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
 
 /**
  * Fetches habit logs relevant for the current period.
- * Updated for Habits 2.0: Fetches a rolling window (last 35 days) instead of just current month.
+ * Habits 2.0: Fetches a rolling window (last 35 days) to support history visualization.
  */
 export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLog[]> => {
     if (!supabase) return [];
     
     const now = new Date();
-    // Set to 35 days ago to cover the visualization window and month transitions
-    now.setDate(now.getDate() - 35);
+    now.setDate(now.getDate() - 35); // Fetch last 35 days
     const startOfPeriod = now.toISOString();
     
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
@@ -432,6 +454,7 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
         getReflections(userId)
     ]);
     
+    // Note: searchResults is populated dynamically during chat
     return {
         recentEntries: entries.slice(0, 15),
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
