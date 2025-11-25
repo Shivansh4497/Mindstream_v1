@@ -265,7 +265,7 @@ export const useAppLogic = () => {
         } finally {
             delete debounceTimers.current[habitId];
         }
-    }, 1000); // 1000ms debounce
+    }, 500); // 500ms debounce (reduced from 1000ms for better persistence)
   };
 
   const handleEditHabit = async (habitId: string, name: string, emoji: string, category: HabitCategory) => {
