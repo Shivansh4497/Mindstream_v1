@@ -2,7 +2,8 @@
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext } from '../types';
-import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate, checkStreakContinuity } from '../utils/date';
+import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
+import { calculateStreak } from '../utils/streak';
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
@@ -125,9 +126,6 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
     if (!supabase) return [];
     if (!keywords || keywords.length === 0) return [];
 
-    // Construct a "websearch" compatible query string.
-    // Joining with ' or ' tells websearch_to_tsquery to look for any of these terms.
-    // This utilizes Postgres' built-in text search capabilities (stemming, etc.)
     const searchQuery = keywords.join(' or ');
 
     const { data, error } = await supabase
@@ -138,7 +136,7 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
             type: 'websearch',
             config: 'english' 
         })
-        .limit(10); // Limit to top 10 matches to prevent token overload
+        .limit(10); 
 
     if (error) {
         console.error("Error searching entries:", error);
@@ -310,7 +308,7 @@ export const deleteIntention = async (id: string): Promise<boolean> => {
     return true;
 };
 
-// Habit Functions
+// --- HABITS (2.0: Dynamic Streak Calculation) ---
 
 export const getHabits = async (userId: string): Promise<Habit[]> => {
     if (!supabase) return [];
@@ -322,82 +320,60 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
     
-    if (error) {
-        console.error('Error fetching habits:', error);
-        return [];
-    }
+    if (error) return [];
     
-    // Explicit casting to prevent 'never' type errors during map
     const habits = habitsData as Habit[];
-
     if (!habits || habits.length === 0) return [];
 
-    // 2. STREAK DOCTOR: Auto-correct broken streaks
-    // Fetch logs from the last 60 days to check recent activity
+    // 2. Fetch logs for the last 365 days to ensure accurate streak calc
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 60);
+    cutoffDate.setDate(cutoffDate.getDate() - 365); 
 
-    const { data: logsData } = await supabase
+    // FIX: Cast supabase to any to avoid strict type inference errors with 'order' on inferred 'never' type
+    const { data: logsData } = await (supabase as any)
         .from('habit_logs')
         .select('habit_id, completed_at')
         .eq('user_id', userId)
         .gte('completed_at', cutoffDate.toISOString())
         .order('completed_at', { ascending: false });
 
-    // Explicit casting
     const logs = logsData as { habit_id: string; completed_at: string }[];
+    const habitsToUpdate: { id: string, streak: number }[] = [];
 
-    const habitsToUpdate: string[] = [];
+    // 3. Recalculate Streaks for every habit (Derived Strategy)
     const processedHabits = habits.map(habit => {
-        // If streak is already 0, it is correct.
-        if (habit.current_streak === 0) return habit;
+        const habitLogs = logs.filter(l => l.habit_id === habit.id).map(l => new Date(l.completed_at));
+        const calculatedStreak = calculateStreak(habitLogs, habit.frequency);
 
-        // Find the most recent log for this habit
-        const latestLog = logs?.find(l => l.habit_id === habit.id);
-        
-        // If no logs found in 60 days but streak > 0, it's definitely broken.
-        if (!latestLog) {
-            habitsToUpdate.push(habit.id);
-            return { ...habit, current_streak: 0 };
+        if (calculatedStreak !== habit.current_streak) {
+            habitsToUpdate.push({ id: habit.id, streak: calculatedStreak });
+            return { ...habit, current_streak: calculatedStreak };
         }
-
-        const lastDate = new Date(latestLog.completed_at);
-        const isValid = checkStreakContinuity(lastDate, habit.frequency);
-
-        if (!isValid) {
-            habitsToUpdate.push(habit.id);
-            return { ...habit, current_streak: 0 };
-        }
-        
         return habit;
     });
 
-    // 3. Persist corrections to DB (Self-Healing)
+    // 4. Sync DB if streaks have changed (Self-Healing)
     if (habitsToUpdate.length > 0) {
-        console.log(`[Streak Doctor] Repairing ${habitsToUpdate.length} broken streaks...`);
-        supabase
-            .from('habits')
-            // @ts-ignore
-            .update({ current_streak: 0 })
-            .in('id', habitsToUpdate)
-            .then(({ error }) => {
-                if(error) console.error("[Streak Doctor] Failed to update DB:", error);
-            });
+        // We update individually or batch if we had an upsert. 
+        // For simplicity, fire-and-forget individual updates or simple map.
+        Promise.all(habitsToUpdate.map(h => 
+            supabase!.from('habits').update({ current_streak: h.streak } as any).eq('id', h.id)
+        )).catch(e => console.error("Error syncing calculated streaks:", e));
     }
 
     return processedHabits;
 }
 
 /**
- * Fetches habit logs relevant for the current period.
- * Habits 2.0: Fetches a rolling window (last 35 days) to support history visualization.
+ * Fetches habit logs for the visualization window.
+ * Increased to 365 days to allow full history exploration if needed.
  */
 export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLog[]> => {
     if (!supabase) return [];
     
     const now = new Date();
-    now.setDate(now.getDate() - 35); // Fetch last 35 days
-    now.setHours(0, 0, 0, 0); // FIX: Ensure we start from the beginning of that day (Local Midnight)
+    now.setDate(now.getDate() - 365); // Fetch last year
+    now.setHours(0, 0, 0, 0); 
     const startOfPeriod = now.toISOString();
     
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
@@ -411,10 +387,7 @@ export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLo
         .in('habit_id', habitIds)
         .gte('completed_at', startOfPeriod);
         
-    if (error) {
-        console.error('Error fetching habit logs:', error);
-        return [];
-    }
+    if (error) return [];
     return data || [];
 }
 
@@ -444,88 +417,113 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
 export const deleteHabit = async (habitId: string): Promise<boolean> => {
     if (!supabase) return false;
     const { error } = await supabase.from('habits').delete().eq('id', habitId);
-    if (error) {
-        console.error('Error deleting habit:', error);
-        return false;
-    }
+    if (error) return false;
     return true;
 }
 
-export const checkHabit = async (habitId: string, currentStreak: number, date?: string): Promise<{log: HabitLog, updatedHabit: Habit}> => {
+/**
+ * INTELLIGENT TOGGLE:
+ * Checks if a log exists for the given period. 
+ * If yes -> Delete it.
+ * If no -> Create it.
+ * Then recalculates and returns the new streak.
+ */
+export const toggleHabit = async (userId: string, habitId: string, frequency: HabitFrequency, dateString?: string): Promise<{ updatedHabit: Habit, action: 'checked' | 'unchecked' }> => {
     if (!supabase) throw new Error("Supabase not initialized");
     
-    const completedAt = date ? new Date(date).toISOString() : new Date().toISOString();
+    const targetDate = dateString ? new Date(dateString) : new Date();
+    const targetIso = targetDate.toISOString();
+    
+    // 1. Determine the "period identifier" to check for duplicates.
+    // Daily: Same Day. Weekly: Same Week. Monthly: Same Month.
+    let startDateStr = '';
+    let endDateStr = '';
+    
+    const start = new Date(targetDate);
+    const end = new Date(targetDate);
+    
+    if (frequency === 'daily') {
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+    } else if (frequency === 'weekly') {
+        // Find start/end of week? 
+        // Simpler: Just check if we have a log in the same ISO week ID.
+        // But for DB query, we need a range.
+        const day = start.getDay() || 7; 
+        if (day !== 1) start.setHours(-24 * (day - 1)); 
+        else start.setHours(0,0,0,0);
+        end.setDate(start.getDate() + 6);
+        end.setHours(23,59,59,999);
+    } else if (frequency === 'monthly') {
+        start.setDate(1); start.setHours(0,0,0,0);
+        end.setMonth(end.getMonth() + 1); end.setDate(0); end.setHours(23,59,59,999);
+    }
+    
+    startDateStr = start.toISOString();
+    endDateStr = end.toISOString();
 
-    const { data: log, error: logError } = await supabase
+    // 2. Check for existing log in this period
+    const { data: existingLogs } = await supabase
         .from('habit_logs')
-        .insert({ habit_id: habitId, completed_at: completedAt } as any)
+        .select('id')
+        .eq('habit_id', habitId)
+        .gte('completed_at', startDateStr)
+        .lte('completed_at', endDateStr);
+
+    const hasLog = existingLogs && existingLogs.length > 0;
+    let action: 'checked' | 'unchecked' = 'checked';
+
+    // 3. Perform Mutation
+    if (hasLog) {
+        // Uncheck: Delete the log(s) for this period
+        // FIX: Cast existingLogs to any[] to avoid 'never' type error
+        await supabase.from('habit_logs').delete().in('id', (existingLogs as any[]).map(l => l.id));
+        action = 'unchecked';
+    } else {
+        // Check: Insert new log
+        await supabase.from('habit_logs').insert({ habit_id: habitId, user_id: userId, completed_at: targetIso } as any);
+        action = 'checked';
+    }
+
+    // 4. Recalculate Streak using the robust calculator
+    // Fetch last year's logs again to be safe
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 365);
+    const { data: allLogs } = await supabase
+        .from('habit_logs')
+        .select('completed_at')
+        .eq('habit_id', habitId)
+        .gte('completed_at', cutoffDate.toISOString());
+
+    // FIX: Cast allLogs to any[] to avoid 'never' type error
+    const logDates = ((allLogs as any[]) || []).map(l => new Date(l.completed_at));
+    const newStreak = calculateStreak(logDates, frequency);
+
+    // 5. Update Habit in DB
+    const { data: updatedHabit, error } = await supabase
+        .from('habits')
+        // @ts-ignore
+        .update({ current_streak: newStreak })
+        .eq('id', habitId)
         .select()
         .single();
-        
-    if (logError) throw logError;
-    
-    let habit = null;
-    // Only update streak number if we are toggling "Today"
-    if (!date || new Date(date).toDateString() === new Date().toDateString()) {
-        const newStreak = currentStreak + 1;
-        const { data, error: habitError } = await supabase
-            .from('habits')
-            // @ts-ignore
-            .update({ current_streak: newStreak })
-            .eq('id', habitId)
-            .select()
-            .single();
-        if (habitError) throw habitError;
-        habit = data;
-    } else {
-         const { data } = await supabase.from('habits').select('*').eq('id', habitId).single();
-         habit = data;
-    }
-    
-    return { log, updatedHabit: habit };
+
+    if (error || !updatedHabit) throw new Error("Failed to update habit streak");
+
+    return { updatedHabit, action };
 }
 
-export const uncheckHabit = async (logId: string, habitId: string, currentStreak: number, date?: string): Promise<{ updatedHabit: Habit }> => {
-    if (!supabase) throw new Error("Supabase not initialized");
-
-    const { error: logError } = await supabase
-        .from('habit_logs')
-        .delete()
-        .eq('id', logId);
-        
-    if (logError) throw logError;
-    
-    let habit = null;
-    if (!date || new Date(date).toDateString() === new Date().toDateString()) {
-        const newStreak = Math.max(0, currentStreak - 1);
-        const { data, error: habitError } = await supabase
-            .from('habits')
-            // @ts-ignore
-            .update({ current_streak: newStreak })
-            .eq('id', habitId)
-            .select()
-            .single();
-        if (habitError) throw habitError;
-        habit = data;
-    } else {
-         const { data } = await supabase.from('habits').select('*').eq('id', habitId).single();
-         habit = data;
-    }
-    
-    return { updatedHabit: habit };
-}
 
 export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
     
     const [entries, intentions, habits, reflections] = await Promise.all([
-        getEntries(userId, 0, 15), // Fetch only recent 15 entries for Chat context
+        getEntries(userId, 0, 15), 
         getIntentions(userId),
         getHabits(userId),
         getReflections(userId)
     ]);
     
-    // Note: searchResults is populated dynamically during chat
     return {
         recentEntries: entries,
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
