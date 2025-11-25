@@ -1,6 +1,6 @@
 /**
  * Formats a Date object into a 'YYYY-MM-DD' string.
- * This is used for grouping entries by day.
+ * This is used for grouping entries by day in Local Time.
  */
 export const getFormattedDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -18,11 +18,12 @@ export const getDisplayDate = (dateString: string): string => {
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  // The input can be 'YYYY-MM-DD' which is parsed as UTC midnight.
-  // Or it can be a full ISO string. Creating a new Date object handles both.
+  // FIX: Create a Date object from the ISO string. 
+  // This automatically handles the conversion from UTC (DB) to Local Time (Browser).
   const date = new Date(dateString);
-  // To correctly compare dates across timezones, we compare the 'YYYY-MM-DD' parts.
-  const dateInputFormatted = dateString.split('T')[0];
+  
+  // Get the YYYY-MM-DD string for the Local Time version of the date
+  const dateInputFormatted = getFormattedDate(date);
   
   const todayFormatted = getFormattedDate(today);
   const yesterdayFormatted = getFormattedDate(yesterday);
@@ -34,12 +35,7 @@ export const getDisplayDate = (dateString: string): string => {
     return 'Yesterday';
   }
 
-  // When creating a date from 'YYYY-MM-DD', it's UTC.
-  // toLocaleDateString uses local timezone, which can shift the day.
-  // So, we add timezone offset to make sure it's the correct day locally.
-  const displayDate = new Date(date.valueOf() + date.getTimezoneOffset() * 60 * 1000);
-
-  return displayDate.toLocaleDateString('en-US', {
+  return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -75,6 +71,7 @@ export const isDateInCurrentYear = (date: Date): boolean => {
  * Gets the ISO week number for a date.
  */
 const getWeekNumber = (d: Date): [number, number] => {
+  // Use UTC to avoid daylight saving issues when calculating week numbers
   d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -133,4 +130,60 @@ export const getMonthDisplay = (monthId: string): string => {
     const [year, month] = monthId.split('-').map(Number);
     const date = new Date(year, month - 1, 1);
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * Logic to check if a habit streak is still valid.
+ * @param lastLogDate The Date object of the last completed log
+ * @param frequency 'daily' | 'weekly' | 'monthly'
+ * @returns boolean
+ */
+export const checkStreakContinuity = (lastLogDate: Date, frequency: 'daily' | 'weekly' | 'monthly'): boolean => {
+    const now = new Date();
+    const last = new Date(lastLogDate);
+    
+    // Reset times to compare dates only (Local Time)
+    now.setHours(0,0,0,0);
+    last.setHours(0,0,0,0);
+
+    if (frequency === 'daily') {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Streak is valid if done Today OR Yesterday.
+        if (isSameDay(last, now) || isSameDay(last, yesterday)) {
+            return true;
+        }
+        return false;
+    }
+    
+    if (frequency === 'weekly') {
+        const currentWeekId = getWeekId(now);
+        const lastLogWeekId = getWeekId(last);
+        
+        if (currentWeekId === lastLogWeekId) return true;
+        
+        // Check previous week
+        const prevWeekDate = new Date(now);
+        prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+        const prevWeekId = getWeekId(prevWeekDate);
+        
+        return lastLogWeekId === prevWeekId;
+    }
+    
+    if (frequency === 'monthly') {
+        const currentMonthId = getMonthId(now);
+        const lastLogMonthId = getMonthId(last);
+        
+        if (currentMonthId === lastLogMonthId) return true;
+        
+        // Check previous month
+        const prevMonthDate = new Date(now);
+        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+        const prevMonthId = getMonthId(prevMonthDate);
+        
+        return lastLogMonthId === prevMonthId;
+    }
+    
+    return false;
 }

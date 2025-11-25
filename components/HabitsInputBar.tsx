@@ -23,7 +23,7 @@ export const HabitsInputBar: React.FC<HabitsInputBarProps> = ({ onAddHabit, isLo
     if (name.trim() && !isLoading) {
       onAddHabit(name.trim(), frequency);
       setName('');
-      setFrequency('daily'); // Reset to default
+      // Keep selected frequency for convenience if adding multiple
     }
   };
 

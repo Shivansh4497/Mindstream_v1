@@ -1,17 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
-import * as db from './services/dbService';
-import * as gemini from './services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, AISuggestion, Habit, HabitLog, HabitFrequency } from './types';
-import { getFormattedDate, getWeekId, getMonthId, isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from './utils/date';
-
 import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
 import { Stream } from './components/Stream';
 import { InputBar } from './components/InputBar';
-import { PrivacyModal } from './components/PrivacyModal';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import { SearchModal } from './components/SearchModal';
 import { ChatView } from './components/ChatView';
 import { ChatInputBar } from './components/ChatInputBar';
@@ -24,680 +18,195 @@ import { SuggestionChips } from './components/SuggestionChips';
 import { Toast } from './components/Toast';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { EditEntryModal } from './components/EditEntryModal';
+import { EditHabitModal } from './components/EditHabitModal';
 import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
+import { useAppLogic } from './hooks/useAppLogic';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import * as gemini from './services/geminiService';
+import * as reflections from './services/reflectionService';
+import * as db from './services/dbService';
+import type { Entry, IntentionTimeframe, Habit } from './types';
 
-const INITIAL_GREETING = "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?";
-const API_ERROR_MESSAGE = "An issue occurred while communicating with the AI. This might be a temporary network problem. Please try again in a moment.";
-
-export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
+const ONBOARDING_COMPLETE_STEP = 5;
 
 export const MindstreamApp: React.FC = () => {
   const { user } = useAuth();
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [reflections, setReflections] = useState<Reflection[]>([]);
-  const [intentions, setIntentions] = useState<Intention[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
-  
-  const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
+  const { state, actions } = useAppLogic();
   
   const [view, setView] = useState<View>('stream');
-  const [isProcessing, setIsProcessing] = useState(false); // For new entries
-  const [isGeneratingReflection, setIsGeneratingReflection] = useState<string | null>(null);
-  const [isAddingHabit, setIsAddingHabit] = useState(false);
-  
-  // App/Data loading state
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [aiStatus, setAiStatus] = useState<AIStatus>('initializing');
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [headerSubtitle, setHeaderSubtitle] = useState('');
-  
-  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
-
-  // Chat state
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [chatStarters, setChatStarters] = useState<string[]>([]);
   const [isGeneratingStarters, setIsGeneratingStarters] = useState(false);
   
-  const [hasSeenPrivacy, setHasSeenPrivacy] = useLocalStorage('hasSeenPrivacy', false);
-  const [showPrivacyModal, setShowPrivacyModal] = useState(!hasSeenPrivacy);
-  
-  const [showSearchModal, setShowSearchModal] = useState(false);
-  const [initialSearchQuery, setInitialSearchQuery] = useState('');
-
-  const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
-
-  // State for Thematic Reflections Modal
+  // Modals
+  const [entryToDelete, setEntryToDelete] = useState<Entry | null>(null);
+  const [entryToEdit, setEntryToEdit] = useState<Entry | null>(null);
+  const [habitToEdit, setHabitToEdit] = useState<Habit | null>(null);
   const [showThematicModal, setShowThematicModal] = useState(false);
-  const [selectedTag, setSelectedTagState] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
   const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
 
-  // State for Entry management
-  const [entryToEdit, setEntryToEdit] = useState<Entry | null>(null);
-  const [entryToDelete, setEntryToDelete] = useState<Entry | null>(null);
-  
-  // State for Debugging
-  const [debugOutput, setDebugOutput] = useState<string | null>(null);
-
-  const handleApiError = (error: unknown, context: string) => {
-    console.error(`Error in ${context}:`, error);
-    let message = API_ERROR_MESSAGE;
-    if (error instanceof Error && error.message) {
-        // Specific check for the 'add entry' context and a common Supabase error for missing columns.
-        // This makes the error message much more helpful for the user.
-        if (context === 'adding new entry' && error.message.toLowerCase().includes('column') && error.message.toLowerCase().includes('does not exist')) {
-            message = "Database Error: The 'entries' table seems to be missing a required column (likely 'emoji'). Please update your database schema.";
-        } else if (error.message.includes('column') || error.message.includes('schema')) {
-            message = "Database Error: A required column may be missing. Please check your database schema.";
-        }
-    }
-    // Don't show a notification if it's a persistent configuration error, the banner will handle it.
-    if (aiStatus !== 'error') {
-      setToast({ message, id: Date.now() });
-    }
-  };
-  
+  // Onboarding State
+  const onboardingKey = user ? `onboardingStep_${user.id}` : 'onboardingStep';
+  const [onboardingStep, setOnboardingStep] = useLocalStorage<number>(onboardingKey, 0);
+  const [legacyPrivacy] = useLocalStorage('hasSeenPrivacy', false);
   useEffect(() => {
-    const updateSubtitle = () => {
-      const hour = new Date().getHours();
-      if (hour < 12) setHeaderSubtitle('Good morning.');
-      else if (hour < 18) setHeaderSubtitle('Good afternoon.');
-      else setHeaderSubtitle('Time for evening reflection.');
-    };
-    updateSubtitle();
-    const interval = setInterval(updateSubtitle, 60000); // Update every minute
-    return () => clearInterval(interval);
-  }, []);
+      if (legacyPrivacy && onboardingStep === 0) setOnboardingStep(ONBOARDING_COMPLETE_STEP);
+  }, [legacyPrivacy, onboardingStep]);
 
+  // Chat Starters - Using the new reflectionService
   useEffect(() => {
-    const fetchDataAndVerifyAI = async () => {
-      if (!user) return;
-      try {
-        // Fetch user data from database
-        const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs] = await Promise.all([
-          db.getEntries(user.id),
-          db.getReflections(user.id),
-          db.getIntentions(user.id),
-          db.getHabits(user.id),
-          db.getCurrentPeriodHabitLogs(user.id) // Fetches recent logs relevant for current stats
-        ]);
-        
-        setEntries(userEntries);
-        setReflections(userReflections);
-        setIntentions(userIntentions);
-        setHabits(userHabits);
-        setHabitLogs(userHabitLogs);
-        
-        setIsDataLoaded(true);
-
-        // Once data is loaded, verify the AI connection
-        setAiStatus('verifying');
-        await gemini.verifyApiKey();
-        setAiStatus('ready');
-
-      } catch (error: any) {
-        // This catch block handles both data fetching and AI verification errors
-        console.error("Error during startup:", error);
-        
-        // If data fetching is what failed, we might not have set it as loaded.
-        if (!isDataLoaded) setIsDataLoaded(true);
-
-        // Check if the error is from our AI verification
-        if (aiStatus === 'verifying') {
-          setAiStatus('error');
-           let message = error.message || 'An unknown error occurred.';
-           if (message.includes('API key not valid')) {
-               message = 'The provided Gemini API key is not valid. Please check your .env configuration.';
-           } else if (message.toLowerCase().includes('billing')) {
-               message = 'The project associated with the API key does not have billing enabled. Please enable it in your Google Cloud project.';
-           } else if (message.includes('permission denied')) {
-                message = 'The API key is missing required permissions for the Gemini API.';
-           }
-           setAiError(message);
-        }
+      if (view === 'chat' && state.messages.length === 1 && chatStarters.length === 0 && state.aiStatus === 'ready') {
+          setIsGeneratingStarters(true);
+          reflections.generateChatStarters(state.entries, state.intentions)
+              .then(res => setChatStarters(res.starters))
+              .catch(console.error)
+              .finally(() => setIsGeneratingStarters(false));
       }
-    };
+  }, [view, state.messages, state.aiStatus]);
 
-    fetchDataAndVerifyAI();
-  }, [user]);
-  
-  const handleSendMessage = async (text: string, historyOverride?: Message[]) => {
-    if (isChatLoading || aiStatus !== 'ready') return;
-
-    const historyToUse = historyOverride || messages;
-    const newUserMessage: Message = { sender: 'user', text, id: `user-${Date.now()}` };
-    
-    const currentHistory = historyOverride ? historyToUse : [...historyToUse, newUserMessage];
-    
-    // Update UI immediately for non-continuation messages
-    if (!historyOverride) {
-      setMessages(currentHistory);
-      setChatStarters([]);
-    }
-    
-    setIsChatLoading(true);
-
-    const aiMessageId = `ai-${Date.now()}`;
-    // Add placeholder for AI response
-    setMessages(prev => [...prev, { sender: 'ai', text: '', id: aiMessageId }]);
-
-    try {
-        const streamResult = await gemini.getChatResponseStream(currentHistory, entries, intentions);
-
-        let fullText = '';
-        for await (const chunk of streamResult) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-                fullText += chunkText;
-                setMessages(prev => 
-                    prev.map(msg => 
-                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
-                    )
-                );
-            }
-        }
-    } catch (error) {
-        handleApiError(error, 'getting chat response');
-        setMessages(prev => 
-            prev.map(msg => 
-                msg.id === aiMessageId ? { ...msg, text: "Sorry, I'm having trouble connecting right now." } : msg
-            )
-        );
-    } finally {
-        setIsChatLoading(false);
-    }
-}
-
-const startNewChatSession = async (firstUserPrompt?: string) => {
-    if (!isDataLoaded || aiStatus !== 'ready') return;
-
-    // Clear previous starters, but don't set loading yet.
-    setChatStarters([]);
-
-    try {
-        // Step 1: Fetch and display the greeting for better perceived performance.
-        const greeting = await gemini.generatePersonalizedGreeting(entries);
-        const initialAiMessage: Message = { sender: 'ai', text: greeting, id: 'greeting' };
-
-        if (firstUserPrompt) {
-            // If starting with a prompt, set up history and immediately start streaming response.
-            const userMessage: Message = { sender: 'user', text: firstUserPrompt, id: `user-${Date.now()}` };
-            const initialHistory = [initialAiMessage, userMessage];
-            setMessages(initialHistory);
-            // This is a continuation call, so pass the history.
-            await handleSendMessage(firstUserPrompt, initialHistory);
-        } else {
-            // Normal session start: display greeting, then fetch starters in the background.
-            setMessages([initialAiMessage]);
-            setIsGeneratingStarters(true);
-            
-            gemini.generateChatStarters(entries, intentions)
-                .then(startersResult => {
-                    setChatStarters(startersResult.starters);
-                })
-                .catch(error => {
-                    handleApiError(error, 'fetching chat starters');
-                    setChatStarters([
-                        "What was my biggest challenge last week?",
-                        "Let's review my progress on my goals.",
-                        "Tell me about a recurring theme in my journal."
-                    ]);
-                })
-                .finally(() => {
-                    setIsGeneratingStarters(false);
-                });
-        }
-    } catch (error) {
-        handleApiError(error, 'initializing chat');
-        setMessages([{ sender: 'ai', text: INITIAL_GREETING, id: 'greeting' }]);
-    }
-};
-
-  const handleViewChange = (newView: View) => {
-    const isChatDisabled = !isDataLoaded || aiStatus !== 'ready';
-    if (newView === 'chat' && isChatDisabled) {
-        return;
-    }
-    const isNewChatSession = messages.length <= 1;
-    if (newView === 'chat' && isNewChatSession) {
-        startNewChatSession();
-    }
-    setView(newView);
-  };
-
-  const handleAddEntry = async (text: string) => {
-    if (!user || isProcessing) return;
-    
-    // Do not allow adding entries if AI is down, as it's a core part of the feature.
-    if (aiStatus !== 'ready') {
-      setToast({ message: "Cannot save entry: AI is not connected.", id: Date.now() });
-      return;
-    }
-    
-    setIsProcessing(true);
-    
-    try {
-      // Step 1: Get all AI data first. This is the robust, original logic.
-      const aiData = await gemini.processEntry(text);
-
-      // Step 2: Combine user text with AI data into a complete object.
-      const newEntryData = {
-        ...aiData,
-        text: text,
-        timestamp: new Date().toISOString(),
-      };
-      
-      // Step 3: Save the single, complete entry to the database.
-      const newEntry = await db.addEntry(user.id, newEntryData);
-      
-      // Step 4: Update the UI with the final, complete entry.
-      setEntries(prev => [newEntry, ...prev]);
-
-    } catch (error) {
-      handleApiError(error, 'adding new entry');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleUpdateEntry = async (entryId: string, newText: string) => {
-    if (!user || aiStatus !== 'ready') {
-      setToast({ message: "Cannot update entry: AI is not connected.", id: Date.now() });
-      return;
-    }
-
-    try {
-      // 1. Re-run AI analysis on the new text
-      const aiData = await gemini.processEntry(newText);
-      
-      const updatedData = {
-        ...aiData,
-        text: newText,
-      };
-
-      // 2. Update the database
-      const updatedEntry = await db.updateEntry(entryId, updatedData);
-
-      // 3. Update local state
-      setEntries(prev => prev.map(e => e.id === entryId ? { ...e, ...updatedEntry } : e));
-
-      setToast({ message: "Entry updated.", id: Date.now() });
-    } catch (error) {
-      handleApiError(error, 'updating entry');
-    }
-  };
-
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!user) return;
-    try {
-      const wasDeleted = await db.deleteEntry(entryId);
-      if (wasDeleted) {
-        setEntries(prev => prev.filter(e => e.id !== entryId));
-        setToast({ message: "Entry deleted.", id: Date.now() });
-      }
-    } catch (error) {
-      handleApiError(error, 'deleting entry');
-    }
-  };
-  
-  const handleGenerateReflection = async (date: string, entriesForDay: Entry[]) => {
-      if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
-      setIsGeneratingReflection(date);
-      try {
-        const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === date);
-        // Pass habits and logs for better context
-        const { summary, suggestions } = await gemini.generateReflection(entriesForDay, intentionsForDay, habits, habitLogs);
-        const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
-            date: date,
-            summary: summary,
-            type: 'daily' as const,
-            suggestions: suggestions
-        };
-        const newReflection = await db.addReflection(user.id, reflectionData);
-        if (newReflection) {
-            const userReflections = await db.getReflections(user.id);
-            setReflections(userReflections);
-        }
-      } catch (error) {
-          handleApiError(error, 'generating daily reflection');
-      } finally {
-          setIsGeneratingReflection(null);
-      }
-  };
-
-  const handleGenerateWeeklyReflection = async (weekId: string, entriesForWeek: Entry[]) => {
-    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
-    setIsGeneratingReflection(weekId);
-    try {
-      const intentionsForWeek = intentions.filter(i => getWeekId(new Date(i.created_at)) === weekId);
-      const { summary, suggestions } = await gemini.generateWeeklyReflection(entriesForWeek, intentionsForWeek);
-      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
-        date: weekId,
-        summary: summary,
-        type: 'weekly' as const,
-        suggestions: suggestions,
-      };
-      const newReflection = await db.addReflection(user.id, reflectionData);
-      if (newReflection) {
-        const userReflections = await db.getReflections(user.id);
-        setReflections(userReflections);
-      }
-    } catch (error) {
-      handleApiError(error, 'generating weekly reflection');
-    } finally {
-      setIsGeneratingReflection(null);
-    }
-  };
-  
-  const handleGenerateMonthlyReflection = async (monthId: string, entriesForMonth: Entry[]) => {
-    if (!user || isGeneratingReflection || aiStatus !== 'ready') return;
-    setIsGeneratingReflection(monthId);
-    try {
-      const intentionsForMonth = intentions.filter(i => getMonthId(new Date(i.created_at)) === monthId);
-      const { summary, suggestions } = await gemini.generateMonthlyReflection(entriesForMonth, intentionsForMonth);
-      const reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'> = {
-        date: monthId,
-        summary: summary,
-        type: 'monthly' as const,
-        suggestions: suggestions,
-      };
-      const newReflection = await db.addReflection(user.id, reflectionData);
-      if (newReflection) {
-        const userReflections = await db.getReflections(user.id);
-        setReflections(userReflections);
-      }
-    } catch (error) {
-      handleApiError(error, 'generating monthly reflection');
-    } finally {
-      setIsGeneratingReflection(null);
-    }
-  };
-
-  const handleExploreInChat = (summary: string) => {
-    if (aiStatus !== 'ready') return;
-    const prompt = `Let's talk more about this reflection: "${summary}". What patterns or deeper insights can you find in the entries that led to this summary?`;
-    startNewChatSession(prompt);
-    setView('chat');
-  };
-
-  const handleAddIntention = async (text: string, timeframe: IntentionTimeframe) => {
-    if (!user) return;
-    try {
-        const newIntention = await db.addIntention(user.id, text, timeframe);
-        if (newIntention) {
-            setIntentions(prev => [newIntention, ...prev]);
-        }
-    } catch (error) {
-        console.error("Error adding intention:", error);
-    }
-  };
-
-  const handleAddSuggestedIntention = async (suggestion: AISuggestion) => {
-    await handleAddIntention(suggestion.text, suggestion.timeframe);
-
-    // Show confirmation toast
-    setToast({ message: 'To-do locked in!', id: Date.now() });
-    setTimeout(() => setToast(null), 3000);
-
-    // Remove suggestion from the UI
-    setReflections(prev => prev.map(r => {
-        if (r.suggestions?.some(s => s.text === suggestion.text && s.timeframe === suggestion.timeframe)) {
-            return {
-                ...r,
-                suggestions: r.suggestions.filter(s => s.text !== suggestion.text || s.timeframe !== suggestion.timeframe)
-            };
-        }
-        return r;
-    }));
-  };
-
-  const handleToggleIntention = async (id: string, currentStatus: Intention['status']) => {
-    const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-    try {
-        const updatedIntention = await db.updateIntentionStatus(id, newStatus);
-        if (updatedIntention) {
-            setIntentions(prev => prev.map(i => i.id === id ? updatedIntention : i));
-        }
-    } catch (error) {
-        console.error(`Error updating intention status to ${newStatus}:`, error);
-    }
-  };
-
-  const handleDeleteIntention = async (id: string) => {
-    const wasDeleted = await db.deleteIntention(id);
-    if (wasDeleted) {
-        setIntentions(prev => prev.filter(i => i.id !== id));
-    }
-  };
-
-  const handleAddHabit = async (name: string, frequency: HabitFrequency) => {
-    if (!user || isAddingHabit) return;
-    setIsAddingHabit(true);
-    try {
-        const { emoji, category } = await gemini.analyzeHabit(name);
-        const newHabit = await db.addHabit(user.id, name, emoji, category, frequency);
-        if (newHabit) {
-            setHabits(prev => [...prev, newHabit]);
-        }
-    } catch (error) {
-        handleApiError(error, 'adding habit');
-    } finally {
-        setIsAddingHabit(false);
-    }
-  };
-
-  const handleToggleHabit = async (habitId: string) => {
-      const habit = habits.find(h => h.id === habitId);
-      if (!habit) return;
-
-      const now = new Date();
-
-      // Find if a relevant log exists based on frequency
-      const existingLog = habitLogs.find(l => {
-          if (l.habit_id !== habitId) return false;
-          const logDate = new Date(l.completed_at);
-          if (habit.frequency === 'daily') return isSameDay(logDate, now);
-          if (habit.frequency === 'weekly') return isDateInCurrentWeek(logDate);
-          if (habit.frequency === 'monthly') return isDateInCurrentMonth(logDate);
-          return false;
-      });
-
-      try {
-          if (existingLog) {
-              // Uncheck
-              const { updatedHabit } = await db.uncheckHabit(existingLog.id, habitId, habit.current_streak);
-              setHabitLogs(prev => prev.filter(l => l.id !== existingLog.id));
-              setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
-          } else {
-              // Check
-              const { log, updatedHabit } = await db.checkHabit(habitId, habit.current_streak);
-              setHabitLogs(prev => [...prev, log]);
-              setHabits(prev => prev.map(h => h.id === habitId ? updatedHabit : h));
+  if (onboardingStep < ONBOARDING_COMPLETE_STEP && user) {
+      return <OnboardingWizard userId={user.id} onComplete={(dest, context, q) => {
+          setOnboardingStep(ONBOARDING_COMPLETE_STEP);
+          if (dest === 'chat' && context && q) {
+              setView('chat');
+              actions.handleSendMessage(context); // Seeding context
+              actions.setMessages(prev => [...prev, { sender: 'ai', text: q }]);
           }
-      } catch (error) {
-          console.error("Error toggling habit:", error);
-          setToast({ message: "Failed to update habit status", id: Date.now() });
-      }
-  };
-  
-  const handleDeleteHabit = async (habitId: string) => {
-      const success = await db.deleteHabit(habitId);
-      if (success) {
-          setHabits(prev => prev.filter(h => h.id !== habitId));
-          setHabitLogs(prev => prev.filter(l => l.habit_id !== habitId));
-      }
-  };
+      }} />;
+  }
 
-  const handleTagClick = (tag: string) => {
-    setSelectedTagState(tag);
-    setShowThematicModal(true);
-  };
-  
-  const handleCloseThematicModal = () => {
-    setShowThematicModal(false);
-    setSelectedTagState(null);
-    setThematicReflection(null);
-    setIsGeneratingThematic(false);
-  };
-  
-  const handleViewTagEntries = (tag: string) => {
-    handleCloseThematicModal();
-    setInitialSearchQuery(tag);
-    setShowSearchModal(true);
-  };
-  
-  const handleGenerateThematicReflection = async (tag: string) => {
-    if (!user || isGeneratingThematic || aiStatus !== 'ready') return;
-    setIsGeneratingThematic(true);
-    setThematicReflection(null);
-    try {
-      const summary = await gemini.generateThematicReflection(tag, entries);
-      setThematicReflection(summary);
-    } catch (error) {
-      handleApiError(error, 'generating thematic reflection');
-      setThematicReflection("I'm sorry, I couldn't generate a reflection for this theme at this time.");
-    } finally {
-      setIsGeneratingThematic(false);
-    }
-  };
-
-  const handleDebugAi = async () => {
-    setDebugOutput('Running debug check...');
-    const today = getFormattedDate(new Date());
-    const entriesForDay = entries.filter(e => getFormattedDate(new Date(e.timestamp)) === today);
-    const intentionsForDay = intentions.filter(i => getFormattedDate(new Date(i.created_at)) === today);
-    const output = await gemini.getRawReflectionForDebug(entriesForDay, intentionsForDay);
-    setDebugOutput(output);
-  };
-
-  const renderCurrentView = () => {
-      switch(view) {
-          case 'stream':
-              return <Stream 
-                        entries={entries} 
-                        intentions={intentions} 
-                        onTagClick={handleTagClick} 
-                        onEditEntry={(entry) => setEntryToEdit(entry)}
-                        onDeleteEntry={(entry) => setEntryToDelete(entry)}
-                     />;
-          case 'reflections':
-              return <ReflectionsView 
-                        entries={entries}
-                        intentions={intentions}
-                        reflections={reflections}
-                        onGenerateDaily={handleGenerateReflection}
-                        onGenerateWeekly={handleGenerateWeeklyReflection}
-                        onGenerateMonthly={handleGenerateMonthlyReflection}
-                        onExploreInChat={handleExploreInChat}
-                        isGenerating={isGeneratingReflection}
-                        onAddSuggestion={handleAddSuggestedIntention}
-                        aiStatus={aiStatus}
-                        onDebug={handleDebugAi}
-                        debugOutput={debugOutput}
-                     />;
-          case 'chat':
-              return <ChatView 
-                        messages={messages} 
-                        isLoading={isChatLoading}
-                        onAddSuggestion={handleAddSuggestedIntention}
-                     />;
-          case 'intentions':
-              return <IntentionsView intentions={intentions} onToggle={handleToggleIntention} onDelete={handleDeleteIntention} activeTimeframe={activeIntentionTimeframe} onTimeframeChange={setActiveIntentionTimeframe} />;
-          case 'habits':
-              return <HabitsView habits={habits} todaysLogs={habitLogs} onToggle={handleToggleHabit} onDelete={handleDeleteHabit} />;
-          default:
-              return <Stream 
-                        entries={entries} 
-                        intentions={intentions} 
-                        onTagClick={handleTagClick} 
-                        onEditEntry={(entry) => setEntryToEdit(entry)}
-                        onDeleteEntry={(entry) => setEntryToDelete(entry)}
-                     />;
-      }
-  };
-
-  const renderActionBar = () => {
-    const isAiDisabled = aiStatus !== 'ready';
-    switch(view) {
-        case 'stream':
-            return <InputBar onAddEntry={handleAddEntry} />;
-        case 'chat':
-            const showStarters = chatStarters.length > 0 && !isChatLoading;
-            return (
-              <div className="flex flex-col">
-                {showStarters && (
-                  <SuggestionChips
-                    starters={chatStarters}
-                    onStarterClick={handleSendMessage}
-                    isLoading={isGeneratingStarters}
-                  />
-                )}
-                <ChatInputBar onSendMessage={handleSendMessage} isLoading={isChatLoading || isAiDisabled} />
-              </div>
-            );
-        case 'intentions':
-            return <IntentionsInputBar onAddIntention={(text) => handleAddIntention(text, activeIntentionTimeframe)} activeTimeframe={activeIntentionTimeframe} />;
-        case 'habits':
-            return <HabitsInputBar onAddHabit={handleAddHabit} isLoading={isAddingHabit} />;
-        default:
-            return null;
-    }
+  if (!state.isDataLoaded) {
+    return <div className="h-screen w-screen bg-brand-indigo flex items-center justify-center"><div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
   return (
-    <div className="h-screen w-screen bg-brand-indigo flex flex-col font-sans text-white overflow-hidden">
-      {showPrivacyModal && <PrivacyModal onClose={() => { setShowPrivacyModal(false); setHasSeenPrivacy(true); }} />}
-      {showSearchModal && <SearchModal entries={entries} reflections={reflections} initialQuery={initialSearchQuery} onClose={() => { setShowSearchModal(false); setInitialSearchQuery(''); }} />}
-      {showThematicModal && selectedTag && (
-        <ThematicModal 
-          tag={selectedTag}
-          onClose={handleCloseThematicModal}
-          onViewEntries={() => handleViewTagEntries(selectedTag)}
-          onGenerateReflection={() => handleGenerateThematicReflection(selectedTag)}
-          isGenerating={isGeneratingThematic}
-          reflectionResult={thematicReflection}
-        />
-      )}
-      {entryToEdit && (
-        <EditEntryModal
-          entry={entryToEdit}
-          onSave={async (newText) => {
-            await handleUpdateEntry(entryToEdit.id, newText);
-            setEntryToEdit(null);
-          }}
-          onCancel={() => setEntryToEdit(null)}
-        />
-      )}
-      {entryToDelete && (
-        <DeleteConfirmationModal
-          onConfirm={async () => {
-            await handleDeleteEntry(entryToDelete.id);
-            setEntryToDelete(null);
-          }}
-          onCancel={() => setEntryToDelete(null)}
-        />
-      )}
-      
-      <Header onSearchClick={() => setShowSearchModal(true)} subtitle={headerSubtitle} />
-      
-      <AIStatusBanner status={aiStatus} error={aiError} />
+    <div className="flex flex-col h-screen bg-brand-indigo overflow-hidden">
+      <Header onSearchClick={() => setShowSearchModal(true)} />
+      <AIStatusBanner status={state.aiStatus} error={state.aiError} />
 
-      <main className="flex-grow overflow-y-auto">
-        {!isDataLoaded && (
-          <div className="h-full w-full flex items-center justify-center">
-            <div className="w-10 h-10 border-4 border-brand-teal/50 border-t-brand-teal rounded-full animate-spin"></div>
-          </div>
+      <main className="flex-grow overflow-hidden relative">
+        {view === 'stream' && (
+            <div className="h-full flex flex-col">
+                <div className="flex-grow overflow-y-auto">
+                    <Stream 
+                        entries={state.entries} 
+                        intentions={state.intentions} 
+                        onTagClick={(tag) => { setSelectedTag(tag); setShowThematicModal(true); }}
+                        onEditEntry={setEntryToEdit}
+                        onDeleteEntry={setEntryToDelete}
+                        onAcceptSuggestion={async (id, suggestion) => {
+                            const type = await actions.handleAcceptSuggestion(id, suggestion);
+                            if (type === 'reflection') setView('chat');
+                        }}
+                        onLoadMore={actions.handleLoadMore}
+                        hasMore={state.hasMore}
+                        isLoadingMore={state.isLoadingMore}
+                    />
+                </div>
+                <InputBar onAddEntry={actions.handleAddEntry} />
+            </div>
         )}
-        {isDataLoaded && renderCurrentView()}
+
+        {view === 'habits' && (
+            <div className="h-full flex flex-col">
+                <HabitsView 
+                    habits={state.habits} 
+                    todaysLogs={state.habitLogs}
+                    onToggle={actions.handleToggleHabit}
+                    onEdit={setHabitToEdit}
+                    onDelete={actions.handleDeleteHabit}
+                />
+                <HabitsInputBar onAddHabit={actions.handleAddHabit} isLoading={state.isAddingHabit} />
+            </div>
+        )}
+
+        {view === 'intentions' && (
+            <div className="h-full flex flex-col">
+                <IntentionsView 
+                    intentions={state.intentions} 
+                    onToggle={actions.handleToggleIntention} 
+                    onDelete={actions.handleDeleteIntention}
+                    activeTimeframe={activeIntentionTimeframe}
+                    onTimeframeChange={setActiveIntentionTimeframe}
+                />
+                <IntentionsInputBar onAddIntention={actions.handleAddIntention} activeTimeframe={activeIntentionTimeframe} />
+            </div>
+        )}
+
+        {view === 'chat' && (
+            <div className="h-full flex flex-col">
+                <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => {}} />
+                {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
+                <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
+            </div>
+        )}
+
+        {view === 'reflections' && (
+            <ReflectionsView 
+                entries={state.entries}
+                intentions={state.intentions}
+                reflections={state.reflections}
+                onGenerateDaily={async (date, dayEntries) => {
+                    actions.setIsGeneratingReflection(date);
+                    const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
+                    await db.addReflection(user!.id, { ...res, date, type: 'daily' });
+                    actions.setIsGeneratingReflection(null);
+                    window.location.reload();
+                }}
+                onGenerateWeekly={async (weekId, weekEntries) => {
+                    actions.setIsGeneratingReflection(weekId);
+                    const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
+                    await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
+                    actions.setIsGeneratingReflection(null);
+                    window.location.reload();
+                }}
+                onGenerateMonthly={async (monthId, monthEntries) => {
+                    actions.setIsGeneratingReflection(monthId);
+                    const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
+                    await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
+                    actions.setIsGeneratingReflection(null);
+                    window.location.reload();
+                }}
+                onExploreInChat={(summary) => {
+                    setView('chat');
+                    actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
+                }}
+                isGenerating={state.isGeneratingReflection}
+                onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
+                aiStatus={state.aiStatus}
+                onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({message: "Debug check console", id: 1}))}
+                debugOutput={null}
+            />
+        )}
       </main>
-      
-      <div className="flex-shrink-0 relative">
-        {toast && <Toast key={toast.id} message={toast.message} onDismiss={() => setToast(null)} />}
-        {isDataLoaded && renderActionBar()}
-        <NavBar activeView={view} onViewChange={handleViewChange} isChatDisabled={!isDataLoaded || aiStatus !== 'ready'} />
-      </div>
+
+      <NavBar activeView={view} onViewChange={setView} />
+
+      {/* Modals */}
+      {showSearchModal && <SearchModal entries={state.entries} reflections={state.reflections} onClose={() => setShowSearchModal(false)} />}
+      {state.toast && <Toast message={state.toast.message} onDismiss={() => actions.setToast(null)} />}
+      {entryToDelete && <DeleteConfirmationModal onConfirm={() => { actions.handleDeleteEntry(entryToDelete); setEntryToDelete(null); }} onCancel={() => setEntryToDelete(null)} />}
+      {entryToEdit && <EditEntryModal entry={entryToEdit} onSave={async (txt) => { await actions.handleEditEntry(entryToEdit, txt); setEntryToEdit(null); }} onCancel={() => setEntryToEdit(null)} />}
+      {habitToEdit && <EditHabitModal habit={habitToEdit} onSave={async (name, emoji, category) => { await actions.handleEditHabit(habitToEdit.id, name, emoji, category); setHabitToEdit(null); }} onCancel={() => setHabitToEdit(null)} />}
+      {showThematicModal && selectedTag && (
+          <ThematicModal 
+            tag={selectedTag} 
+            onClose={() => setShowThematicModal(false)}
+            onViewEntries={() => { setShowSearchModal(true); setShowThematicModal(false); }}
+            onGenerateReflection={async () => {
+                setIsGeneratingThematic(true);
+                const res = await reflections.generateThematicReflection(selectedTag, state.entries);
+                setThematicReflection(res);
+                setIsGeneratingThematic(false);
+            }}
+            isGenerating={isGeneratingThematic}
+            reflectionResult={thematicReflection}
+          />
+      )}
     </div>
   );
 };

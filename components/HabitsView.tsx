@@ -1,96 +1,64 @@
 
-import React, { useMemo } from 'react';
-import type { Habit, HabitLog } from '../types';
+import React, { useMemo, useState } from 'react';
+import type { Habit, HabitLog, HabitFrequency } from '../types';
 import { HabitCard } from './HabitCard';
-import { isSameDay, isDateInCurrentWeek, isDateInCurrentMonth } from '../utils/date';
 
 interface HabitsViewProps {
   habits: Habit[];
-  todaysLogs: HabitLog[]; // Note: This now contains logs from the start of the month
-  onToggle: (habitId: string) => void;
+  todaysLogs: HabitLog[];
+  onToggle: (habitId: string, dateString?: string) => void;
+  onEdit: (habit: Habit) => void;
   onDelete: (habitId: string) => void;
 }
 
 export const HabitsView: React.FC<HabitsViewProps> = ({ 
     habits, 
     todaysLogs, 
-    onToggle, 
+    onToggle,
+    onEdit, 
     onDelete
 }) => {
     
-    // Helper to check completion based on frequency
-    const isHabitCompleted = (habit: Habit) => {
-        const now = new Date();
-        return todaysLogs.some(log => {
-            if (log.habit_id !== habit.id) return false;
-            const logDate = new Date(log.completed_at);
-            
-            if (habit.frequency === 'daily') return isSameDay(logDate, now);
-            if (habit.frequency === 'weekly') return isDateInCurrentWeek(logDate);
-            if (habit.frequency === 'monthly') return isDateInCurrentMonth(logDate);
-            return false;
+    // Optimize: Group logs by habit ID once, instead of filtering for every card.
+    // This reduces complexity from O(N*M) to O(N).
+    const logsByHabitId = useMemo(() => {
+        const map: Record<string, HabitLog[]> = {};
+        todaysLogs.forEach(log => {
+            if (!map[log.habit_id]) {
+                map[log.habit_id] = [];
+            }
+            map[log.habit_id].push(log);
         });
-    };
+        return map;
+    }, [todaysLogs]);
 
-    const { daily, weekly, monthly } = useMemo(() => {
-        const daily: Habit[] = [];
-        const weekly: Habit[] = [];
-        const monthly: Habit[] = [];
-        
+    // Group habits by frequency
+    const groupedHabits = useMemo(() => {
+        const groups: Record<HabitFrequency, Habit[]> = {
+            daily: [],
+            weekly: [],
+            monthly: []
+        };
         habits.forEach(h => {
-            if (h.frequency === 'daily') daily.push(h);
-            else if (h.frequency === 'weekly') weekly.push(h);
-            else if (h.frequency === 'monthly') monthly.push(h);
-            else daily.push(h); // Default fallback
+            if (groups[h.frequency]) groups[h.frequency].push(h);
+            else groups.daily.push(h); // Fallback
         });
-        
-        return { daily, weekly, monthly };
+        return groups;
     }, [habits]);
 
-    // Calculate progress
-    const totalHabits = habits.length;
-    const completedCount = habits.filter(h => isHabitCompleted(h)).length;
-    const progressPercentage = totalHabits > 0 ? (completedCount / totalHabits) * 100 : 0;
-
-    const renderSection = (title: string, habitsList: Habit[]) => {
-        if (habitsList.length === 0) return null;
-        return (
-            <div className="mb-8">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 pl-1">{title}</h3>
-                <div className="flex flex-col gap-2">
-                    {habitsList.map(habit => (
-                        <HabitCard 
-                            key={habit.id} 
-                            habit={habit} 
-                            isCompleted={isHabitCompleted(habit)}
-                            onToggle={() => onToggle(habit.id)}
-                            onDelete={() => onDelete(habit.id)}
-                        />
-                    ))}
-                </div>
-            </div>
-        );
-    };
+    const hasHabits = habits.length > 0;
 
     return (
         <div className="h-full flex flex-col">
-            {totalHabits > 0 && (
-                <header className="flex-shrink-0 p-6 pb-0">
-                     <div className="flex justify-between items-end mb-2">
-                        <h2 className="text-xl font-bold font-display text-white">Your Rituals</h2>
-                        <span className="text-sm text-brand-teal font-semibold">{Math.round(progressPercentage)}% Done</span>
-                     </div>
-                     <div className="h-2 w-full bg-dark-surface rounded-full overflow-hidden">
-                        <div 
-                            className="h-full bg-brand-teal transition-all duration-500 ease-out"
-                            style={{ width: `${progressPercentage}%` }}
-                        ></div>
-                     </div>
+            {hasHabits && (
+                <header className="flex-shrink-0 p-6 pb-2">
+                     <h2 className="text-xl font-bold font-display text-white">Your Systems</h2>
+                     <p className="text-sm text-gray-400">Track the habits that power your life.</p>
                 </header>
             )}
 
             <main className="flex-grow overflow-y-auto p-4">
-                {totalHabits === 0 && (
+                {!hasHabits && (
                      <div className="h-full flex items-center justify-center text-center text-gray-400">
                         <div>
                             <h3 className="text-2xl font-bold font-display text-white mb-2">No Habits Yet</h3>
@@ -99,10 +67,62 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                     </div>
                 )}
                 
-                {renderSection("Daily Rituals", daily)}
-                {renderSection("Weekly Targets", weekly)}
-                {renderSection("Monthly Goals", monthly)}
-                
+                {/* DAILY */}
+                {groupedHabits.daily.length > 0 && (
+                    <div className="mb-8">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Daily Habits</h3>
+                        <div className="flex flex-col gap-1">
+                            {groupedHabits.daily.map(habit => (
+                                <HabitCard 
+                                    key={habit.id} 
+                                    habit={habit} 
+                                    logs={logsByHabitId[habit.id] || []}
+                                    onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
+                                    onDelete={() => onDelete(habit.id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* WEEKLY */}
+                {groupedHabits.weekly.length > 0 && (
+                    <div className="mb-8">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Weekly Habits</h3>
+                        <div className="flex flex-col gap-1">
+                            {groupedHabits.weekly.map(habit => (
+                                <HabitCard 
+                                    key={habit.id} 
+                                    habit={habit} 
+                                    logs={logsByHabitId[habit.id] || []}
+                                    onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
+                                    onDelete={() => onDelete(habit.id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* MONTHLY */}
+                {groupedHabits.monthly.length > 0 && (
+                    <div className="mb-8">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Monthly Habits</h3>
+                        <div className="flex flex-col gap-1">
+                            {groupedHabits.monthly.map(habit => (
+                                <HabitCard 
+                                    key={habit.id} 
+                                    habit={habit} 
+                                    logs={logsByHabitId[habit.id] || []}
+                                    onToggle={(dateString) => onToggle(habit.id, dateString)}
+                                    onEdit={() => onEdit(habit)}
+                                    onDelete={() => onDelete(habit.id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );

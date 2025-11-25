@@ -25,18 +25,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true); // Start as loading, will be set to false after the initial session check.
 
   useEffect(() => {
+    // Safety check: If supabase client failed to initialize (e.g. missing env vars),
+    // we must stop loading immediately to prevent infinite spinner.
+    if (!supabase) {
+      console.warn("[AuthContext] Supabase client is not available. Stopping loading state.");
+      setLoading(false);
+      return;
+    }
+
     // This effect runs once on mount to establish the initial session state and
-    // then listens for subsequent changes. This is the definitive fix.
+    // then listens for subsequent changes.
     
     // 1. Perform an explicit, one-time check for the session.
-    // This is the most reliable way to handle the initial page load.
     const initializeSession = async () => {
       console.log('[AuthContext] Performing initial session check...');
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         console.log('[AuthContext] getSession() complete.');
-        setSession(initialSession);
-        setUser(initialSession?.user ?? null);
+        // Only set if we haven't received an event update yet (though React batching handles this well)
+        if (initialSession) {
+            setSession(initialSession);
+            setUser(initialSession.user);
+        }
       } catch (error) {
         console.error('[AuthContext] Error in getSession():', error);
       } finally {
@@ -49,13 +59,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     initializeSession();
 
     // 2. Set up the real-time listener for any subsequent auth changes.
-    // This will handle logins, logouts, token refreshes, etc.
+    // This often fires *before* getSession() resolves, so we also use it to unblock loading.
     console.log('[AuthContext] Setting up auth state change listener for real-time updates...');
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, changedSession) => {
         console.log(`[AuthContext] Auth event received: ${_event}`);
         setSession(changedSession);
         setUser(changedSession?.user ?? null);
+        // CRITICAL FIX: Ensure loading is disabled as soon as we get an authoritative event.
+        // This prevents getting stuck if getSession() hangs or errors silently.
+        setLoading(false);
       }
     );
 
