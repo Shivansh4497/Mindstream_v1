@@ -18,6 +18,7 @@ import { SuggestionChips } from './components/SuggestionChips';
 import { Toast } from './components/Toast';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { EditEntryModal } from './components/EditEntryModal';
+import { EditHabitModal } from './components/EditHabitModal';
 import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
 import { useAppLogic } from './hooks/useAppLogic';
@@ -25,7 +26,7 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import * as gemini from './services/geminiService';
 import * as reflections from './services/reflectionService';
 import * as db from './services/dbService';
-import type { Entry, IntentionTimeframe } from './types';
+import type { Entry, IntentionTimeframe, Habit } from './types';
 
 const ONBOARDING_COMPLETE_STEP = 5;
 
@@ -42,6 +43,7 @@ export const MindstreamApp: React.FC = () => {
   // Modals
   const [entryToDelete, setEntryToDelete] = useState<Entry | null>(null);
   const [entryToEdit, setEntryToEdit] = useState<Entry | null>(null);
+  const [habitToEdit, setHabitToEdit] = useState<Habit | null>(null);
   const [showThematicModal, setShowThematicModal] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [thematicReflection, setThematicReflection] = useState<string | null>(null);
@@ -115,6 +117,7 @@ export const MindstreamApp: React.FC = () => {
                     habits={state.habits} 
                     todaysLogs={state.habitLogs}
                     onToggle={actions.handleToggleHabit}
+                    onEdit={setHabitToEdit}
                     onDelete={actions.handleDeleteHabit}
                 />
                 <HabitsInputBar onAddHabit={actions.handleAddHabit} isLoading={state.isAddingHabit} />
@@ -188,6 +191,7 @@ export const MindstreamApp: React.FC = () => {
       {state.toast && <Toast message={state.toast.message} onDismiss={() => actions.setToast(null)} />}
       {entryToDelete && <DeleteConfirmationModal onConfirm={() => { actions.handleDeleteEntry(entryToDelete); setEntryToDelete(null); }} onCancel={() => setEntryToDelete(null)} />}
       {entryToEdit && <EditEntryModal entry={entryToEdit} onSave={async (txt) => { await actions.handleEditEntry(entryToEdit, txt); setEntryToEdit(null); }} onCancel={() => setEntryToEdit(null)} />}
+      {habitToEdit && <EditHabitModal habit={habitToEdit} onSave={async (name, emoji, category) => { await actions.handleEditHabit(habitToEdit.id, name, emoji, category); setHabitToEdit(null); }} onCancel={() => setHabitToEdit(null)} />}
       {showThematicModal && selectedTag && (
           <ThematicModal 
             tag={selectedTag} 
