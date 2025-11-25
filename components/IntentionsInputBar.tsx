@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { IntentionTimeframe } from '../types';
 import { SendIcon } from './icons/SendIcon';
@@ -30,7 +31,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
   }
 
   return (
-    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-10">
+    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-30">
       <form onSubmit={handleSubmit} className="flex items-center gap-3">
         <input
           type="text"
