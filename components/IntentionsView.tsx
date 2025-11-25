@@ -53,7 +53,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     }, [groupedIntentions]);
 
     return (
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-grow h-0 min-h-0 flex flex-col overflow-hidden">
             <header className="flex-shrink-0 p-4 border-b border-white/10 flex items-center overflow-x-auto">
                 <div className="flex items-center gap-2">
                     {timeframes.map(tf => (
