@@ -327,6 +327,7 @@ export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLo
     
     const now = new Date();
     now.setDate(now.getDate() - 35); // Fetch last 35 days
+    now.setHours(0, 0, 0, 0); // FIX: Ensure we start from the beginning of that day (Local Midnight)
     const startOfPeriod = now.toISOString();
     
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
