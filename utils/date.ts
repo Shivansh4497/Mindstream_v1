@@ -131,3 +131,59 @@ export const getMonthDisplay = (monthId: string): string => {
     const date = new Date(year, month - 1, 1);
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
+
+/**
+ * Logic to check if a habit streak is still valid.
+ * @param lastLogDate The Date object of the last completed log
+ * @param frequency 'daily' | 'weekly' | 'monthly'
+ * @returns boolean
+ */
+export const checkStreakContinuity = (lastLogDate: Date, frequency: 'daily' | 'weekly' | 'monthly'): boolean => {
+    const now = new Date();
+    const last = new Date(lastLogDate);
+    
+    // Reset times to compare dates only (Local Time)
+    now.setHours(0,0,0,0);
+    last.setHours(0,0,0,0);
+
+    if (frequency === 'daily') {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Streak is valid if done Today OR Yesterday.
+        if (isSameDay(last, now) || isSameDay(last, yesterday)) {
+            return true;
+        }
+        return false;
+    }
+    
+    if (frequency === 'weekly') {
+        const currentWeekId = getWeekId(now);
+        const lastLogWeekId = getWeekId(last);
+        
+        if (currentWeekId === lastLogWeekId) return true;
+        
+        // Check previous week
+        const prevWeekDate = new Date(now);
+        prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+        const prevWeekId = getWeekId(prevWeekDate);
+        
+        return lastLogWeekId === prevWeekId;
+    }
+    
+    if (frequency === 'monthly') {
+        const currentMonthId = getMonthId(now);
+        const lastLogMonthId = getMonthId(last);
+        
+        if (currentMonthId === lastLogMonthId) return true;
+        
+        // Check previous month
+        const prevMonthDate = new Date(now);
+        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+        const prevMonthId = getMonthId(prevMonthDate);
+        
+        return lastLogMonthId === prevMonthId;
+    }
+    
+    return false;
+}
