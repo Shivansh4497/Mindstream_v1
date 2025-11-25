@@ -40,30 +40,16 @@ export const deleteAccount = async (userId: string): Promise<boolean> => {
   if (!supabase) return false;
   
   try {
-    // Delete all data associated with the user.
-    // Note: If Cascading deletes are set up in SQL, deleting the profile might be enough,
-    // but we delete children explicitly here to be safe and ensure clean removal.
-    
-    // Habits and logs (Cascading usually handles logs, but we target habits)
     await supabase.from('habits').delete().eq('user_id', userId);
-    
-    // Intentions
     await supabase.from('intentions').delete().eq('user_id', userId);
-    
-    // Reflections
     await supabase.from('reflections').delete().eq('user_id', userId);
-    
-    // Entries
     await supabase.from('entries').delete().eq('user_id', userId);
-    
-    // Finally, the Profile
     const { error } = await supabase.from('profiles').delete().eq('id', userId);
     
     if (error) {
       console.error("Error deleting profile:", error);
       return false;
     }
-    
     return true;
   } catch (e) {
     console.error("Exception during account deletion:", e);
@@ -86,7 +72,6 @@ export const getEntries = async (userId: string): Promise<Entry[]> => {
   return data || [];
 };
 
-// This function saves a complete, AI-enriched entry. This is the original, working logic.
 export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
   if (!supabase) throw new Error("Supabase client not initialized");
   const { data, error } = await supabase
@@ -105,7 +90,6 @@ export const updateEntry = async (entryId: string, updatedData: Partial<Entry>):
     if (!supabase) throw new Error("Supabase client not initialized");
     const { data, error } = await supabase
         .from('entries')
-        // FIX: Use @ts-ignore to bypass a Supabase client type inference issue with the update method.
         // @ts-ignore
         .update(updatedData)
         .eq('id', entryId)
@@ -144,7 +128,6 @@ export const addWelcomeEntry = async (userId: string): Promise<void> => {
     emoji: "👋",
     user_id: userId,
   };
-   // FIX: Cast to 'any' to bypass Supabase client type error due to missing generated types.
    const { error } = await supabase.from('entries').insert(welcomeData as any);
    if (error) {
      console.error("Failed to add welcome entry:", error);
@@ -172,7 +155,6 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
   }
   if (!data) return [];
 
-  // Convert dates back to the ID format the app expects before de-duping.
   const processedData = data.map((reflection: any) => {
     const typedReflection = reflection as Reflection;
     let finalDate = typedReflection.date;
@@ -185,7 +167,6 @@ export const getReflections = async (userId: string): Promise<Reflection[]> => {
     return { ...typedReflection, date: finalDate, suggestions: typedReflection.suggestions || [] };
   });
 
-  // This logic ensures we only get the absolute latest reflection for any given period (day, week, or month).
   const latestReflections = new Map<string, Reflection>();
   for (const reflection of processedData) {
     const typedReflection = reflection as Reflection;
@@ -212,7 +193,7 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
         date: dateForDb,
         user_id: userId,
         timestamp: new Date().toISOString(),
-        suggestions: reflectionData.suggestions || null, // Pass object directly to jsonb column
+        suggestions: reflectionData.suggestions || null, 
     };
 
     const { data, error } = await supabase
@@ -226,7 +207,6 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
         throw error;
     }
     
-    // The returned data should have suggestions as an object, not a string.
     return data as Reflection;
 };
 
@@ -254,7 +234,7 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
             text, 
             timeframe,
             status: 'pending',
-            is_recurring: false, // Default value
+            is_recurring: false, 
         } as any)
         .select()
         .single();
@@ -317,27 +297,26 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
 
 /**
  * Fetches habit logs relevant for the current period.
- * We fetch logs from the start of the current month to handle Daily, Weekly, and Monthly statuses.
+ * Updated for Habits 2.0: Fetches a rolling window (last 35 days) instead of just current month.
  */
 export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLog[]> => {
     if (!supabase) return [];
     
     const now = new Date();
-    // Set to first day of the current month
-    const startOfPeriod = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Set to 35 days ago to cover the visualization window and month transitions
+    now.setDate(now.getDate() - 35);
+    const startOfPeriod = now.toISOString();
     
-    // Workaround: We first get the user's habit IDs, then find logs for those IDs.
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
     if (!habits || habits.length === 0) return [];
     
-    // FIX: Explicitly type 'h' as any to avoid TypeScript "Property 'id' does not exist on type 'never'" error
     const habitIds = habits.map((h: any) => h.id);
     
     const { data, error } = await supabase
         .from('habit_logs')
         .select('*')
         .in('habit_id', habitIds)
-        .gte('completed_at', startOfPeriod.toISOString());
+        .gte('completed_at', startOfPeriod);
         
     if (error) {
         console.error('Error fetching habit logs:', error);
@@ -379,36 +358,43 @@ export const deleteHabit = async (habitId: string): Promise<boolean> => {
     return true;
 }
 
-export const checkHabit = async (habitId: string, currentStreak: number): Promise<{log: HabitLog, updatedHabit: Habit}> => {
+export const checkHabit = async (habitId: string, currentStreak: number, date?: string): Promise<{log: HabitLog, updatedHabit: Habit}> => {
     if (!supabase) throw new Error("Supabase not initialized");
-    // 1. Insert Log
+    
+    const completedAt = date ? new Date(date).toISOString() : new Date().toISOString();
+
     const { data: log, error: logError } = await supabase
         .from('habit_logs')
-        .insert({ habit_id: habitId, completed_at: new Date().toISOString() } as any)
+        .insert({ habit_id: habitId, completed_at: completedAt } as any)
         .select()
         .single();
         
     if (logError) throw logError;
     
-    // 2. Update Streak (Naive increment - complex logic handled in client or DB triggers preferred for prod)
-    const newStreak = currentStreak + 1;
-    
-    const { data: habit, error: habitError } = await supabase
-        .from('habits')
-        // @ts-ignore
-        .update({ current_streak: newStreak })
-        .eq('id', habitId)
-        .select()
-        .single();
-        
-    if (habitError) throw habitError;
+    let habit = null;
+    // Only update streak number if we are toggling "Today"
+    if (!date || new Date(date).toDateString() === new Date().toDateString()) {
+        const newStreak = currentStreak + 1;
+        const { data, error: habitError } = await supabase
+            .from('habits')
+            // @ts-ignore
+            .update({ current_streak: newStreak })
+            .eq('id', habitId)
+            .select()
+            .single();
+        if (habitError) throw habitError;
+        habit = data;
+    } else {
+         const { data } = await supabase.from('habits').select('*').eq('id', habitId).single();
+         habit = data;
+    }
     
     return { log, updatedHabit: habit };
 }
 
-export const uncheckHabit = async (logId: string, habitId: string, currentStreak: number): Promise<{ updatedHabit: Habit }> => {
+export const uncheckHabit = async (logId: string, habitId: string, currentStreak: number, date?: string): Promise<{ updatedHabit: Habit }> => {
     if (!supabase) throw new Error("Supabase not initialized");
-    // 1. Delete Log
+
     const { error: logError } = await supabase
         .from('habit_logs')
         .delete()
@@ -416,25 +402,26 @@ export const uncheckHabit = async (logId: string, habitId: string, currentStreak
         
     if (logError) throw logError;
     
-    // 2. Decrement Streak (Safeguard against negative)
-    const newStreak = Math.max(0, currentStreak - 1);
-    
-    const { data: habit, error: habitError } = await supabase
-        .from('habits')
-        // @ts-ignore
-        .update({ current_streak: newStreak })
-        .eq('id', habitId)
-        .select()
-        .single();
-        
-    if (habitError) throw habitError;
+    let habit = null;
+    if (!date || new Date(date).toDateString() === new Date().toDateString()) {
+        const newStreak = Math.max(0, currentStreak - 1);
+        const { data, error: habitError } = await supabase
+            .from('habits')
+            // @ts-ignore
+            .update({ current_streak: newStreak })
+            .eq('id', habitId)
+            .select()
+            .single();
+        if (habitError) throw habitError;
+        habit = data;
+    } else {
+         const { data } = await supabase.from('habits').select('*').eq('id', habitId).single();
+         habit = data;
+    }
     
     return { updatedHabit: habit };
 }
 
-/**
- * Helper to fetch the unified context for the "Companion Brain" features.
- */
 export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
     
@@ -446,7 +433,7 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
     ]);
     
     return {
-        recentEntries: entries.slice(0, 15), // Only contextually relevant recent entries
+        recentEntries: entries.slice(0, 15),
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
         activeHabits: habits,
         latestReflection: reflections.length > 0 ? reflections[0] : null
