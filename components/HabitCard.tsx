@@ -1,15 +1,17 @@
 
-import React from 'react';
-import type { Habit, HabitCategory } from '../types';
+import React, { useState } from 'react';
+import type { Habit, HabitCategory, HabitLog } from '../types';
 import { FlameIcon } from './icons/FlameIcon';
-import { CheckCircleIcon } from './icons/CheckCircleIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { isSameDay, getFormattedDate } from '../utils/date';
 
 interface HabitCardProps {
   habit: Habit;
-  isCompleted: boolean;
-  onToggle: () => void;
+  logs: HabitLog[];
+  onToggle: (dateString: string) => void;
   onDelete: () => void;
+  referenceDate: Date; // The "Today" we are looking at (usually real Today, or Yesterday)
 }
 
 const categoryColors: Record<HabitCategory, string> = {
@@ -21,52 +23,126 @@ const categoryColors: Record<HabitCategory, string> = {
     System: 'bg-slate-500/20 text-slate-300 ring-slate-500/50',
 };
 
-export const HabitCard: React.FC<HabitCardProps> = ({ habit, isCompleted, onToggle, onDelete }) => {
+export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onDelete, referenceDate }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Helper to check if a specific date is logged
+  const isLogged = (date: Date) => {
+      return logs.some(l => isSameDay(new Date(l.completed_at), date));
+  };
+
+  // Generate trailing 5 days for the collapsed view
+  const trailingDays = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(referenceDate);
+      d.setDate(d.getDate() - (4 - i)); // Order: -4, -3, -2, Yesterday, Today
+      return d;
+  });
+
+  // Generate 14 days for the expanded calendar
+  const calendarDays = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(referenceDate);
+      d.setDate(d.getDate() - (13 - i)); 
+      return d;
+  });
+
   return (
-    <div className="flex items-center justify-between bg-dark-surface p-4 rounded-lg mb-3 transition-all duration-300 animate-fade-in-up hover:bg-dark-surface-light/50">
+    <div className="bg-dark-surface rounded-lg mb-3 shadow-lg transition-all duration-300 animate-fade-in-up overflow-hidden">
       
-      <div className="flex items-center gap-4">
-        <button
-            onClick={onToggle}
-            className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors duration-300 ${isCompleted ? 'bg-brand-teal border-brand-teal text-brand-indigo' : 'bg-transparent border-gray-500 text-transparent hover:border-brand-teal'}`}
-            aria-label={isCompleted ? "Uncheck habit" : "Check habit"}
-        >
-            <CheckCircleIcon className="w-5 h-5" />
-        </button>
+      {/* MAIN ROW (Collapsed) */}
+      <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
         
-        <div>
-            <div className="flex items-center gap-2 mb-1">
-                <span className="text-2xl">{habit.emoji}</span>
-                <h3 className={`text-lg font-medium ${isCompleted ? 'text-gray-400 line-through' : 'text-white'}`}>
-                    {habit.name}
-                </h3>
+        {/* LEFT: Info */}
+        <div className="flex items-center gap-3 overflow-hidden">
+            <span className="text-2xl flex-shrink-0">{habit.emoji}</span>
+            <div className="min-w-0">
+                <h3 className="text-lg font-medium text-white truncate">{habit.name}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                    {habit.category && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${categoryColors[habit.category] || categoryColors.System}`}>
+                            {habit.category.toUpperCase()}
+                        </span>
+                    )}
+                    {habit.current_streak > 1 && (
+                        <div className="flex items-center gap-1 text-orange-400 text-xs font-bold">
+                            <FlameIcon className="w-3 h-3" />
+                            {habit.current_streak}
+                        </div>
+                    )}
+                </div>
             </div>
-            {/* Category Badge */}
-            {habit.category && (
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${categoryColors[habit.category] || categoryColors.System}`}>
-                    {habit.category.toUpperCase()}
-                </span>
-            )}
+        </div>
+
+        {/* RIGHT: Visual History (Dots) */}
+        <div className="flex items-center gap-4">
+            <div className="flex gap-1.5 items-center">
+                {trailingDays.map((date, i) => {
+                    const done = isLogged(date);
+                    const isToday = isSameDay(date, referenceDate);
+                    return (
+                        <button
+                            key={i}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggle(date.toISOString());
+                            }}
+                            className={`
+                                rounded-full transition-all duration-300 
+                                ${isToday ? 'w-6 h-6' : 'w-3 h-3'} 
+                                ${done 
+                                    ? 'bg-brand-teal shadow-[0_0_10px_rgba(44,229,195,0.4)]' 
+                                    : isToday 
+                                        ? 'border-2 border-brand-teal/50 hover:bg-brand-teal/20' 
+                                        : 'bg-gray-700 hover:bg-gray-600'
+                                }
+                            `}
+                            title={getFormattedDate(date)}
+                        />
+                    );
+                })}
+            </div>
+            
+            <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        {habit.current_streak > 1 && (
-            <div className="flex items-center gap-1 text-orange-400 bg-orange-900/30 px-2 py-1 rounded-md">
-                <FlameIcon className="w-4 h-4" />
-                <span className="text-xs font-bold">{habit.current_streak}</span>
-            </div>
-        )}
-        
-        <button 
-          onClick={onDelete}
-          className="p-2 rounded-full hover:bg-white/10 text-gray-600 hover:text-red-400 transition-colors"
-          aria-label="Delete habit"
-        >
-          <TrashIcon className="w-5 h-5" />
-        </button>
-      </div>
+      {/* EXPANDED DRAWER: Mini Calendar */}
+      {isExpanded && (
+          <div className="px-4 pb-4 pt-0 border-t border-white/5 bg-black/20">
+              <div className="flex justify-between items-center my-2">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">History</span>
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+                      <TrashIcon className="w-3 h-3" /> Delete Habit
+                  </button>
+              </div>
+              
+              <div className="grid grid-cols-7 gap-2">
+                  {calendarDays.map((date, i) => {
+                      const done = isLogged(date);
+                      const isToday = isSameDay(date, referenceDate);
+                      const dayLabel = date.toLocaleDateString('en-US', { weekday: 'narrow' });
+                      const dateLabel = date.getDate();
 
+                      return (
+                          <button
+                            key={i}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggle(date.toISOString());
+                            }}
+                            className={`
+                                flex flex-col items-center justify-center p-2 rounded-lg transition-colors
+                                ${done ? 'bg-brand-teal/20 text-brand-teal' : 'bg-white/5 text-gray-500 hover:bg-white/10'}
+                                ${isToday ? 'ring-1 ring-brand-teal' : ''}
+                            `}
+                          >
+                              <span className="text-[9px] opacity-70">{dayLabel}</span>
+                              <span className="text-xs font-bold">{dateLabel}</span>
+                          </button>
+                      )
+                  })}
+              </div>
+          </div>
+      )}
     </div>
   );
 };
