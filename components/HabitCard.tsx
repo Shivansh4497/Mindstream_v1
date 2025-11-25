@@ -1,11 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Habit, HabitCategory, HabitLog } from '../types';
 import { FlameIcon } from './icons/FlameIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { isSameDay, getWeekId, getMonthId } from '../utils/date';
+import { calculateStreak } from '../utils/streak';
 import { HabitLogButton } from './HabitLogButton';
 
 interface HabitCardProps {
@@ -40,6 +41,13 @@ export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onE
           return logs.some(l => getMonthId(new Date(l.completed_at)) === mId);
       }
   };
+
+  // Derived State: Calculate streak on the fly from the logs props.
+  // This ensures that as soon as 'logs' updates (optimistically in parent), the streak flips instantly.
+  const currentStreak = useMemo(() => {
+    const logDates = logs.map(l => new Date(l.completed_at));
+    return calculateStreak(logDates, habit.frequency);
+  }, [logs, habit.frequency]);
 
   // Generate visualization items based on frequency
   const getHistoryItems = () => {
@@ -90,10 +98,10 @@ export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onE
                             {habit.category.toUpperCase()}
                         </span>
                     )}
-                    {habit.current_streak > 0 && (
+                    {currentStreak > 0 && (
                         <div className="flex items-center gap-1 text-orange-400 text-xs font-bold">
                             <FlameIcon className="w-3 h-3" />
-                            {habit.current_streak} {habit.frequency === 'daily' ? 'day' : habit.frequency === 'weekly' ? 'wk' : 'mo'} streak
+                            {currentStreak} {habit.frequency === 'daily' ? 'day' : habit.frequency === 'weekly' ? 'wk' : 'mo'} streak
                         </div>
                     )}
                 </div>
