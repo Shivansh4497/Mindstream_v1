@@ -2,7 +2,7 @@
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext } from '../types';
-import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
+import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate, checkStreakContinuity } from '../utils/date';
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
@@ -305,7 +305,9 @@ export const deleteIntention = async (id: string): Promise<boolean> => {
 
 export const getHabits = async (userId: string): Promise<Habit[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
+    
+    // 1. Fetch Habits
+    const { data: habitsData, error } = await supabase
         .from('habits')
         .select('*')
         .eq('user_id', userId)
@@ -315,7 +317,69 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         console.error('Error fetching habits:', error);
         return [];
     }
-    return data || [];
+    
+    // Explicit casting to prevent 'never' type errors during map
+    const habits = habitsData as Habit[];
+
+    if (!habits || habits.length === 0) return [];
+
+    // 2. STREAK DOCTOR: Auto-correct broken streaks
+    // Fetch logs from the last 60 days to check recent activity
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 60);
+
+    const { data: logsData } = await supabase
+        .from('habit_logs')
+        .select('habit_id, completed_at')
+        .eq('user_id', userId)
+        .gte('completed_at', cutoffDate.toISOString())
+        .order('completed_at', { ascending: false });
+
+    // Explicit casting
+    const logs = logsData as { habit_id: string; completed_at: string }[];
+
+    const habitsToUpdate: string[] = [];
+    const processedHabits = habits.map(habit => {
+        // If streak is already 0, it is correct.
+        if (habit.current_streak === 0) return habit;
+
+        // Find the most recent log for this habit
+        const latestLog = logs?.find(l => l.habit_id === habit.id);
+        
+        // If no logs found in 60 days but streak > 0, it's definitely broken.
+        if (!latestLog) {
+            habitsToUpdate.push(habit.id);
+            return { ...habit, current_streak: 0 };
+        }
+
+        const lastDate = new Date(latestLog.completed_at);
+        const isValid = checkStreakContinuity(lastDate, habit.frequency);
+
+        if (!isValid) {
+            habitsToUpdate.push(habit.id);
+            return { ...habit, current_streak: 0 };
+        }
+        
+        return habit;
+    });
+
+    // 3. Persist corrections to DB (Self-Healing)
+    if (habitsToUpdate.length > 0) {
+        console.log(`[Streak Doctor] Repairing ${habitsToUpdate.length} broken streaks...`);
+        // We use fire-and-forget here to not block the UI load time significantly, 
+        // or we could await if strict consistency is required immediately. 
+        // Since we return the corrected objects to the UI, the user sees the fix instantly.
+        supabase
+            .from('habits')
+            // @ts-ignore
+            .update({ current_streak: 0 })
+            .in('id', habitsToUpdate)
+            .then(({ error }) => {
+                if(error) console.error("[Streak Doctor] Failed to update DB:", error);
+            });
+    }
+
+    return processedHabits;
 }
 
 /**
