@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import type { Intention, IntentionTimeframe } from '../types';
 import { IntentionCard } from './IntentionCard';
@@ -52,7 +53,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     }, [groupedIntentions]);
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="flex-grow min-h-0 flex flex-col">
             <header className="flex-shrink-0 p-4 border-b border-white/10 flex items-center overflow-x-auto">
                 <div className="flex items-center gap-2">
                     {timeframes.map(tf => (
