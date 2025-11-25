@@ -494,20 +494,30 @@ export const syncHabitCompletion = async (
             .lte('completed_at', endDateStr);
 
         if (!existing || existing.length === 0) {
-            await (supabase as any).from('habit_logs').insert({ 
+            const { error } = await (supabase as any).from('habit_logs').insert({ 
                 habit_id: habitId, 
                 user_id: userId, 
                 completed_at: targetIso 
             } as any);
+            
+            if (error) {
+                console.error("Error inserting habit log:", error);
+                throw error;
+            }
         }
     } else {
         // Delete logic: Remove any logs in this period
-        await (supabase as any)
+        const { error } = await (supabase as any)
             .from('habit_logs')
             .delete()
             .eq('habit_id', habitId)
             .gte('completed_at', startDateStr)
             .lte('completed_at', endDateStr);
+            
+        if (error) {
+             console.error("Error deleting habit log:", error);
+             throw error;
+        }
     }
 
     // 3. Recalculate Streak (Authoritative)
