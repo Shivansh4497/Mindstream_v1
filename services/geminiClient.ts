@@ -14,9 +14,19 @@ const getApiKey = (): string => {
     try {
         // Fallback: Standard Vite env
         // @ts-ignore
-        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) {
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // Check for VITE_API_KEY (User's Vercel config)
             // @ts-ignore
-            return import.meta.env.VITE_GEMINI_API_KEY;
+            if (import.meta.env.VITE_API_KEY) {
+                // @ts-ignore
+                return import.meta.env.VITE_API_KEY;
+            }
+            // Legacy fallback
+            // @ts-ignore
+            if (import.meta.env.VITE_GEMINI_API_KEY) {
+                // @ts-ignore
+                return import.meta.env.VITE_GEMINI_API_KEY;
+            }
         }
     } catch (e) {}
 
