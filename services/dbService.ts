@@ -7,91 +7,91 @@ import { calculateStreak } from '../utils/streak';
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
-  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
-    console.error('Error getting profile:', error);
-  }
-  return data;
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+    if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+        console.error('Error getting profile:', error);
+    }
+    return data;
 };
 
 export const createProfile = async (user: User): Promise<Profile | null> => {
-  if (!supabase) throw new Error("Supabase client not initialized");
-  const { data, error } = await supabase
-    .from('profiles')
-    .insert({
-      id: user.id,
-      email: user.email,
-      avatar_url: user.user_metadata.avatar_url,
-    } as any)
-    .select()
-    .single();
-  if (error) {
-    console.error('Error creating profile:', error);
-    throw error;
-  }
-  return data;
+    if (!supabase) throw new Error("Supabase client not initialized");
+    const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+            id: user.id,
+            email: user.email,
+            avatar_url: user.user_metadata.avatar_url,
+        } as any)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating profile:', error);
+        throw error;
+    }
+    return data;
 };
 
 export const deleteAccount = async (userId: string): Promise<boolean> => {
-  if (!supabase) return false;
-  
-  try {
-    await (supabase as any).from('habits').delete().eq('user_id', userId);
-    await (supabase as any).from('intentions').delete().eq('user_id', userId);
-    await (supabase as any).from('reflections').delete().eq('user_id', userId);
-    await (supabase as any).from('entries').delete().eq('user_id', userId);
-    const { error } = await (supabase as any).from('profiles').delete().eq('id', userId);
-    
-    if (error) {
-      console.error("Error deleting profile:", error);
-      return false;
+    if (!supabase) return false;
+
+    try {
+        await (supabase as any).from('habits').delete().eq('user_id', userId);
+        await (supabase as any).from('intentions').delete().eq('user_id', userId);
+        await (supabase as any).from('reflections').delete().eq('user_id', userId);
+        await (supabase as any).from('entries').delete().eq('user_id', userId);
+        const { error } = await (supabase as any).from('profiles').delete().eq('id', userId);
+
+        if (error) {
+            console.error("Error deleting profile:", error);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error("Exception during account deletion:", e);
+        return false;
     }
-    return true;
-  } catch (e) {
-    console.error("Exception during account deletion:", e);
-    return false;
-  }
 };
 
 // Entry Functions
 export const getEntries = async (userId: string, page: number = 0, pageSize: number = 20): Promise<Entry[]> => {
-  if (!supabase) return [];
-  const from = page * pageSize;
-  const to = from + pageSize - 1;
-  
-  const { data, error } = await supabase
-    .from('entries')
-    .select('*')
-    .eq('user_id', userId)
-    .order('timestamp', { ascending: false })
-    .range(from, to);
-    
-  if (error) {
-    console.error('Error fetching entries:', error);
-    return [];
-  }
-  return data || [];
+    if (!supabase) return [];
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .range(from, to);
+
+    if (error) {
+        console.error('Error fetching entries:', error);
+        return [];
+    }
+    return data || [];
 };
 
 export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'user_id'>): Promise<Entry> => {
-  if (!supabase) throw new Error("Supabase client not initialized");
-  // Explicitly cast to any to avoid 'never' type errors on insert
-  const client: any = supabase;
-  const { data, error } = await client
-    .from('entries')
-    .insert({ ...entryData, user_id: userId })
-    .select()
-    .single();
-  if (error) {
-    console.error('Error adding entry:', error);
-    throw error;
-  }
-  return data;
+    if (!supabase) throw new Error("Supabase client not initialized");
+    // Explicitly cast to any to avoid 'never' type errors on insert
+    const client: any = supabase;
+    const { data, error } = await client
+        .from('entries')
+        .insert({ ...entryData, user_id: userId })
+        .select()
+        .single();
+    if (error) {
+        console.error('Error adding entry:', error);
+        throw error;
+    }
+    return data;
 };
 
 export const updateEntry = async (entryId: string, updatedData: Partial<Entry>): Promise<Entry> => {
@@ -135,9 +135,9 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
         .eq('user_id', userId)
         .textSearch('text', searchQuery, {
             type: 'websearch',
-            config: 'english' 
+            config: 'english'
         })
-        .limit(10); 
+        .limit(10);
 
     if (error) {
         console.error("Error searching entries:", error);
@@ -149,65 +149,65 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
 
 // Onboarding Functions
 export const addWelcomeEntry = async (userId: string): Promise<void> => {
-  if (!supabase) return;
-  const welcomeData = {
-    timestamp: new Date().toISOString(),
-    text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
-    title: "Your First Step to Clarity",
-    tags: ["welcome", "getting-started"],
-    primary_sentiment: "Hopeful" as const,
-    emoji: "👋",
-    user_id: userId,
-  };
-   const { error } = await (supabase as any).from('entries').insert(welcomeData as any);
-   if (error) {
-     console.error("Failed to add welcome entry:", error);
-     throw error;
-   }
+    if (!supabase) return;
+    const welcomeData = {
+        timestamp: new Date().toISOString(),
+        text: "Welcome to your new Mindstream! ✨\n\nThis is your private space to think, reflect, and grow. Capture any thought, big or small, using the input bar below. Mindstream will automatically organize it for you.\n\nLet's get started!",
+        title: "Your First Step to Clarity",
+        tags: ["welcome", "getting-started"],
+        primary_sentiment: "Hopeful" as const,
+        emoji: "👋",
+        user_id: userId,
+    };
+    const { error } = await (supabase as any).from('entries').insert(welcomeData as any);
+    if (error) {
+        console.error("Failed to add welcome entry:", error);
+        throw error;
+    }
 };
 
 export const addFirstIntention = async (userId: string): Promise<Intention | null> => {
-  return addIntention(userId, "Explore all four tabs of Mindstream", "daily");
+    return addIntention(userId, "Explore all four tabs of Mindstream", "daily");
 };
 
 
 // Reflection Functions
 export const getReflections = async (userId: string): Promise<Reflection[]> => {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('reflections')
-    .select('*')
-    .eq('user_id', userId)
-    .order('timestamp', { ascending: false });
+    if (!supabase) return [];
+    const { data, error } = await supabase
+        .from('reflections')
+        .select('*')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false });
 
-  if (error) {
-    console.error('Error fetching reflections:', error);
-    return [];
-  }
-  if (!data) return [];
-
-  const processedData = data.map((reflection: any) => {
-    const typedReflection = reflection as Reflection;
-    let finalDate = typedReflection.date;
-    
-    if (typedReflection.type === 'weekly') {
-      finalDate = getWeekId(new Date(typedReflection.date));
-    } else if (typedReflection.type === 'monthly') {
-      finalDate = getMonthId(new Date(typedReflection.date));
+    if (error) {
+        console.error('Error fetching reflections:', error);
+        return [];
     }
-    return { ...typedReflection, date: finalDate, suggestions: typedReflection.suggestions || [] };
-  });
+    if (!data) return [];
 
-  const latestReflections = new Map<string, Reflection>();
-  for (const reflection of processedData) {
-    const typedReflection = reflection as Reflection;
-    const key = `${typedReflection.date}-${typedReflection.type}`;
-    if (!latestReflections.has(key)) {
-      latestReflections.set(key, typedReflection);
+    const processedData = data.map((reflection: any) => {
+        const typedReflection = reflection as Reflection;
+        let finalDate = typedReflection.date;
+
+        if (typedReflection.type === 'weekly') {
+            finalDate = getWeekId(new Date(typedReflection.date));
+        } else if (typedReflection.type === 'monthly') {
+            finalDate = getMonthId(new Date(typedReflection.date));
+        }
+        return { ...typedReflection, date: finalDate, suggestions: typedReflection.suggestions || [] };
+    });
+
+    const latestReflections = new Map<string, Reflection>();
+    for (const reflection of processedData) {
+        const typedReflection = reflection as Reflection;
+        const key = `${typedReflection.date}-${typedReflection.type}`;
+        if (!latestReflections.has(key)) {
+            latestReflections.set(key, typedReflection);
+        }
     }
-  }
 
-  return Array.from(latestReflections.values());
+    return Array.from(latestReflections.values());
 };
 
 export const addReflection = async (userId: string, reflectionData: Omit<Reflection, 'id' | 'user_id' | 'timestamp'>): Promise<Reflection> => {
@@ -224,7 +224,7 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
         date: dateForDb,
         user_id: userId,
         timestamp: new Date().toISOString(),
-        suggestions: reflectionData.suggestions || null, 
+        suggestions: reflectionData.suggestions || null,
     };
 
     const { data, error } = await (supabase as any)
@@ -237,7 +237,7 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
         console.error('Error adding reflection:', error);
         throw error;
     }
-    
+
     return data as Reflection;
 };
 
@@ -260,12 +260,12 @@ export const addIntention = async (userId: string, text: string, timeframe: Inte
     if (!supabase) return null;
     const { data, error } = await (supabase as any)
         .from('intentions')
-        .insert({ 
-            user_id: userId, 
-            text, 
+        .insert({
+            user_id: userId,
+            text,
             timeframe,
             status: 'pending',
-            is_recurring: false, 
+            is_recurring: false,
         } as any)
         .select()
         .single();
@@ -312,22 +312,22 @@ export const deleteIntention = async (id: string): Promise<boolean> => {
 
 export const getHabits = async (userId: string): Promise<Habit[]> => {
     if (!supabase) return [];
-    
+
     // 1. Fetch Habits
     const { data: habitsData, error } = await supabase
         .from('habits')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
-    
+
     if (error) return [];
-    
+
     const habits = habitsData as Habit[];
     if (!habits || habits.length === 0) return [];
 
     // 2. Fetch logs for the last 365 days to ensure accurate streak calc
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 365); 
+    cutoffDate.setDate(cutoffDate.getDate() - 365);
 
     // FIX: Cast supabase to any to avoid strict type inference errors with 'order' on inferred 'never' type
     const { data: logsData } = await (supabase as any)
@@ -357,7 +357,7 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
     if (habitsToUpdate.length > 0) {
         // We update individually or batch if we had an upsert. 
         // For simplicity, fire-and-forget individual updates or simple map.
-        Promise.all(habitsToUpdate.map(h => 
+        Promise.all(habitsToUpdate.map(h =>
             (supabase as any).from('habits').update({ current_streak: h.streak } as any).eq('id', h.id)
         )).catch(e => console.error("Error syncing calculated streaks:", e));
     }
@@ -371,31 +371,31 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
  */
 export const getCurrentPeriodHabitLogs = async (userId: string): Promise<HabitLog[]> => {
     if (!supabase) return [];
-    
+
     const now = new Date();
     now.setDate(now.getDate() - 365); // Fetch last year
-    now.setHours(0, 0, 0, 0); 
+    now.setHours(0, 0, 0, 0);
     const startOfPeriod = now.toISOString();
-    
+
     const { data: habits } = await supabase.from('habits').select('id').eq('user_id', userId);
     if (!habits || habits.length === 0) return [];
-    
+
     const habitIds = habits.map((h: any) => h.id);
-    
+
     // FIX: Cast supabase to any to resolve type errors with 'in' method
     const { data, error } = await (supabase as any)
         .from('habit_logs')
         .select('*')
         .in('habit_id', habitIds)
         .gte('completed_at', startOfPeriod);
-        
+
     if (error) return [];
     return data || [];
 }
 
 export const addHabit = async (userId: string, name: string, emoji: string, category: HabitCategory, frequency: HabitFrequency): Promise<Habit | null> => {
     if (!supabase) return null;
-    
+
     // FIX: Explicitly cast to any to resolve 'never' type errors on insert
     const client: any = supabase;
     const { data, error } = await client
@@ -411,7 +411,7 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
         })
         .select()
         .single();
-        
+
     if (error) {
         console.error('Error adding habit:', error);
         throw error;
@@ -421,7 +421,7 @@ export const addHabit = async (userId: string, name: string, emoji: string, cate
 
 export const updateHabit = async (habitId: string, updates: Partial<Habit>): Promise<Habit | null> => {
     if (!supabase) return null;
-    
+
     // FIX: Cast supabase to any to bypass strict typing on update payload
     const { data, error } = await (supabase as any)
         .from('habits')
@@ -429,7 +429,7 @@ export const updateHabit = async (habitId: string, updates: Partial<Habit>): Pro
         .eq('id', habitId)
         .select()
         .single();
-        
+
     if (error) {
         console.error('Error updating habit:', error);
         throw error;
@@ -451,35 +451,35 @@ export const deleteHabit = async (habitId: string): Promise<boolean> => {
  * Replaces the old toggle logic to support debounced UI.
  */
 export const syncHabitCompletion = async (
-    userId: string, 
-    habitId: string, 
-    frequency: HabitFrequency, 
+    userId: string,
+    habitId: string,
+    frequency: HabitFrequency,
     dateString: string | undefined,
     isCompleted: boolean
 ): Promise<{ updatedHabit: Habit }> => {
     if (!supabase) throw new Error("Supabase not initialized");
-    
+
     const targetDate = dateString ? new Date(dateString) : new Date();
     const targetIso = targetDate.toISOString();
-    
+
     // 1. Determine the "period identifier" to prevent duplicates.
     const start = new Date(targetDate);
     const end = new Date(targetDate);
-    
+
     if (frequency === 'daily') {
-        start.setHours(0,0,0,0);
-        end.setHours(23,59,59,999);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
     } else if (frequency === 'weekly') {
-        const day = start.getDay() || 7; 
-        if (day !== 1) start.setHours(-24 * (day - 1)); 
-        else start.setHours(0,0,0,0);
+        const day = start.getDay() || 7;
+        if (day !== 1) start.setHours(-24 * (day - 1));
+        else start.setHours(0, 0, 0, 0);
         end.setDate(start.getDate() + 6);
-        end.setHours(23,59,59,999);
+        end.setHours(23, 59, 59, 999);
     } else if (frequency === 'monthly') {
-        start.setDate(1); start.setHours(0,0,0,0);
-        end.setMonth(end.getMonth() + 1); end.setDate(0); end.setHours(23,59,59,999);
+        start.setDate(1); start.setHours(0, 0, 0, 0);
+        end.setMonth(end.getMonth() + 1); end.setDate(0); end.setHours(23, 59, 59, 999);
     }
-    
+
     const startDateStr = start.toISOString();
     const endDateStr = end.toISOString();
 
@@ -496,12 +496,11 @@ export const syncHabitCompletion = async (
         if (fetchError) console.error("Error fetching existence:", fetchError);
 
         if (!existing || existing.length === 0) {
-            const { error } = await (supabase as any).from('habit_logs').insert({ 
-                habit_id: habitId, 
-                user_id: userId, 
-                completed_at: targetIso 
+            const { error } = await (supabase as any).from('habit_logs').insert({
+                habit_id: habitId,
+                completed_at: targetIso
             } as any);
-            
+
             if (error) {
                 console.error("Error inserting habit log:", error);
                 throw error;
@@ -515,10 +514,10 @@ export const syncHabitCompletion = async (
             .eq('habit_id', habitId)
             .gte('completed_at', startDateStr)
             .lte('completed_at', endDateStr);
-            
+
         if (error) {
-             console.error("Error deleting habit log:", error);
-             throw error;
+            console.error("Error deleting habit log:", error);
+            throw error;
         }
     }
 
@@ -551,14 +550,14 @@ export const syncHabitCompletion = async (
 
 export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
-    
+
     const [entries, intentions, habits, reflections] = await Promise.all([
-        getEntries(userId, 0, 15), 
+        getEntries(userId, 0, 15),
         getIntentions(userId),
         getHabits(userId),
         getReflections(userId)
     ]);
-    
+
     return {
         recentEntries: entries,
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
