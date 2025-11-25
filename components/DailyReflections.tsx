@@ -1,9 +1,9 @@
+
 import React, { useMemo } from 'react';
-import type { Entry, Intention, Reflection, AISuggestion } from '../types';
+import type { Entry, Intention, Reflection, AISuggestion, AIStatus } from '../types';
 import { getDisplayDate, getFormattedDate } from '../utils/date';
 import { ReflectionCard } from './ReflectionCard';
 import { SparklesIcon } from './icons/SparklesIcon';
-import { AIStatus } from '../MindstreamApp';
 
 interface DailyReflectionsProps {
   entries: Entry[];
@@ -17,6 +17,8 @@ interface DailyReflectionsProps {
   onDebug: () => void;
   debugOutput: string | null;
 }
+
+const SHOW_DEBUG = false; // Set to true to reveal developer diagnostics
 
 export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dailyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion, aiStatus, onDebug, debugOutput }) => {
   const groupedEntries = useMemo(() => {
@@ -59,22 +61,24 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
   return (
     <div className="p-4 animate-fade-in-up">
       {/* --- DEBUGGING UI --- */}
-      <div className="mb-8 p-4 bg-red-900/50 border border-red-500 rounded-lg">
-        <h3 className="font-bold text-red-300 mb-2 font-display">Developer Diagnostics</h3>
-        <p className="text-sm text-red-200 mb-3">If AI features are not working, click this button. It will attempt one API call and show the raw success or error message below, bypassing any app logic.</p>
-        <button 
-          onClick={onDebug} 
-          className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
-        >
-          Debug AI Connection
-        </button>
-        {debugOutput && (
-          <div className="mt-4 p-3 bg-black/50 rounded">
-            <h4 className="text-sm font-semibold text-gray-300 mb-2">Raw AI Output:</h4>
-            <pre className="text-xs text-white whitespace-pre-wrap font-mono">{debugOutput}</pre>
-          </div>
-        )}
-      </div>
+      {SHOW_DEBUG && (
+        <div className="mb-8 p-4 bg-red-900/50 border border-red-500 rounded-lg">
+            <h3 className="font-bold text-red-300 mb-2 font-display">Developer Diagnostics</h3>
+            <p className="text-sm text-red-200 mb-3">If AI features are not working, click this button. It will attempt one API call and show the raw success or error message below, bypassing any app logic.</p>
+            <button 
+            onClick={onDebug} 
+            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+            >
+            Debug AI Connection
+            </button>
+            {debugOutput && (
+            <div className="mt-4 p-3 bg-black/50 rounded">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Raw AI Output:</h4>
+                <pre className="text-xs text-white whitespace-pre-wrap font-mono">{debugOutput}</pre>
+            </div>
+            )}
+        </div>
+      )}
       {/* --- END DEBUGGING UI --- */}
 
       {sortedDates.map(date => {
