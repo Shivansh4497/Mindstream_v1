@@ -19,6 +19,19 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
     onDelete
 }) => {
     
+    // Optimize: Group logs by habit ID once, instead of filtering for every card.
+    // This reduces complexity from O(N*M) to O(N).
+    const logsByHabitId = useMemo(() => {
+        const map: Record<string, HabitLog[]> = {};
+        todaysLogs.forEach(log => {
+            if (!map[log.habit_id]) {
+                map[log.habit_id] = [];
+            }
+            map[log.habit_id].push(log);
+        });
+        return map;
+    }, [todaysLogs]);
+
     // Group habits by frequency
     const groupedHabits = useMemo(() => {
         const groups: Record<HabitFrequency, Habit[]> = {
@@ -63,7 +76,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                 <HabitCard 
                                     key={habit.id} 
                                     habit={habit} 
-                                    logs={todaysLogs.filter(l => l.habit_id === habit.id)}
+                                    logs={logsByHabitId[habit.id] || []}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
                                     onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
@@ -82,7 +95,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                 <HabitCard 
                                     key={habit.id} 
                                     habit={habit} 
-                                    logs={todaysLogs.filter(l => l.habit_id === habit.id)}
+                                    logs={logsByHabitId[habit.id] || []}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
                                     onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
@@ -101,7 +114,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                 <HabitCard 
                                     key={habit.id} 
                                     habit={habit} 
-                                    logs={todaysLogs.filter(l => l.habit_id === habit.id)}
+                                    logs={logsByHabitId[habit.id] || []}
                                     onToggle={(dateString) => onToggle(habit.id, dateString)}
                                     onEdit={() => onEdit(habit)}
                                     onDelete={() => onDelete(habit.id)}
