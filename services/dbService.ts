@@ -120,20 +120,24 @@ export const deleteEntry = async (entryId: string): Promise<boolean> => {
     return true;
 };
 
-// RAG: Keyword Search
+// RAG: Keyword Search with Full Text Search (FTS)
 export const searchEntries = async (userId: string, keywords: string[]): Promise<Entry[]> => {
     if (!supabase) return [];
     if (!keywords || keywords.length === 0) return [];
 
-    // Create a simple OR query for title or text matches
-    // Syntax: column.ilike.%keyword%
-    const conditions = keywords.map(k => `text.ilike.%${k}%,title.ilike.%${k}%`).join(',');
+    // Construct a "websearch" compatible query string.
+    // Joining with ' or ' tells websearch_to_tsquery to look for any of these terms.
+    // This utilizes Postgres' built-in text search capabilities (stemming, etc.)
+    const searchQuery = keywords.join(' or ');
 
     const { data, error } = await supabase
         .from('entries')
         .select('*')
         .eq('user_id', userId)
-        .or(conditions)
+        .textSearch('text', searchQuery, {
+            type: 'websearch',
+            config: 'english' 
+        })
         .limit(10); // Limit to top 10 matches to prevent token overload
 
     if (error) {
