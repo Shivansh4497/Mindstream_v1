@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import type { Habit, HabitCategory, HabitLog } from '../types';
 import { FlameIcon } from './icons/FlameIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { PencilIcon } from './icons/PencilIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { isSameDay, getWeekId, getMonthId } from '../utils/date';
 import { HabitLogButton } from './HabitLogButton';
@@ -11,6 +12,7 @@ interface HabitCardProps {
   habit: Habit;
   logs: HabitLog[];
   onToggle: (dateString: string) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }
 
@@ -23,7 +25,7 @@ const categoryColors: Record<HabitCategory, string> = {
     System: 'bg-slate-500/20 text-slate-300 ring-slate-500/50',
 };
 
-export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onDelete }) => {
+export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onEdit, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Helper to check if a specific date/period is logged
@@ -112,19 +114,22 @@ export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onD
                     />
                 ))}
             </div>
-            {/* Mobile Chevron (Hidden on larger screens if desired, but good for expansion affordance) */}
+            {/* Mobile Chevron */}
             <div className="ml-2 pl-2 border-l border-white/10">
                  <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
             </div>
         </div>
       </div>
 
-      {/* EXPANDED DRAWER: Delete / Edit Options */}
+      {/* EXPANDED DRAWER: Edit / Delete Options */}
       {isExpanded && (
           <div className="px-4 pb-4 pt-0 border-t border-white/5 bg-black/20">
-              <div className="flex justify-end items-center my-2 pt-2">
+              <div className="flex justify-end items-center my-2 pt-2 gap-3">
+                  <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-xs text-brand-teal hover:text-teal-200 flex items-center gap-1 py-2 px-3 rounded hover:bg-brand-teal/10 transition-colors">
+                      <PencilIcon className="w-3 h-3" /> Edit
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 py-2 px-3 rounded hover:bg-red-900/20 transition-colors">
-                      <TrashIcon className="w-3 h-3" /> Delete Habit
+                      <TrashIcon className="w-3 h-3" /> Delete
                   </button>
               </div>
           </div>
