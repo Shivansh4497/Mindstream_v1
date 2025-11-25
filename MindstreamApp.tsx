@@ -84,7 +84,7 @@ export const MindstreamApp: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-brand-indigo overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-brand-indigo overflow-hidden">
       <Header onSearchClick={() => setShowSearchModal(true)} />
       <AIStatusBanner status={state.aiStatus} error={state.aiError} />
 
