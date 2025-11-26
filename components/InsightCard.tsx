@@ -1,61 +1,82 @@
-import React from 'react';
-import type { InsightCard as InsightCardType } from '../types';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
 
 interface InsightCardProps {
-    insight: InsightCardType;
-    onDismiss: (id: string) => void;
+    title: string;
+    insight: string;
+    children: React.ReactNode; // The chart goes here
+    color: string; // e.g., 'bg-brand-teal' or 'bg-purple-500'
 }
 
-const iconMap: Record<InsightCardType['type'], string> = {
-    correlation: '📊',
-    pattern: '🔍',
-    milestone: '🎉',
-    thematic: '💡'
-};
+export const InsightCard: React.FC<InsightCardProps> = ({ title, insight, children, color }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
 
-const colorMap: Record<InsightCardType['type'], string> = {
-    correlation: 'from-purple-500/20 to-blue-500/20',
-    pattern: 'from-teal-500/20 to-green-500/20',
-    milestone: 'from-amber-500/20 to-orange-500/20',
-    thematic: 'from-rose-500/20 to-pink-500/20'
-};
-
-export const InsightCard: React.FC<InsightCardProps> = ({ insight, onDismiss }) => {
     return (
-        <div className={`bg-gradient-to-br ${colorMap[insight.type]} rounded-lg p-5 mb-4 border border-white/10 animate-fade-in-up hover:border-white/20 transition-all duration-300`}>
-            <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                    <span className="text-2xl">{iconMap[insight.type]}</span>
-                    <h3 className="text-lg font-bold text-white">{insight.title}</h3>
+        <motion.div
+            layout
+            onClick={() => setIsExpanded(!isExpanded)}
+            className={`relative w-full overflow-hidden rounded-2xl cursor-pointer border border-white/10 shadow-xl transition-colors duration-500 ${isExpanded ? 'bg-gray-900/90' : 'bg-gray-800/50 hover:bg-gray-800'
+                }`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        >
+            {/* Background Gradient */}
+            <div className={`absolute inset-0 opacity-10 ${color} blur-3xl`} />
+
+            <div className="relative p-6">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className={`w-4 h-4 ${color.replace('bg-', 'text-')}`} />
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                            {title}
+                        </h3>
+                    </div>
+                    <button className="text-gray-500 hover:text-white transition-colors">
+                        {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                    </button>
                 </div>
-                <button
-                    onClick={() => onDismiss(insight.id)}
-                    className="text-gray-400 hover:text-white text-sm transition-colors px-2 py-1 rounded hover:bg-white/10"
-                >
-                    Dismiss
-                </button>
-            </div>
 
-            <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">{insight.content}</p>
+                {/* Insight Text (The "Story") */}
+                <motion.div layout className="mb-6">
+                    <p className={`text-xl md:text-2xl font-display font-medium leading-relaxed ${isExpanded ? 'text-gray-300' : 'text-white'
+                        }`}>
+                        {insight || "Gathering more data to find patterns..."}
+                    </p>
+                </motion.div>
 
-            {insight.metadata?.tags && insight.metadata.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-4">
-                    {insight.metadata.tags.map(tag => (
-                        <span
-                            key={tag}
-                            className="text-xs bg-white/10 px-2 py-1 rounded-full text-gray-300 hover:bg-white/20 transition-colors"
+                {/* The Chart (The "Proof") - Only visible when expanded */}
+                <AnimatePresence>
+                    {isExpanded && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="overflow-hidden"
                         >
-                            #{tag}
-                        </span>
-                    ))}
-                </div>
-            )}
+                            <div className="pt-4 border-t border-white/10">
+                                {children}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-            {insight.metadata?.sentiment_shift !== undefined && (
-                <div className="mt-3 text-sm text-gray-400">
-                    <span className="font-semibold">Mood shift:</span> {insight.metadata.sentiment_shift > 0 ? '+' : ''}{insight.metadata.sentiment_shift}%
-                </div>
-            )}
-        </div>
+                {/* Call to Action (Hint to click) */}
+                {!isExpanded && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                        className="flex items-center gap-2 text-xs text-gray-500 mt-2"
+                    >
+                        <span>Tap to view proof</span>
+                        <div className={`h-px flex-1 ${color} opacity-20`} />
+                    </motion.div>
+                )}
+            </div>
+        </motion.div>
     );
 };

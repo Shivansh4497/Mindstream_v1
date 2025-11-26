@@ -16,7 +16,9 @@
     "react-markdown": "^10.1.0",
     "uuid": "^13.0.0",
     "recharts": "^2.15.0",
-    "date-fns": "^4.1.0"
+    "date-fns": "^4.1.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.344.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

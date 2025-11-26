@@ -57,6 +57,12 @@ Return JSON: { "correlation": "...", "sentiment": "...", "heatmaps": ["...", "..
     });
 
     const result = await response.json();
+
+    if (!result.candidates || !result.candidates[0]) {
+        console.error('Gemini API Error:', JSON.stringify(result, null, 2));
+        throw new Error('Invalid response from Gemini API');
+    }
+
     const text = result.candidates[0].content.parts[0].text;
     return JSON.parse(text);
 }
@@ -102,7 +108,7 @@ serve(async (req) => {
                 });
 
                 // Store insights in database
-                await supabase.from('chart_insights').insert([
+                const { error: insertError } = await supabase.from('chart_insights').insert([
                     {
                         user_id: user.id,
                         insight_type: 'correlation',
@@ -120,6 +126,11 @@ serve(async (req) => {
                         metadata: { habit_index: idx }
                     }))
                 ]);
+
+                if (insertError) {
+                    console.error(`Error inserting insights for user ${user.id}:`, insertError);
+                    throw insertError;
+                }
 
                 console.log(`✅ Generated insights for user ${user.id}`);
             } catch (userError) {
