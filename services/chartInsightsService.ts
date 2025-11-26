@@ -98,13 +98,27 @@ Return ONLY valid JSON in this exact format:
                             dailyPulse: { type: 'string' },
                             correlation: { type: 'string' },
                             sentiment: { type: 'string' },
-                            heatmaps: { type: 'array', items: { type: 'string' } }
+                            heatmaps: {
+                                type: 'array',
+                                items: { type: 'string' }
+                            }
                         },
                         required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
                     }
                 }
             });
-            return response.text || "{}";
+
+            // The SDK returns the text directly, already parsed
+            const text = response.text || "{}";
+
+            // Clean up any markdown code blocks if present
+            let cleanText = text.trim();
+            const match = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (match && match[1]) {
+                cleanText = match[1];
+            }
+
+            return cleanText;
         });
 
         const parsed = JSON.parse(result);
