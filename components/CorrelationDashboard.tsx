@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 import { format, parseISO, subDays, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import type { Entry, Habit, HabitLog, GranularSentiment } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface CorrelationDashboardProps {
     entries: Entry[];
@@ -74,9 +75,12 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
     return (
         <div className="p-4 bg-dark-surface rounded-xl border border-white/5">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
-                    The Moat: Habit ↔ Mood Correlation
-                </h3>
+                <div className="flex items-center">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                        The Moat: Habit ↔ Mood Correlation
+                    </h3>
+                    <InfoTooltip text="This is Mindstream's core insight: see how your habits affect your mood. Purple bars = days you did the habit. Teal line = your mood score. When bars align with mood peaks, that habit likely helps you feel better!" />
+                </div>
                 <select
                     value={selectedHabitId || ''}
                     onChange={(e) => setSelectedHabitId(e.target.value)}
@@ -152,10 +156,17 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
                 </ResponsiveContainer>
             </div>
 
-            <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-                The bars show when you completed <strong className="text-purple-400">{selectedHabit?.name}</strong>.
-                The line shows your <strong className="text-brand-teal">mood</strong>. Look for patterns.
-            </p>
+            <div className="mt-3 space-y-2">
+                <p className="text-xs text-gray-500 leading-relaxed">
+                    <strong className="text-white">💡 How to interpret:</strong><br />
+                    • <span className="text-purple-400">Purple bars</span> = Days you did <strong>{selectedHabit?.name}</strong><br />
+                    • <span className="text-brand-teal">Teal line</span> = Your mood score (higher = better)<br />
+                    • Look for alignment: Do mood peaks happen on days with bars?
+                </p>
+                <p className="text-xs text-gray-400 italic">
+                    If you see consistent patterns (e.g., mood rises when you exercise), that habit is working for you!
+                </p>
+            </div>
         </div>
     );
 };

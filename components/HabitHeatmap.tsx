@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { format, parseISO, subDays, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import type { Habit, HabitLog } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface HabitHeatmapProps {
     habit: Habit;
@@ -34,11 +35,26 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
     return (
         <div className="p-4 bg-dark-surface rounded-xl border border-white/5">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
-                    {habit.emoji} {habit.name}
-                </h3>
+                <div className="flex items-center">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                        {habit.emoji} {habit.name}
+                    </h3>
+                    <InfoTooltip text="This heatmap shows your consistency over the last 30 days. Each square represents one day. Teal = completed, gray = skipped. Look for patterns in your streaks and gaps." />
+                </div>
                 <div className="text-xs text-gray-500">
                     {completionRate}% complete
+                </div>
+            </div>
+
+            {/* Color Legend */}
+            <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
+                <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm bg-brand-teal" />
+                    <span>Completed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm bg-white/5" />
+                    <span>Skipped</span>
                 </div>
             </div>
 
@@ -47,8 +63,8 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                     <div
                         key={idx}
                         className={`w-3 h-3 rounded-sm transition-all ${day.completed
-                                ? 'bg-brand-teal hover:bg-brand-teal/80'
-                                : 'bg-white/5 hover:bg-white/10'
+                            ? 'bg-brand-teal hover:bg-brand-teal/80'
+                            : 'bg-white/5 hover:bg-white/10'
                             }`}
                         title={`${day.display}: ${day.completed ? 'Completed' : 'Skipped'}`}
                     />

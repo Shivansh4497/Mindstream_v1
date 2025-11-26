@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { format, parseISO, subDays, isAfter } from 'date-fns';
 import type { Entry, GranularSentiment } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface SentimentTimelineProps {
     entries: Entry[];
@@ -53,7 +54,20 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
 
     return (
         <div className="h-64 w-full p-4 bg-dark-surface rounded-xl border border-white/5">
-            <h3 className="text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">Mood Flow ({days} Days)</h3>
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Mood Flow ({days} Days)</h3>
+                    <InfoTooltip text="This chart shows your average emotional state each day. Higher values mean more positive moods, lower values mean more negative moods. The line trends help you spot patterns over time." />
+                </div>
+            </div>
+
+            {/* Sentiment Scale Legend */}
+            <div className="flex items-center justify-between text-xs text-gray-500 mb-3 px-2">
+                <span>😢 More Negative</span>
+                <span className="text-gray-400">Neutral</span>
+                <span>More Positive 😊</span>
+            </div>
+
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data}>
                     <defs>
@@ -90,6 +104,10 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
                     />
                 </AreaChart>
             </ResponsiveContainer>
+
+            <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                💡 <strong>How to read:</strong> Watch for peaks and valleys. If you see a dip, check your journal entries from those days to understand what was happening.
+            </p>
         </div>
     );
 };
