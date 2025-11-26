@@ -140,14 +140,18 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
         habitLogs: logsData || []
       });
 
-      // Save to database
-      const { error: insertError } = await supabase.from('chart_insights').insert({
-        user_id: user.id,
-        daily_pulse: generatedInsights.dailyPulse,
-        correlation_insight: generatedInsights.correlation,
-        sentiment_insight: generatedInsights.sentiment,
-        heatmap_insights: generatedInsights.heatmaps
-      });
+      // Save to database (UPSERT: update if exists, insert if not)
+      const { error: insertError } = await supabase.from('chart_insights')
+        .upsert({
+          user_id: user.id,
+          daily_pulse: generatedInsights.dailyPulse,
+          correlation_insight: generatedInsights.correlation,
+          sentiment_insight: generatedInsights.sentiment,
+          heatmap_insights: generatedInsights.heatmaps,
+          insight_date: new Date().toISOString().split('T')[0]
+        }, {
+          onConflict: 'user_id,insight_date'
+        });
 
       if (insertError) throw insertError;
 
