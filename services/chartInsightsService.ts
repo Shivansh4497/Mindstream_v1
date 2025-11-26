@@ -1,4 +1,31 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// Use same API key logic as geminiClient
+const getApiKey = (): string => {
+    try {
+        if (typeof process !== 'undefined' && process.env?.API_KEY) {
+            return process.env.API_KEY;
+        }
+    } catch (e) { }
+
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // @ts-ignore
+            if (import.meta.env.VITE_API_KEY) {
+                // @ts-ignore
+                return import.meta.env.VITE_API_KEY;
+            }
+            // @ts-ignore
+            if (import.meta.env.VITE_GEMINI_API_KEY) {
+                // @ts-ignore
+                return import.meta.env.VITE_GEMINI_API_KEY;
+            }
+        }
+    } catch (e) { }
+
+    return '';
+};
+
+const API_KEY = getApiKey();
+
 
 interface ChartInsightsInput {
     entries: Array<{
