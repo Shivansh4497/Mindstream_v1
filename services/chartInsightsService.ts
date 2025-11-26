@@ -1,7 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/genai';
-
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(API_KEY);
 
 interface ChartInsightsInput {
     entries: Array<{
@@ -21,50 +18,15 @@ interface ChartInsightsInput {
 }
 
 interface ChartInsightsOutput {
-    dailyPulse: string; // Holistic summary of all insights
+    dailyPulse: string;
     correlation: string;
     sentiment: string;
-    heatmaps: string[]; // One insight per habit
+    heatmaps: string[];
 }
-
-const insightsSchema = {
-    type: SchemaType.OBJECT,
-    properties: {
-        dailyPulse: {
-            type: SchemaType.STRING,
-            description: '2-3 sentence holistic summary synthesizing all insights into one actionable narrative.'
-        },
-        correlation: {
-            type: SchemaType.STRING,
-            description: 'One-line insight about habit-mood correlation for the selected habit. Be specific about percentages or patterns.'
-        },
-        sentiment: {
-            type: SchemaType.STRING,
-            description: 'One-line insight about overall mood trends. Mention specific dates or patterns if relevant.'
-        },
-        heatmaps: {
-            type: SchemaType.ARRAY,
-            description: 'Array of one-line insights, one for each habit. Focus on consistency, streaks, or gaps.',
-            items: {
-                type: SchemaType.STRING
-            }
-        }
-    },
-    required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
-};
 
 export async function generateChartInsights(
     data: ChartInsightsInput
 ): Promise<ChartInsightsOutput> {
-    const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash-exp',
-        generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: insightsSchema
-        }
-    });
-
-    // Build context from last 30 days
     const prompt = `You are analyzing a user's journaling data to generate actionable insights for their data visualization charts.
 
 **Data Summary:**
@@ -112,9 +74,39 @@ Generate 4 types of insights:
 Generate the insights in JSON format.`;
 
     try {
-        const result = await model.generateContent(prompt);
-        const response = result.response.text();
-        const parsed = JSON.parse(response);
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                        responseSchema: {
+                            type: 'object',
+                            properties: {
+                                dailyPulse: { type: 'string' },
+                                correlation: { type: 'string' },
+                                sentiment: { type: 'string' },
+                                heatmaps: { type: 'array', items: { type: 'string' } }
+                            },
+                            required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
+                        }
+                    }
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        if (!result.candidates || !result.candidates[0]) {
+            console.error('Gemini API Error:', JSON.stringify(result, null, 2));
+            throw new Error('Invalid response from Gemini API');
+        }
+
+        const text = result.candidates[0].content.parts[0].text;
+        const parsed = JSON.parse(text);
 
         return {
             dailyPulse: parsed.dailyPulse || 'Keep tracking your habits and mood to unlock personalized insights.',
