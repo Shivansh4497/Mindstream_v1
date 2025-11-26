@@ -54,65 +54,47 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
     );
 
     return (
-        <div className="h-64 w-full p-4 bg-dark-surface rounded-xl border border-white/5">
-            <div className="flex items-center mb-2">
-                <div className="flex items-center min-w-0">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Mood Flow ({days} Days)</h3>
-                    <InfoTooltip text="This area chart visualizes your daily emotional patterns by mapping journal sentiments to numeric scores (-1 to 1). The gradient shows trends over time. Peaks indicate positive days, dips show challenging periods." />
+        <div className="h-full w-full p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Mood Flow</h3>
+                    <InfoTooltip text="A gentle wave showing your emotional journey. Peaks are high energy/positive, valleys are low energy/challenging." />
                 </div>
+                <span className="text-xs text-brand-teal font-medium">Last {days} Days</span>
             </div>
 
-            {/* Sentiment Scale Legend */}
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-3 px-2">
-                <span>😢 More Negative</span>
-                <span className="text-gray-400">Neutral</span>
-                <span>More Positive 😊</span>
+            <div className="flex-1 relative">
+                {/* Custom Labels */}
+                <div className="absolute top-0 right-0 text-xs text-gray-500">Good Days</div>
+                <div className="absolute bottom-0 right-0 text-xs text-gray-500">Hard Days</div>
+
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data}>
+                        <defs>
+                            <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#2DD4BF" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#2DD4BF" stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px', color: '#F3F4F6', fontSize: '12px' }}
+                            itemStyle={{ color: '#2DD4BF' }}
+                            formatter={(value: number) => [value.toFixed(1), 'Mood']}
+                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                            cursor={{ stroke: 'rgba(255,255,255,0.1)' }}
+                        />
+                        <Area
+                            type="monotone"
+                            dataKey="score"
+                            stroke="#2DD4BF"
+                            strokeWidth={3}
+                            fillOpacity={1}
+                            fill="url(#colorScore)"
+                            animationDuration={1500}
+                        />
+                    </AreaChart>
+                </ResponsiveContainer>
             </div>
-
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data}>
-                    <defs>
-                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2DD4BF" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#2DD4BF" stopOpacity={0} />
-                        </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis
-                        dataKey="date"
-                        stroke="#9CA3AF"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                    />
-                    <YAxis
-                        hide
-                        domain={[-1, 1]}
-                    />
-                    <Tooltip
-                        contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px', color: '#F3F4F6' }}
-                        itemStyle={{ color: '#2DD4BF' }}
-                        formatter={(value: number) => [value.toFixed(1), 'Mood Score']}
-                        labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
-                    />
-                    <Area
-                        type="monotone"
-                        dataKey="score"
-                        stroke="#2DD4BF"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorScore)"
-                    />
-                </AreaChart>
-            </ResponsiveContainer>
-
-            {insight && (
-                <div className="mt-3 p-2 bg-brand-teal/10 border border-brand-teal/20 rounded-lg">
-                    <p className="text-xs text-brand-teal leading-relaxed">
-                        <strong>💡 AI Insight:</strong> {insight}
-                    </p>
-                </div>
-            )}
         </div>
     );
 };

@@ -1,15 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { ResponsiveContainer, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
-import { format, parseISO, subDays, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Cell, LabelList } from 'recharts';
+import { parseISO, subDays, isSameDay, startOfDay, eachDayOfInterval } from 'date-fns';
 import type { Entry, Habit, HabitLog, GranularSentiment } from '../types';
 import { InfoTooltip } from './InfoTooltip';
+import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 
 interface CorrelationDashboardProps {
     entries: Entry[];
     habits: Habit[];
     habitLogs: HabitLog[];
     days?: number;
-    insight?: string | null;
 }
 
 const SENTIMENT_SCORES: Record<GranularSentiment, number> = {
@@ -27,66 +27,98 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
     entries,
     habits,
     habitLogs,
-    days = 14,
-    insight = null
+    days = 14
 }) => {
     const [selectedHabitId, setSelectedHabitId] = useState<string | null>(
         habits.length > 0 ? habits[0].id : null
     );
 
-    const data = useMemo(() => {
+    const impactData = useMemo(() => {
+        if (!selectedHabitId) return null;
+
         const today = startOfDay(new Date());
         const firstDay = subDays(today, days - 1);
         const dateRange = eachDayOfInterval({ start: firstDay, end: today });
 
-        return dateRange.map(date => {
-            const dateStr = format(date, 'MMM d');
+        let withHabitTotal = 0;
+        let withHabitCount = 0;
+        let withoutHabitTotal = 0;
+        let withoutHabitCount = 0;
 
+        dateRange.forEach(date => {
             // Get sentiment for this day
             const dayEntries = entries.filter(e =>
                 isSameDay(parseISO(e.timestamp), date)
             );
-            const avgSentiment = dayEntries.length > 0
-                ? dayEntries.reduce((sum, e) => sum + getSentimentScore(e.primary_sentiment), 0) / dayEntries.length
-                : 0;
 
-            // Get habit completion for selected habit
-            const habitCompleted = selectedHabitId
-                ? habitLogs.some(log =>
-                    log.habit_id === selectedHabitId &&
-                    isSameDay(parseISO(log.completed_at), date)
-                )
-                : false;
+            if (dayEntries.length === 0) return; // Skip days with no mood data
 
-            return {
-                date: dateStr,
-                sentiment: Number(avgSentiment.toFixed(2)),
-                habitDone: habitCompleted ? 1 : 0
-            };
+            const avgSentiment = dayEntries.reduce((sum, e) => sum + getSentimentScore(e.primary_sentiment), 0) / dayEntries.length;
+
+            // Check if habit was done
+            const habitCompleted = habitLogs.some(log =>
+                log.habit_id === selectedHabitId &&
+                isSameDay(parseISO(log.completed_at), date)
+            );
+
+            if (habitCompleted) {
+                withHabitTotal += avgSentiment;
+                withHabitCount++;
+            } else {
+                withoutHabitTotal += avgSentiment;
+                withoutHabitCount++;
+            }
         });
+
+        const scoreWith = withHabitCount > 0 ? withHabitTotal / withHabitCount : 0;
+        const scoreWithout = withoutHabitCount > 0 ? withoutHabitTotal / withoutHabitCount : 0;
+        const difference = scoreWith - scoreWithout;
+        const percentChange = scoreWithout !== 0 ? ((scoreWith - scoreWithout) / Math.abs(scoreWithout)) * 100 : 0;
+
+        return {
+            with: scoreWith,
+            without: scoreWithout,
+            diff: difference,
+            percent: percentChange,
+            countWith: withHabitCount,
+            countWithout: withoutHabitCount
+        };
     }, [entries, habitLogs, selectedHabitId, days]);
 
     const selectedHabit = habits.find(h => h.id === selectedHabitId);
 
     if (habits.length === 0) return (
-        <div className="h-64 flex items-center justify-center text-gray-500 text-sm bg-white/5 rounded-lg border border-white/10">
-            Create some habits to see correlations
+        <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+            Create habits to see their impact
         </div>
     );
 
+    if (!impactData || (impactData.countWith === 0 && impactData.countWithout === 0)) return (
+        <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm gap-2">
+            <p>Not enough data yet</p>
+            <p className="text-xs opacity-60">Track your mood and habits to see insights</p>
+        </div>
+    );
+
+    const chartData = [
+        { name: 'Without Habit', score: impactData.without, fill: '#4B5563' }, // Gray
+        { name: 'With Habit', score: impactData.with, fill: '#2DD4BF' },       // Teal
+    ];
+
     return (
-        <div className="p-4 bg-dark-surface rounded-xl border border-white/5">
-            <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-                <div className="flex items-center min-w-0">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                        The Moat: Habit ↔ Mood Correlation
+        <div className="h-full flex flex-col p-4">
+            {/* Header / Controls */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        Impact Score
                     </h3>
-                    <InfoTooltip text="Composite chart overlaying habit completion (bars) with mood score (line). Use the dropdown to compare different habits. This visualization reveals which behaviors correlate with positive emotions." />
+                    <InfoTooltip text="See the difference! This compares your average mood on days you did the habit vs. days you didn't." />
                 </div>
                 <select
                     value={selectedHabitId || ''}
                     onChange={(e) => setSelectedHabitId(e.target.value)}
-                    className="text-xs bg-white/5 text-white rounded-lg px-3 py-1.5 border border-white/10 focus:outline-none focus:border-brand-teal flex-shrink-0"
+                    className="text-xs bg-white/5 text-white rounded-lg px-3 py-1.5 border border-white/10 focus:outline-none focus:border-brand-teal"
                 >
                     {habits.map(h => (
                         <option key={h.id} value={h.id}>
@@ -96,75 +128,51 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
                 </select>
             </div>
 
-            <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                        <XAxis
-                            dataKey="date"
-                            stroke="#9CA3AF"
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                        />
-                        <YAxis
-                            yAxisId="left"
-                            stroke="#2DD4BF"
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                            domain={[-1, 1]}
-                        />
-                        <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            stroke="#A78BFA"
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                            domain={[0, 1]}
-                        />
-                        <Tooltip
-                            contentStyle={{
-                                backgroundColor: '#1F2937',
-                                border: 'none',
-                                borderRadius: '8px',
-                                color: '#F3F4F6',
-                                fontSize: '12px'
-                            }}
-                            itemStyle={{ color: '#2DD4BF' }}
-                        />
-                        <Legend
-                            wrapperStyle={{ fontSize: '12px' }}
-                            iconType="circle"
-                        />
-                        <Bar
-                            yAxisId="right"
-                            dataKey="habitDone"
-                            fill="#A78BFA"
-                            opacity={0.6}
-                            name={selectedHabit ? `${selectedHabit.emoji} ${selectedHabit.name}` : 'Habit'}
-                        />
-                        <Line
-                            yAxisId="left"
-                            type="monotone"
-                            dataKey="sentiment"
-                            stroke="#2DD4BF"
-                            strokeWidth={2}
-                            dot={{ fill: '#2DD4BF', r: 3 }}
-                            name="Mood Score"
-                        />
-                    </ComposedChart>
-                </ResponsiveContainer>
+            {/* Big Impact Number */}
+            <div className="flex-1 flex flex-col items-center justify-center mb-4">
+                <div className="flex items-baseline gap-2">
+                    <span className={`text-5xl font-display font-bold ${impactData.diff > 0 ? 'text-brand-teal' : impactData.diff < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                        {impactData.diff > 0 ? '+' : ''}{Math.round(impactData.percent)}%
+                    </span>
+                    <span className="text-sm text-gray-400 font-medium">Mood Boost</span>
+                </div>
+                <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
+                    {impactData.diff > 0 ? <ArrowUpRight size={16} className="text-brand-teal" /> : impactData.diff < 0 ? <ArrowDownRight size={16} className="text-red-400" /> : <Minus size={16} />}
+                    <span>
+                        {impactData.diff > 0
+                            ? `You feel better when you ${selectedHabit?.name.toLowerCase()}`
+                            : `No clear benefit from ${selectedHabit?.name.toLowerCase()} yet`}
+                    </span>
+                </div>
             </div>
 
-            {insight && (
-                <div className="mt-3 p-3 bg-brand-teal/10 border border-brand-teal/20 rounded-lg">
-                    <p className="text-xs text-brand-teal leading-relaxed">
-                        <strong>💡 AI Insight:</strong> {insight}
-                    </p>
-                </div>
-            )}
+            {/* Simple Bar Chart */}
+            <div className="h-32 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                        <XAxis type="number" hide domain={[-1, 1]} />
+                        <YAxis
+                            type="category"
+                            dataKey="name"
+                            tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                            width={80}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={24}>
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                            <LabelList
+                                dataKey="score"
+                                position="right"
+                                formatter={(val: number) => val > 0 ? '😊' : val < 0 ? '😔' : '😐'}
+                                style={{ fontSize: '14px' }}
+                            />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
         </div>
     );
 };

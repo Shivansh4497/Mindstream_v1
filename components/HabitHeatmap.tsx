@@ -59,13 +59,13 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                 </div>
             </div>
 
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
                 {heatmapData.map((day, idx) => (
                     <div
                         key={idx}
-                        className={`w-3 h-3 rounded-sm transition-all ${day.completed
-                            ? 'bg-brand-teal hover:bg-brand-teal/80'
-                            : 'bg-white/5 hover:bg-white/10'
+                        className={`w-3 h-3 rounded-full transition-all duration-500 ${day.completed
+                            ? 'bg-brand-teal shadow-[0_0_8px_rgba(45,212,191,0.3)]'
+                            : 'bg-white/5'
                             }`}
                         title={`${day.display}: ${day.completed ? 'Completed' : 'Skipped'}`}
                     />
