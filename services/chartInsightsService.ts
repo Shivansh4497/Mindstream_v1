@@ -78,18 +78,19 @@ Generate 3 types of insights:
 
 1. **Correlation Insight** (for the main correlation chart):
    - Analyze if any habit shows a clear correlation with positive mood
-   - Be specific with numbers (e.g., "35% higher mood on meditation days")
-   - If no clear pattern, say "No strong correlation yet—keep logging!"
+   - If positive: "You feel 35% better when you meditate."
+   - If negative: "Reading seems to drain you (-3%). Try doing it in the morning?" (Suggest an experiment)
+   - If neutral: "No clear pattern yet. Try increasing the duration?"
 
 2. **Sentiment Insight** (for mood flow timeline):
    - Identify trends (improving, declining, stable)
-   - Mention specific dates if there are notable peaks/dips
-   - Be encouraging and empathetic
+   - Be a compassionate coach: "You bounced back from a hard week—great resilience."
+   - Avoid robotic descriptions like "Mood is trending up."
 
 3. **Heatmap Insights** (one for each habit):
-   - Comment on consistency, streaks, or gaps
-   - Provide actionable advice (e.g., "Try Mondays—you skip it most then")
-   - Keep it motivational
+   - Focus on the *why*, not just the *what*
+   - "You miss Mondays often. Maybe the goal is too big for a busy day?"
+   - "Great streak! You're building a solid routine."
 
 **Rules:**
 - Each insight must be ONE LINE ONLY (max 120 characters)
