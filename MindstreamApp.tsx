@@ -160,23 +160,27 @@ export const MindstreamApp: React.FC = () => {
                             onGenerateDaily={async (date, dayEntries) => {
                                 actions.setIsGeneratingReflection(date);
                                 const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
-                                await db.addReflection(user!.id, { ...res, date, type: 'daily' });
+                                const saved = await db.addReflection(user!.id, { ...res, date, type: 'daily' });
+                                actions.setReflections(prev => [...prev.filter(r => !(r.date === date && r.type === 'daily')), saved]);
                                 actions.setIsGeneratingReflection(null);
-                                window.location.reload();
                             }}
                             onGenerateWeekly={async (weekId, weekEntries) => {
                                 actions.setIsGeneratingReflection(weekId);
                                 const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
-                                await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
+                                const saved = await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
+                                // Override date with weekId for local state consistency
+                                const reflectionForState = { ...saved, date: weekId };
+                                actions.setReflections(prev => [...prev.filter(r => !(r.date === weekId && r.type === 'weekly')), reflectionForState]);
                                 actions.setIsGeneratingReflection(null);
-                                window.location.reload();
                             }}
                             onGenerateMonthly={async (monthId, monthEntries) => {
                                 actions.setIsGeneratingReflection(monthId);
                                 const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
-                                await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
+                                const saved = await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
+                                // Override date with monthId for local state consistency
+                                const reflectionForState = { ...saved, date: monthId };
+                                actions.setReflections(prev => [...prev.filter(r => !(r.date === monthId && r.type === 'monthly')), reflectionForState]);
                                 actions.setIsGeneratingReflection(null);
-                                window.location.reload();
                             }}
                             onExploreInChat={(summary) => {
                                 setView('chat');
