@@ -1,31 +1,4 @@
-// Use same API key logic as geminiClient
-const getApiKey = (): string => {
-    try {
-        if (typeof process !== 'undefined' && process.env?.API_KEY) {
-            return process.env.API_KEY;
-        }
-    } catch (e) { }
-
-    try {
-        if (typeof import.meta !== 'undefined' && import.meta.env) {
-            // @ts-ignore
-            if (import.meta.env.VITE_API_KEY) {
-                // @ts-ignore
-                return import.meta.env.VITE_API_KEY;
-            }
-            // @ts-ignore
-            if (import.meta.env.VITE_GEMINI_API_KEY) {
-                // @ts-ignore
-                return import.meta.env.VITE_GEMINI_API_KEY;
-            }
-        }
-    } catch (e) { }
-
-    return '';
-};
-
-const API_KEY = getApiKey();
-
+import { getAiClient, callWithFallback } from './geminiClient';
 
 interface ChartInsightsInput {
     entries: Array<{
@@ -54,6 +27,11 @@ interface ChartInsightsOutput {
 export async function generateChartInsights(
     data: ChartInsightsInput
 ): Promise<ChartInsightsOutput> {
+    const ai = getAiClient();
+    if (!ai) {
+        throw new Error('AI client not initialized. Please check your API key.');
+    }
+
     const prompt = `You are analyzing a user's journaling data to generate actionable insights for their data visualization charts.
 
 **Data Summary:**
@@ -98,42 +76,38 @@ Generate 4 types of insights:
 - Use emojis sparingly (max 1 per insight)
 - Focus on actionability, not just description
 
-Generate the insights in JSON format.`;
+Return ONLY valid JSON in this exact format:
+{
+  "dailyPulse": "...",
+  "correlation": "...",
+  "sentiment": "...",
+  "heatmaps": ["...", "..."]
+}`;
 
     try {
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: 'application/json',
-                        responseSchema: {
-                            type: 'object',
-                            properties: {
-                                dailyPulse: { type: 'string' },
-                                correlation: { type: 'string' },
-                                sentiment: { type: 'string' },
-                                heatmaps: { type: 'array', items: { type: 'string' } }
-                            },
-                            required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
-                        }
+        const result = await callWithFallback(async (model) => {
+            // @ts-ignore
+            const response = await ai.models.generateContent({
+                model,
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'object',
+                        properties: {
+                            dailyPulse: { type: 'string' },
+                            correlation: { type: 'string' },
+                            sentiment: { type: 'string' },
+                            heatmaps: { type: 'array', items: { type: 'string' } }
+                        },
+                        required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
                     }
-                })
-            }
-        );
+                }
+            });
+            return response.text || "{}";
+        });
 
-        const result = await response.json();
-
-        if (!result.candidates || !result.candidates[0]) {
-            console.error('Gemini API Error:', JSON.stringify(result, null, 2));
-            throw new Error('Invalid response from Gemini API');
-        }
-
-        const text = result.candidates[0].content.parts[0].text;
-        const parsed = JSON.parse(text);
+        const parsed = JSON.parse(result);
 
         return {
             dailyPulse: parsed.dailyPulse || 'Keep tracking your habits and mood to unlock personalized insights.',
