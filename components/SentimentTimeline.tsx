@@ -54,8 +54,8 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
 
     return (
         <div className="h-64 w-full p-4 bg-dark-surface rounded-xl border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
+            <div className="flex items-center mb-2">
+                <div className="flex items-center min-w-0">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Mood Flow ({days} Days)</h3>
                     <InfoTooltip text="This chart shows your average emotional state each day. Higher values mean more positive moods, lower values mean more negative moods. The line trends help you spot patterns over time." />
                 </div>

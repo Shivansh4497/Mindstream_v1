@@ -34,14 +34,14 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
 
     return (
         <div className="p-4 bg-dark-surface rounded-xl border border-white/5">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+            <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex items-center min-w-0 flex-1">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider truncate">
                         {habit.emoji} {habit.name}
                     </h3>
                     <InfoTooltip text="This heatmap shows your consistency over the last 30 days. Each square represents one day. Teal = completed, gray = skipped. Look for patterns in your streaks and gaps." />
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
                     {completionRate}% complete
                 </div>
             </div>

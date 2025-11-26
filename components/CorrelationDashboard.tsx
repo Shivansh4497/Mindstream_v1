@@ -74,9 +74,9 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
 
     return (
         <div className="p-4 bg-dark-surface rounded-xl border border-white/5">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+            <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                <div className="flex items-center min-w-0">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         The Moat: Habit ↔ Mood Correlation
                     </h3>
                     <InfoTooltip text="This is Mindstream's core insight: see how your habits affect your mood. Purple bars = days you did the habit. Teal line = your mood score. When bars align with mood peaks, that habit likely helps you feel better!" />
@@ -84,7 +84,7 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
                 <select
                     value={selectedHabitId || ''}
                     onChange={(e) => setSelectedHabitId(e.target.value)}
-                    className="text-xs bg-white/5 text-white rounded-lg px-3 py-1.5 border border-white/10 focus:outline-none focus:border-brand-teal"
+                    className="text-xs bg-white/5 text-white rounded-lg px-3 py-1.5 border border-white/10 focus:outline-none focus:border-brand-teal flex-shrink-0"
                 >
                     {habits.map(h => (
                         <option key={h.id} value={h.id}>
