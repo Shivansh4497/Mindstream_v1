@@ -6,6 +6,7 @@ const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const geminiKey = Deno.env.get('GEMINI_API_KEY')!;
 
 interface ChartInsights {
+    dailyPulse: string;
     correlation: string;
     sentiment: string;
     heatmaps: string[];
@@ -23,7 +24,13 @@ async function generateInsights(data: any): Promise<ChartInsights> {
 ${data.habits.map((h: any) => `- ${h.emoji} ${h.name}`).join('\n')}
 
 **Task:**
-Generate 3 types of insights:
+Generate 4 types of insights:
+
+0. **Daily Pulse** (holistic summary):
+   - Synthesize ALL data into 2-3 sentences
+   - Structure: [Progress Acknowledgment] + [Key Pattern] + [Actionable Suggestion]
+   - Example: "You're building momentum with Reading (3-day streak!), but your mood dipped slightly this week. Try a lighter session today—your best days happen when you ease in."
+   - Be warm, specific, and coach-like
 
 1. **Correlation Insight**: Analyze if any habit correlates with positive mood. Be specific with numbers.
 2. **Sentiment Insight**: Identify trends (improving, declining, stable). Mention specific dates if relevant.
@@ -34,7 +41,7 @@ Generate 3 types of insights:
 - Be specific and data-driven
 - Focus on actionability
 
-Return JSON: { "correlation": "...", "sentiment": "...", "heatmaps": ["...", "..."] }`;
+Return JSON: { "dailyPulse": "...", "correlation": "...", "sentiment": "...", "heatmaps": ["...", "..."] }`;
 
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + geminiKey, {
         method: 'POST',
@@ -46,11 +53,12 @@ Return JSON: { "correlation": "...", "sentiment": "...", "heatmaps": ["...", "..
                 response_schema: {
                     type: 'object',
                     properties: {
+                        dailyPulse: { type: 'string' },
                         correlation: { type: 'string' },
                         sentiment: { type: 'string' },
                         heatmaps: { type: 'array', items: { type: 'string' } }
                     },
-                    required: ['correlation', 'sentiment', 'heatmaps']
+                    required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
                 }
             }
         })
@@ -107,25 +115,14 @@ serve(async (req) => {
                     habitLogs: habitLogs || []
                 });
 
-                // Store insights in database
-                const { error: insertError } = await supabase.from('chart_insights').insert([
-                    {
-                        user_id: user.id,
-                        insight_type: 'correlation',
-                        insight_text: insights.correlation
-                    },
-                    {
-                        user_id: user.id,
-                        insight_type: 'sentiment',
-                        insight_text: insights.sentiment
-                    },
-                    ...insights.heatmaps.map((text: string, idx: number) => ({
-                        user_id: user.id,
-                        insight_type: 'heatmap',
-                        insight_text: text,
-                        metadata: { habit_index: idx }
-                    }))
-                ]);
+                // Store insights in database (new schema)
+                const { error: insertError } = await supabase.from('chart_insights').insert({
+                    user_id: user.id,
+                    daily_pulse: insights.dailyPulse,
+                    correlation_insight: insights.correlation,
+                    sentiment_insight: insights.sentiment,
+                    heatmap_insights: insights.heatmaps
+                });
 
                 if (insertError) {
                     console.error(`Error inserting insights for user ${user.id}:`, insertError);

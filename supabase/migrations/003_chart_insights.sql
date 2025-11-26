@@ -1,22 +1,25 @@
 -- Chart Insights Table
 -- Stores daily AI-generated insights for data visualization charts
 CREATE TABLE IF NOT EXISTS chart_insights (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  insight_type TEXT NOT NULL CHECK (insight_type IN ('correlation', 'sentiment', 'heatmap')),
-  insight_text TEXT NOT NULL,
-  metadata JSONB DEFAULT '{}',
-  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- AI-generated insights
+    correlation_insight TEXT,
+    sentiment_insight TEXT,
+    daily_pulse TEXT, -- Holistic summary of all insights
+    heatmap_insights JSONB, -- Array of insights for each habit
+    
+    -- Metadata
+    insight_date DATE DEFAULT CURRENT_DATE,
+    
+    UNIQUE(user_id, insight_date)
 );
 
 -- Index for efficient lookups by user and date
 CREATE INDEX IF NOT EXISTS idx_chart_insights_user_date 
-ON chart_insights(user_id, generated_at DESC);
-
--- Index for insight type filtering
-CREATE INDEX IF NOT EXISTS idx_chart_insights_type 
-ON chart_insights(user_id, insight_type, generated_at DESC);
+ON chart_insights(user_id, insight_date DESC);
 
 -- Row Level Security (RLS)
 ALTER TABLE chart_insights ENABLE ROW LEVEL SECURITY;

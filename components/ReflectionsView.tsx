@@ -10,6 +10,7 @@ import { AIStatus } from '../MindstreamApp';
 import { supabase } from '../services/supabaseClient';
 import { InsightDeck } from './InsightDeck';
 import { InsightCard } from './InsightCard';
+import { DailyPulse } from './DailyPulse';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly' | 'insights';
 
@@ -54,11 +55,13 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
   debugOutput
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
+  const [showCharts, setShowCharts] = useState(false);
   const [insights, setInsights] = useState<{
+    dailyPulse: string | null;
     correlation: string | null;
     sentiment: string | null;
     heatmaps: Array<{ habitIndex: number; text: string }>;
-  }>({ correlation: null, sentiment: null, heatmaps: [] });
+  }>({ dailyPulse: null, correlation: null, sentiment: null, heatmaps: [] });
 
   // Fetch insights when Insights tab is active
   useEffect(() => {
@@ -72,28 +75,26 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
         .from('chart_insights')
         .select('*')
         .eq('user_id', user.id)
-        .order('generated_at', { ascending: false })
-        .limit(20); // Get latest insights
+        .order('insight_date', { ascending: false })
+        .limit(1); // Get latest daily insights
 
       if (!data || data.length === 0) {
         console.log('No insights found');
         return;
       }
 
-      // Group by type and get the latest
-      const correlation = data.find(i => i.insight_type === 'correlation');
-      const sentiment = data.find(i => i.insight_type === 'sentiment');
-      const heatmaps = data
-        .filter(i => i.insight_type === 'heatmap')
-        .map(i => ({
-          habitIndex: i.metadata?.habit_index ?? 0,
-          text: i.insight_text
+      const latestInsight = data[0];
+      const heatmaps = Array.isArray(latestInsight.heatmap_insights)
+        ? latestInsight.heatmap_insights.map((text: string, idx: number) => ({
+          habitIndex: idx,
+          text
         }))
-        .sort((a, b) => a.habitIndex - b.habitIndex);
+        : [];
 
       setInsights({
-        correlation: correlation?.insight_text ?? null,
-        sentiment: sentiment?.insight_text ?? null,
+        dailyPulse: latestInsight.daily_pulse ?? null,
+        correlation: latestInsight.correlation_insight ?? null,
+        sentiment: latestInsight.sentiment_insight ?? null,
         heatmaps
       });
     }
@@ -135,64 +136,67 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
       case 'insights':
         return (
           <div className="p-4">
-            <header className="mb-6">
-              < h2 className="text-2xl font-bold font-display text-white mb-2" > Data Insights</h2 >
-              <p className="text-sm text-gray-400">Visualize the connection between your habits and feelings.</p>
-            </header >
+            <DailyPulse
+              summary={insights.dailyPulse || "Keep tracking your habits and mood to unlock personalized insights."}
+              isExpanded={showCharts}
+              onToggle={() => setShowCharts(!showCharts)}
+            />
 
-            <div className="py-8">
-              <InsightDeck>
-                {/* Card 1: Correlation (The Moat) */}
-                <InsightCard
-                  title="The Moat: Habit ↔ Mood"
-                  insight={insights.correlation || "Analyzing your patterns..."}
-                  color="bg-brand-teal"
-                >
-                  <div className="h-[300px] w-full">
-                    <CorrelationDashboard
-                      entries={entries}
-                      habits={habits}
-                      habitLogs={habitLogs}
-                      days={14}
-                    // No insight prop passed here, so no duplicate box
-                    />
-                  </div>
-                </InsightCard>
-
-                {/* Card 2: Sentiment (Mood Flow) */}
-                <InsightCard
-                  title="Mood Flow"
-                  insight={insights.sentiment || "Tracking your emotional trends..."}
-                  color="bg-indigo-500"
-                >
-                  <div className="h-[200px] w-full">
-                    <SentimentTimeline
-                      entries={entries}
-                      days={14}
-                    />
-                  </div>
-                </InsightCard>
-
-                {/* Cards 3+: Habits */}
-                {habits.slice(0, 3).map((habit, idx) => (
+            {showCharts && (
+              <div className="py-4">
+                <InsightDeck>
+                  {/* Card 1: Correlation (The Moat) */}
                   <InsightCard
-                    key={habit.id}
-                    title={`Consistency: ${habit.name}`}
-                    insight={insights.heatmaps[idx]?.text || "Building your streak..."}
-                    color="bg-purple-500"
+                    title="The Moat: Habit ↔ Mood"
+                    insight={insights.correlation || "Analyzing your patterns..."}
+                    color="bg-brand-teal"
                   >
-                    <div className="h-[200px] w-full">
-                      <HabitHeatmap
-                        habit={habit}
-                        logs={habitLogs.filter(log => log.habit_id === habit.id)}
-                        days={30}
+                    <div className="h-[300px] w-full">
+                      <CorrelationDashboard
+                        entries={entries}
+                        habits={habits}
+                        habitLogs={habitLogs}
+                        days={14}
+                      // No insight prop passed here, so no duplicate box
                       />
                     </div>
                   </InsightCard>
-                ))}
-              </InsightDeck>
-            </div>
-          </div >
+
+                  {/* Card 2: Sentiment (Mood Flow) */}
+                  <InsightCard
+                    title="Mood Flow"
+                    insight={insights.sentiment || "Tracking your emotional trends..."}
+                    color="bg-indigo-500"
+                  >
+                    <div className="h-[200px] w-full">
+                      <SentimentTimeline
+                        entries={entries}
+                        days={14}
+                      />
+                    </div>
+                  </InsightCard>
+
+                  {/* Cards 3+: Habits */}
+                  {habits.slice(0, 3).map((habit, idx) => (
+                    <InsightCard
+                      key={habit.id}
+                      title={`Consistency: ${habit.name}`}
+                      insight={insights.heatmaps[idx]?.text || "Building your streak..."}
+                      color="bg-purple-500"
+                    >
+                      <div className="h-[200px] w-full">
+                        <HabitHeatmap
+                          habit={habit}
+                          logs={habitLogs.filter(log => log.habit_id === habit.id)}
+                          days={30}
+                        />
+                      </div>
+                    </InsightCard>
+                  ))}
+                </InsightDeck>
+              </div>
+            )}
+          </div>
         );
       default:
         return null;

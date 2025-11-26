@@ -21,6 +21,7 @@ interface ChartInsightsInput {
 }
 
 interface ChartInsightsOutput {
+    dailyPulse: string; // Holistic summary of all insights
     correlation: string;
     sentiment: string;
     heatmaps: string[]; // One insight per habit
@@ -29,6 +30,10 @@ interface ChartInsightsOutput {
 const insightsSchema = {
     type: SchemaType.OBJECT,
     properties: {
+        dailyPulse: {
+            type: SchemaType.STRING,
+            description: '2-3 sentence holistic summary synthesizing all insights into one actionable narrative.'
+        },
         correlation: {
             type: SchemaType.STRING,
             description: 'One-line insight about habit-mood correlation for the selected habit. Be specific about percentages or patterns.'
@@ -45,7 +50,7 @@ const insightsSchema = {
             }
         }
     },
-    required: ['correlation', 'sentiment', 'heatmaps']
+    required: ['dailyPulse', 'correlation', 'sentiment', 'heatmaps']
 };
 
 export async function generateChartInsights(
@@ -74,7 +79,13 @@ ${data.habits.map(h => `- ${h.emoji} ${h.name}`).join('\n')}
 ${data.entries.slice(0, 10).map(e => `${e.timestamp}: ${e.primary_sentiment || 'neutral'} - ${e.title || ''}`).join('\n')}
 
 **Task:**
-Generate 3 types of insights:
+Generate 4 types of insights:
+
+0. **Daily Pulse** (holistic summary):
+   - Synthesize ALL data into 2-3 sentences
+   - Structure: [Progress Acknowledgment] + [Key Pattern] + [Actionable Suggestion]
+   - Example: "You're building momentum with Reading (3-day streak!), but your mood dipped slightly this week. Try a lighter session today—your best days happen when you ease in."
+   - Be warm, specific, and coach-like
 
 1. **Correlation Insight** (for the main correlation chart):
    - Analyze if any habit shows a clear correlation with positive mood
@@ -106,6 +117,7 @@ Generate the insights in JSON format.`;
         const parsed = JSON.parse(response);
 
         return {
+            dailyPulse: parsed.dailyPulse || 'Keep tracking your habits and mood to unlock personalized insights.',
             correlation: parsed.correlation || 'Not enough data to find patterns yet.',
             sentiment: parsed.sentiment || 'Keep journaling to see trends emerge!',
             heatmaps: parsed.heatmaps || data.habits.map(() => 'Track more days to unlock insights.')
@@ -114,6 +126,7 @@ Generate the insights in JSON format.`;
         console.error('Error generating chart insights:', error);
         // Graceful fallback
         return {
+            dailyPulse: 'Keep tracking your habits and mood to unlock personalized insights.',
             correlation: 'Complete more habit logs to reveal correlations.',
             sentiment: 'Keep journaling regularly to see patterns.',
             heatmaps: data.habits.map(h => `Build consistency with ${h.name} to see trends.`)
