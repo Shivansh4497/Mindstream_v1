@@ -157,6 +157,8 @@ export const MindstreamApp: React.FC = () => {
                             entries={state.entries}
                             intentions={state.intentions}
                             reflections={state.reflections}
+                            habits={state.habits}
+                            habitLogs={state.habitLogs}
                             onGenerateDaily={async (date, dayEntries) => {
                                 actions.setIsGeneratingReflection(date);
                                 const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
