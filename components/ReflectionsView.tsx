@@ -7,7 +7,7 @@ import { SentimentTimeline } from './SentimentTimeline';
 import { HabitHeatmap } from './HabitHeatmap';
 import { CorrelationDashboard } from './CorrelationDashboard';
 import { AIStatus } from '../MindstreamApp';
-import { supabase } from '../services/database';
+import { supabase } from '../services/supabaseClient';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly' | 'insights';
 
