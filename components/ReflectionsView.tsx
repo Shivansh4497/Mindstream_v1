@@ -164,9 +164,23 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
         heatmaps
       });
       setLastGeneratedDate(new Date().toISOString().split('T')[0]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating pulse:', error);
-      alert('Failed to generate pulse. Please try again.');
+
+      // Provide specific error messages
+      let errorMessage = 'Failed to generate pulse. ';
+
+      if (error.message?.includes('GEMINI_API_KEY')) {
+        errorMessage += 'API key is missing. Please check your environment variables.';
+      } else if (error.message?.includes('insufficient data')) {
+        errorMessage += 'You need at least 3 journal entries to generate insights.';
+      } else if (error.message?.includes('Gemini API')) {
+        errorMessage += 'The AI service returned an error. Please try again in a moment.';
+      } else {
+        errorMessage += 'Please try again. If the problem persists, check the console for details.';
+      }
+
+      alert(errorMessage);
     } finally {
       setIsGeneratingPulse(false);
     }
