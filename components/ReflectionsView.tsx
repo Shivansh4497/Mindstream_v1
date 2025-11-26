@@ -11,8 +11,6 @@ import { supabase } from '../services/supabaseClient';
 import { InsightDeck } from './InsightDeck';
 import { InsightCard } from './InsightCard';
 import { DailyPulse } from './DailyPulse';
-import { generateChartInsights } from '../services/chartInsightsService';
-import { parseISO, subDays } from 'date-fns';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly' | 'insights';
 
@@ -107,60 +105,41 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
     fetchInsights();
   }, [activeTimeframe]);
 
-  // Generate Daily Pulse (user-triggered)
+  // Generate Daily Pulse (user-triggered via Edge Function)
   const handleGeneratePulse = async () => {
     setIsGeneratingPulse(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('User not authenticated');
 
-      // Fetch last 30 days of data
-      const thirtyDaysAgo = subDays(new Date(), 30);
-      const [{ data: entriesData }, { data: habitsData }, { data: logsData }] = await Promise.all([
-        supabase.from('entries').select('timestamp, primary_sentiment, title')
-          .eq('user_id', user.id)
-          .gte('timestamp', thirtyDaysAgo.toISOString())
-          .order('timestamp', { ascending: false }),
-        supabase.from('habits').select('id, name, emoji')
-          .eq('user_id', user.id),
-        supabase.from('habit_logs').select('habit_id, completed_at')
-          .eq('user_id', user.id)
-          .gte('completed_at', thirtyDaysAgo.toISOString())
-      ]);
+      // Call Edge Function
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/generate-pulse`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      if (!entriesData || entriesData.length < 3) {
-        alert('You need at least 3 journal entries to generate insights.');
-        return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to generate pulse');
       }
 
-      // Generate insights using Gemini
-      const generatedInsights = await generateChartInsights({
-        entries: entriesData,
-        habits: habitsData || [],
-        habitLogs: logsData || []
-      });
-
-      // Save to database
-      const { error: insertError } = await supabase.from('chart_insights').insert({
-        user_id: user.id,
-        daily_pulse: generatedInsights.dailyPulse,
-        correlation_insight: generatedInsights.correlation,
-        sentiment_insight: generatedInsights.sentiment,
-        heatmap_insights: generatedInsights.heatmaps
-      });
-
-      if (insertError) throw insertError;
-
       // Update UI immediately
-      const heatmaps = generatedInsights.heatmaps.map((text: string, idx: number) => ({
+      const heatmaps = result.insights.heatmaps.map((text: string, idx: number) => ({
         habitIndex: idx,
         text
       }));
 
       setInsights({
-        dailyPulse: generatedInsights.dailyPulse,
-        correlation: generatedInsights.correlation,
-        sentiment: generatedInsights.sentiment,
+        dailyPulse: result.insights.dailyPulse,
+        correlation: result.insights.correlation,
+        sentiment: result.insights.sentiment,
         heatmaps
       });
       setLastGeneratedDate(new Date().toISOString().split('T')[0]);
@@ -170,14 +149,14 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
       // Provide specific error messages
       let errorMessage = 'Failed to generate pulse. ';
 
-      if (error.message?.includes('GEMINI_API_KEY')) {
-        errorMessage += 'API key is missing. Please check your environment variables.';
-      } else if (error.message?.includes('insufficient data')) {
+      if (error.message?.includes('not authenticated')) {
+        errorMessage += 'Please log in again.';
+      } else if (error.message?.includes('3 journal entries')) {
         errorMessage += 'You need at least 3 journal entries to generate insights.';
-      } else if (error.message?.includes('Gemini API')) {
-        errorMessage += 'The AI service returned an error. Please try again in a moment.';
+      } else if (error.message?.includes('quota')) {
+        errorMessage += 'API rate limit reached. Please try again in a minute.';
       } else {
-        errorMessage += 'Please try again. If the problem persists, check the console for details.';
+        errorMessage += error.message || 'Please try again.';
       }
 
       alert(errorMessage);
