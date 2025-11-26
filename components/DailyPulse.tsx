@@ -1,14 +1,41 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { Sparkles, Loader2, Clock } from 'lucide-react';
+import { differenceInHours, parseISO } from 'date-fns';
 
 interface DailyPulseProps {
     summary: string;
-    isExpanded: boolean;
-    onToggle: () => void;
+    lastGeneratedDate: string | null;
+    isGenerating: boolean;
+    onGenerate: () => void;
 }
 
-export const DailyPulse: React.FC<DailyPulseProps> = ({ summary, isExpanded, onToggle }) => {
+export const DailyPulse: React.FC<DailyPulseProps> = ({
+    summary,
+    lastGeneratedDate,
+    isGenerating,
+    onGenerate
+}) => {
+    const canGenerate = useMemo(() => {
+        if (!lastGeneratedDate) return true;
+
+        const lastGenerated = parseISO(lastGeneratedDate);
+        const hoursSinceGeneration = differenceInHours(new Date(), lastGenerated);
+
+        return hoursSinceGeneration >= 24;
+    }, [lastGeneratedDate]);
+
+    const hoursUntilNext = useMemo(() => {
+        if (!lastGeneratedDate || canGenerate) return 0;
+
+        const lastGenerated = parseISO(lastGeneratedDate);
+        const hoursSinceGeneration = differenceInHours(new Date(), lastGenerated);
+
+        return 24 - hoursSinceGeneration;
+    }, [lastGeneratedDate, canGenerate]);
+
+    const hasInsight = summary !== "Keep tracking your habits and mood to unlock personalized insights.";
+
     return (
         <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -21,32 +48,52 @@ export const DailyPulse: React.FC<DailyPulseProps> = ({ summary, isExpanded, onT
 
             <div className="relative p-6">
                 {/* Header */}
-                <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="w-5 h-5 text-brand-teal" />
-                    <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                        Your Daily Pulse
-                    </h2>
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-brand-teal" />
+                        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                            Your Daily Pulse
+                        </h2>
+                    </div>
+
+                    {/* Generate Button */}
+                    {canGenerate ? (
+                        <button
+                            onClick={onGenerate}
+                            disabled={isGenerating}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-teal text-brand-indigo font-semibold text-sm hover:bg-brand-teal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                            {isGenerating ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="w-4 h-4" />
+                                    {hasInsight ? 'Refresh Pulse' : 'Generate Pulse'}
+                                </>
+                            )}
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700/50 text-gray-400 text-sm">
+                            <Clock className="w-4 h-4" />
+                            Next update in {hoursUntilNext}h
+                        </div>
+                    )}
                 </div>
 
                 {/* Summary Text */}
-                <p className="text-lg md:text-xl font-display font-medium leading-relaxed text-white mb-4">
-                    {summary || "Keep tracking your habits and mood to unlock personalized insights."}
+                <p className="text-lg md:text-xl font-display font-medium leading-relaxed text-white">
+                    {summary}
                 </p>
 
-                {/* Toggle Button */}
-                <button
-                    onClick={onToggle}
-                    className="flex items-center gap-2 text-sm text-brand-teal hover:text-brand-teal/80 transition-colors group"
-                >
-                    <span>{isExpanded ? 'Hide Details' : 'View Details'}</span>
-                    <motion.div
-                        animate={{ rotate: isExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </motion.div>
-                    <div className="h-px flex-1 bg-brand-teal/20 group-hover:bg-brand-teal/40 transition-colors" />
-                </button>
+                {/* Last Updated */}
+                {lastGeneratedDate && (
+                    <p className="text-xs text-gray-500 mt-3">
+                        Last updated: {new Date(lastGeneratedDate).toLocaleDateString()}
+                    </p>
+                )}
             </div>
         </motion.div>
     );

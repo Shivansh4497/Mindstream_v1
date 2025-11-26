@@ -11,6 +11,8 @@ import { supabase } from '../services/supabaseClient';
 import { InsightDeck } from './InsightDeck';
 import { InsightCard } from './InsightCard';
 import { DailyPulse } from './DailyPulse';
+import { generateChartInsights } from '../services/chartInsightsService';
+import { parseISO, subDays } from 'date-fns';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly' | 'insights';
 
@@ -56,6 +58,8 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
   const [showCharts, setShowCharts] = useState(false);
+  const [isGeneratingPulse, setIsGeneratingPulse] = useState(false);
+  const [lastGeneratedDate, setLastGeneratedDate] = useState<string | null>(null);
   const [insights, setInsights] = useState<{
     dailyPulse: string | null;
     correlation: string | null;
@@ -97,10 +101,76 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
         sentiment: latestInsight.sentiment_insight ?? null,
         heatmaps
       });
+      setLastGeneratedDate(latestInsight.insight_date);
     }
 
     fetchInsights();
   }, [activeTimeframe]);
+
+  // Generate Daily Pulse (user-triggered)
+  const handleGeneratePulse = async () => {
+    setIsGeneratingPulse(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Fetch last 30 days of data
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      const [{ data: entriesData }, { data: habitsData }, { data: logsData }] = await Promise.all([
+        supabase.from('entries').select('timestamp, primary_sentiment, title')
+          .eq('user_id', user.id)
+          .gte('timestamp', thirtyDaysAgo.toISOString())
+          .order('timestamp', { ascending: false }),
+        supabase.from('habits').select('id, name, emoji')
+          .eq('user_id', user.id),
+        supabase.from('habit_logs').select('habit_id, completed_at')
+          .eq('user_id', user.id)
+          .gte('completed_at', thirtyDaysAgo.toISOString())
+      ]);
+
+      if (!entriesData || entriesData.length < 3) {
+        alert('You need at least 3 journal entries to generate insights.');
+        return;
+      }
+
+      // Generate insights using Gemini
+      const generatedInsights = await generateChartInsights({
+        entries: entriesData,
+        habits: habitsData || [],
+        habitLogs: logsData || []
+      });
+
+      // Save to database
+      const { error: insertError } = await supabase.from('chart_insights').insert({
+        user_id: user.id,
+        daily_pulse: generatedInsights.dailyPulse,
+        correlation_insight: generatedInsights.correlation,
+        sentiment_insight: generatedInsights.sentiment,
+        heatmap_insights: generatedInsights.heatmaps
+      });
+
+      if (insertError) throw insertError;
+
+      // Update UI immediately
+      const heatmaps = generatedInsights.heatmaps.map((text: string, idx: number) => ({
+        habitIndex: idx,
+        text
+      }));
+
+      setInsights({
+        dailyPulse: generatedInsights.dailyPulse,
+        correlation: generatedInsights.correlation,
+        sentiment: generatedInsights.sentiment,
+        heatmaps
+      });
+      setLastGeneratedDate(new Date().toISOString().split('T')[0]);
+    } catch (error) {
+      console.error('Error generating pulse:', error);
+      alert('Failed to generate pulse. Please try again.');
+    } finally {
+      setIsGeneratingPulse(false);
+    }
+  };
 
   const { daily, weekly, monthly } = useMemo(() => {
     const daily: Reflection[] = [];
@@ -138,9 +208,20 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
           <div className="p-4">
             <DailyPulse
               summary={insights.dailyPulse || "Keep tracking your habits and mood to unlock personalized insights."}
-              isExpanded={showCharts}
-              onToggle={() => setShowCharts(!showCharts)}
+              lastGeneratedDate={lastGeneratedDate}
+              isGenerating={isGeneratingPulse}
+              onGenerate={handleGeneratePulse}
             />
+
+            {/* View Details Toggle */}
+            {insights.dailyPulse && (
+              <button
+                onClick={() => setShowCharts(!showCharts)}
+                className="w-full text-center py-3 text-sm text-brand-teal hover:text-brand-teal/80 transition-colors font-medium"
+              >
+                {showCharts ? '↑ Hide Details' : '↓ View Details'}
+              </button>
+            )}
 
             {showCharts && (
               <div className="py-4">
