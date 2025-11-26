@@ -7,9 +7,10 @@ interface HabitHeatmapProps {
     habit: Habit;
     logs: HabitLog[];
     days?: number;
+    insight?: string | null;
 }
 
-export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 30 }) => {
+export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 30, insight = null }) => {
     const heatmapData = useMemo(() => {
         const today = startOfDay(new Date());
         const firstDay = subDays(today, days - 1);
@@ -39,7 +40,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider truncate">
                         {habit.emoji} {habit.name}
                     </h3>
-                    <InfoTooltip text="This heatmap shows your consistency over the last 30 days. Each square represents one day. Teal = completed, gray = skipped. Look for patterns in your streaks and gaps." />
+                    <InfoTooltip text="GitHub-style contribution graph showing daily habit completion. Each cell represents one day. Use this to identify streaks, spot gaps, and understand your consistency patterns." />
                 </div>
                 <div className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
                     {completionRate}% complete
@@ -75,6 +76,14 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                 <span>{format(subDays(new Date(), days - 1), 'MMM d')}</span>
                 <span>Today</span>
             </div>
+
+            {insight && (
+                <div className="mt-3 p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                    <p className="text-xs text-purple-300 leading-relaxed">
+                        <strong>💡 AI Insight:</strong> {insight}
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

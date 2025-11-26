@@ -7,6 +7,7 @@ import { InfoTooltip } from './InfoTooltip';
 interface SentimentTimelineProps {
     entries: Entry[];
     days?: number;
+    insight?: string | null;
 }
 
 const SENTIMENT_SCORES: Record<GranularSentiment, number> = {
@@ -20,7 +21,7 @@ const getSentimentScore = (s?: GranularSentiment | null): number => {
     return SENTIMENT_SCORES[s] || 0;
 };
 
-export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, days = 14 }) => {
+export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, days = 14, insight = null }) => {
     const data = useMemo(() => {
         const cutoff = subDays(new Date(), days);
         const relevantEntries = entries
@@ -57,7 +58,7 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
             <div className="flex items-center mb-2">
                 <div className="flex items-center min-w-0">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Mood Flow ({days} Days)</h3>
-                    <InfoTooltip text="This chart shows your average emotional state each day. Higher values mean more positive moods, lower values mean more negative moods. The line trends help you spot patterns over time." />
+                    <InfoTooltip text="This area chart visualizes your daily emotional patterns by mapping journal sentiments to numeric scores (-1 to 1). The gradient shows trends over time. Peaks indicate positive days, dips show challenging periods." />
                 </div>
             </div>
 
@@ -105,9 +106,13 @@ export const SentimentTimeline: React.FC<SentimentTimelineProps> = ({ entries, d
                 </AreaChart>
             </ResponsiveContainer>
 
-            <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                💡 <strong>How to read:</strong> Watch for peaks and valleys. If you see a dip, check your journal entries from those days to understand what was happening.
-            </p>
+            {insight && (
+                <div className="mt-3 p-2 bg-brand-teal/10 border border-brand-teal/20 rounded-lg">
+                    <p className="text-xs text-brand-teal leading-relaxed">
+                        <strong>💡 AI Insight:</strong> {insight}
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

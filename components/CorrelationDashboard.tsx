@@ -9,6 +9,7 @@ interface CorrelationDashboardProps {
     habits: Habit[];
     habitLogs: HabitLog[];
     days?: number;
+    insight?: string | null;
 }
 
 const SENTIMENT_SCORES: Record<GranularSentiment, number> = {
@@ -26,7 +27,8 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
     entries,
     habits,
     habitLogs,
-    days = 14
+    days = 14,
+    insight = null
 }) => {
     const [selectedHabitId, setSelectedHabitId] = useState<string | null>(
         habits.length > 0 ? habits[0].id : null
@@ -79,7 +81,7 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         The Moat: Habit ↔ Mood Correlation
                     </h3>
-                    <InfoTooltip text="This is Mindstream's core insight: see how your habits affect your mood. Purple bars = days you did the habit. Teal line = your mood score. When bars align with mood peaks, that habit likely helps you feel better!" />
+                    <InfoTooltip text="Composite chart overlaying habit completion (bars) with mood score (line). Use the dropdown to compare different habits. This visualization reveals which behaviors correlate with positive emotions." />
                 </div>
                 <select
                     value={selectedHabitId || ''}
@@ -156,17 +158,13 @@ export const CorrelationDashboard: React.FC<CorrelationDashboardProps> = ({
                 </ResponsiveContainer>
             </div>
 
-            <div className="mt-3 space-y-2">
-                <p className="text-xs text-gray-500 leading-relaxed">
-                    <strong className="text-white">💡 How to interpret:</strong><br />
-                    • <span className="text-purple-400">Purple bars</span> = Days you did <strong>{selectedHabit?.name}</strong><br />
-                    • <span className="text-brand-teal">Teal line</span> = Your mood score (higher = better)<br />
-                    • Look for alignment: Do mood peaks happen on days with bars?
-                </p>
-                <p className="text-xs text-gray-400 italic">
-                    If you see consistent patterns (e.g., mood rises when you exercise), that habit is working for you!
-                </p>
-            </div>
+            {insight && (
+                <div className="mt-3 p-3 bg-brand-teal/10 border border-brand-teal/20 rounded-lg">
+                    <p className="text-xs text-brand-teal leading-relaxed">
+                        <strong>💡 AI Insight:</strong> {insight}
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

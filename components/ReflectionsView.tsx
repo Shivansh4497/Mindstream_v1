@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Entry, Intention, Reflection, AISuggestion, Habit, HabitLog } from '../types';
 import { DailyReflections } from './DailyReflections';
 import { WeeklyReflections } from './WeeklyReflections';
@@ -7,6 +7,7 @@ import { SentimentTimeline } from './SentimentTimeline';
 import { HabitHeatmap } from './HabitHeatmap';
 import { CorrelationDashboard } from './CorrelationDashboard';
 import { AIStatus } from '../MindstreamApp';
+import { supabase } from '../services/database';
 
 type ReflectionTimeframe = 'daily' | 'weekly' | 'monthly' | 'insights';
 
@@ -51,6 +52,52 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
   debugOutput
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState<ReflectionTimeframe>('daily');
+  const [insights, setInsights] = useState<{
+    correlation: string | null;
+    sentiment: string | null;
+    heatmaps: Array<{ habitIndex: number; text: string }>;
+  }>({ correlation: null, sentiment: null, heatmaps: [] });
+
+  // Fetch insights when Insights tab is active
+  useEffect(() => {
+    if (activeTimeframe !== 'insights') return;
+
+    async function fetchInsights() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from('chart_insights')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('generated_at', { ascending: false })
+        .limit(20); // Get latest insights
+
+      if (!data || data.length === 0) {
+        console.log('No insights found');
+        return;
+      }
+
+      // Group by type and get the latest
+      const correlation = data.find(i => i.insight_type === 'correlation');
+      const sentiment = data.find(i => i.insight_type === 'sentiment');
+      const heatmaps = data
+        .filter(i => i.insight_type === 'heatmap')
+        .map(i => ({
+          habitIndex: i.metadata?.habit_index ?? 0,
+          text: i.insight_text
+        }))
+        .sort((a, b) => a.habitIndex - b.habitIndex);
+
+      setInsights({
+        correlation: correlation?.insight_text ?? null,
+        sentiment: sentiment?.insight_text ?? null,
+        heatmaps
+      });
+    }
+
+    fetchInsights();
+  }, [activeTimeframe]);
 
   const { daily, weekly, monthly } = useMemo(() => {
     const daily: Reflection[] = [];
@@ -97,19 +144,22 @@ export const ReflectionsView: React.FC<ReflectionsViewProps> = ({
                 habits={habits}
                 habitLogs={habitLogs}
                 days={14}
+                insight={insights.correlation}
               />
 
               <SentimentTimeline
                 entries={entries}
                 days={14}
+                insight={insights.sentiment}
               />
 
-              {habits.slice(0, 3).map(habit => (
+              {habits.slice(0, 3).map((habit, idx) => (
                 <HabitHeatmap
                   key={habit.id}
                   habit={habit}
                   logs={habitLogs.filter(log => log.habit_id === habit.id)}
                   days={30}
+                  insight={insights.heatmaps[idx]?.text ?? null}
                 />
               ))}
             </div>
