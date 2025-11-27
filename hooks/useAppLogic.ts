@@ -71,7 +71,7 @@ export const useAppLogic = () => {
             try {
                 setAiStatus('verifying');
                 // Load only first page of entries
-                const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs, userInsights, userAutoReflections] = await Promise.all([
+                const [userEntries, userReflections, userIntentions, userHabits, userHabitLogs, userInsights, userAutoReflections, userNudges] = await Promise.all([
                     db.getEntries(user.id, 0, PAGE_SIZE),
                     db.getReflections(user.id),
                     db.getIntentions(user.id),
