@@ -22,12 +22,14 @@ import { EditEntryModal } from './components/EditEntryModal';
 import { EditHabitModal } from './components/EditHabitModal';
 import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
+import { SettingsView } from './components/SettingsView';
+
 import { useAppLogic } from './hooks/useAppLogic';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import * as gemini from './services/geminiService';
 import * as reflections from './services/reflectionService';
 import * as db from './services/dbService';
-import type { Entry, IntentionTimeframe, Habit } from './types';
+import type { Entry, IntentionTimeframe, Habit, HabitFrequency } from './types';
 
 const ONBOARDING_COMPLETE_STEP = 5;
 
@@ -87,7 +89,10 @@ export const MindstreamApp: React.FC = () => {
 
     return (
         <div className="flex flex-col h-[100dvh] bg-brand-indigo overflow-hidden">
-            <Header onSearchClick={() => setShowSearchModal(true)} />
+            <Header
+                onSearchClick={() => setShowSearchModal(true)}
+                onSettingsClick={() => setView('settings')}
+            />
             <AIStatusBanner status={state.aiStatus} error={state.aiError} />
 
             <main className="flex-grow overflow-hidden relative">
@@ -233,10 +238,23 @@ export const MindstreamApp: React.FC = () => {
                             />
                         </motion.div>
                     )}
+
+                    {view === 'settings' && (
+                        <motion.div
+                            key="settings"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col z-30 bg-brand-indigo"
+                        >
+                            <SettingsView onBack={() => setView('stream')} />
+                        </motion.div>
+                    )}
                 </AnimatePresence>
             </main>
 
-            <NavBar activeView={view} onViewChange={setView} />
+            {view !== 'settings' && <NavBar activeView={view} onViewChange={setView} />}
 
             {/* Modals */}
             {showSearchModal && <SearchModal entries={state.entries} reflections={state.reflections} onClose={() => setShowSearchModal(false)} />}

@@ -1,6 +1,7 @@
 
 import type { Entry, Message, HabitCategory, InstantInsight, EntrySuggestion, UserContext } from '../types';
 import { getAiClient, callWithFallback, parseGeminiJson, verifyApiKey, GEMINI_API_KEY_AVAILABLE } from './geminiClient';
+import { getPersonality, DEFAULT_PERSONALITY, PersonalityId } from '../config/personalities';
 
 export { verifyApiKey, GEMINI_API_KEY_AVAILABLE };
 
@@ -36,7 +37,7 @@ const buildSystemContext = (context: UserContext): string => {
         .slice(0, 10) // Limit to 10 most recent
         .map(e => `- On ${new Date(e.timestamp).toLocaleDateString()}, feeling ${e.primary_sentiment}, I wrote: "${e.text}"`)
         .join('\n');
-    
+
     const intentionsSummary = context.pendingIntentions
         .slice(0, 10) // Limit to top 10
         .map(i => `- My [${i.timeframe}] goal is: "${i.text}"`)
@@ -48,9 +49,9 @@ const buildSystemContext = (context: UserContext): string => {
         .join('\n');
 
     let contextString = "";
-    
+
     if (context.searchResults && context.searchResults.length > 0) {
-        const historySummary = context.searchResults.map(e => 
+        const historySummary = context.searchResults.map(e =>
             `- [HISTORICAL] On ${new Date(e.timestamp).toLocaleDateString()}: "${e.text}"`
         ).join('\n');
         contextString += `RELEVANT PAST HISTORY (Use this to answer specific questions about the past):\n${historySummary}\n\n`;
@@ -75,7 +76,11 @@ export const getChatResponseStream = async (history: Message[], context: UserCon
 
     const contextPrompt = buildSystemContext(context);
 
-    const systemInstruction = `You are Mindstream, a friendly and insightful AI companion. 
+    // Get personality from context or default
+    const personalityId = (context.personalityId as PersonalityId) || DEFAULT_PERSONALITY;
+    const personality = getPersonality(personalityId) || getPersonality(DEFAULT_PERSONALITY);
+
+    const systemInstruction = `${personality.systemPrompt}
     
 You have access to my full context, including recent entries, goals, habits, and relevant historical entries found via search.
 ${contextPrompt}
@@ -86,12 +91,12 @@ Use this information to answer my questions contextually.
 - Be empathetic and concise.`;
 
     const userPrompt = history[history.length - 1].text;
-    
+
     const chatHistory = history.slice(0, -1).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'model',
         parts: [{ text: msg.text }],
     }));
-    
+
     // @ts-ignore
     return callWithFallback(m => ai.models.generateContentStream({
         model: m,
@@ -133,9 +138,9 @@ export const generateEntrySuggestions = async (entryText: string): Promise<Entry
 // --- CORE PROCESSING ---
 
 export const processEntry = async (entryText: string): Promise<Omit<Entry, 'id' | 'user_id' | 'timestamp' | 'text'>> => {
-  const ai = getAiClient();
-  if (!ai) throw new Error("AI client not initialized.");
-  const prompt = `
+    const ai = getAiClient();
+    if (!ai) throw new Error("AI client not initialized.");
+    const prompt = `
     Analyze this journal entry. 
     1. Generate a short, punchy Title (max 5 words).
     2. Assign 1-3 relevant Tags.
@@ -146,17 +151,17 @@ export const processEntry = async (entryText: string): Promise<Omit<Entry, 'id' 
     
     Respond with JSON: { "title": "...", "tags": ["..."], "primary_sentiment": "...", "emoji": "..." }
   `;
-  
-  return callWithFallback(async (model) => {
-      // @ts-ignore
-    const res = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json" } });
-    return parseGeminiJson(res.text || "{}");
-  });
+
+    return callWithFallback(async (model) => {
+        // @ts-ignore
+        const res = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json" } });
+        return parseGeminiJson(res.text || "{}");
+    });
 };
 
 export const analyzeHabit = async (habitName: string): Promise<{ emoji: string, category: HabitCategory }> => {
     const ai = getAiClient();
-    if (!ai) return { emoji: "⚡️", category: "System" }; 
+    if (!ai) return { emoji: "⚡️", category: "System" };
     const prompt = `
       Classify this habit into one of these categories: Health, Growth, Career, Finance, Connection, System.
       Also assign a relevant Emoji.

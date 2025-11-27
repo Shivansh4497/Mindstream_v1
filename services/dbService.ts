@@ -643,20 +643,36 @@ export const getAutoReflections = async (userId: string, limit: number = 1): Pro
     }
 };
 
+export const getUserPersonality = async (userId: string): Promise<string> => {
+    if (!supabase) return 'stoic';
+    try {
+        const { data } = await supabase
+            .from('user_preferences')
+            .select('ai_personality')
+            .eq('user_id', userId)
+            .single();
+        return data?.ai_personality || 'stoic';
+    } catch (e) {
+        return 'stoic';
+    }
+}
+
 export const getUserContext = async (userId: string): Promise<UserContext> => {
     if (!supabase) throw new Error("Supabase not initialized");
 
-    const [entries, intentions, habits, reflections] = await Promise.all([
+    const [entries, intentions, habits, reflections, personalityId] = await Promise.all([
         getEntries(userId, 0, 15),
         getIntentions(userId),
         getHabits(userId),
-        getReflections(userId)
+        getReflections(userId),
+        getUserPersonality(userId)
     ]);
 
     return {
         recentEntries: entries,
         pendingIntentions: intentions.filter(i => i.status === 'pending'),
         activeHabits: habits,
-        latestReflection: reflections.length > 0 ? reflections[0] : null
+        latestReflection: reflections.length > 0 ? reflections[0] : null,
+        personalityId
     };
 }

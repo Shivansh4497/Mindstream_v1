@@ -7,13 +7,13 @@ import { RepeatIcon } from './icons/RepeatIcon';
 
 // An icon for the "Stream" view is defined inline to avoid creating new files.
 const StreamIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
-    </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
+  </svg>
 );
 
 
-export type View = 'stream' | 'reflections' | 'chat' | 'intentions' | 'habits';
+export type View = 'stream' | 'reflections' | 'chat' | 'intentions' | 'habits' | 'settings';
 
 interface NavBarProps {
   activeView: View;
@@ -36,14 +36,14 @@ export const NavBar: React.FC<NavBarProps> = ({ activeView, onViewChange, isChat
         const isActive = activeView === item.id;
         const isDisabled = item.id === 'chat' && isChatDisabled;
         const Icon = item.icon;
-        
+
         let buttonClasses = `flex flex-col items-center justify-center w-16 h-14 rounded-lg transition-colors `;
         if (isDisabled) {
-            buttonClasses += 'text-gray-600 cursor-not-allowed';
+          buttonClasses += 'text-gray-600 cursor-not-allowed';
         } else if (isActive) {
-            buttonClasses += 'bg-brand-teal/20 text-brand-teal';
+          buttonClasses += 'bg-brand-teal/20 text-brand-teal';
         } else {
-            buttonClasses += 'text-gray-400 hover:bg-white/10 hover:text-white';
+          buttonClasses += 'text-gray-400 hover:bg-white/10 hover:text-white';
         }
 
         return (

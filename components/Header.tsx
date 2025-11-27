@@ -4,13 +4,15 @@ import { useAuth } from '../context/AuthContext';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import * as db from '../services/dbService';
+import { Settings } from 'lucide-react';
 
 interface HeaderProps {
   onSearchClick: () => void;
+  onSettingsClick?: () => void;
   subtitle?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
+export const Header: React.FC<HeaderProps> = ({ onSearchClick, onSettingsClick, subtitle }) => {
   const { profile, logout, user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -19,13 +21,13 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
     if (confirm("Are you sure you want to delete your account? This is irreversible.")) {
       // 1. Delete data from DB
       await db.deleteAccount(user.id);
-      
+
       // 2. Clear local storage flags so the Onboarding Wizard triggers again
       // We remove the user-specific key
       window.localStorage.removeItem(`onboardingStep_${user.id}`);
       // And the generic one just in case (cleaner slate)
       window.localStorage.removeItem('hasSeenPrivacy');
-      
+
       // 3. Logout
       await logout();
     }
@@ -55,6 +57,13 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, subtitle }) => {
                 <div className="px-4 py-2 text-sm text-gray-400 border-b border-white/10">
                   {profile.email}
                 </div>
+                <button
+                  onClick={() => { setMenuOpen(false); onSettingsClick?.(); }}
+                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </button>
                 <button
                   onClick={logout}
                   className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"

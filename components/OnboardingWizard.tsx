@@ -8,6 +8,7 @@ import { FloatingBubbles } from './FloatingBubbles';
 import * as gemini from '../services/geminiService';
 import * as db from '../services/dbService';
 import type { InstantInsight } from '../types';
+import { PersonalitySelector } from './PersonalitySelector';
 
 interface OnboardingWizardProps {
   userId: string;
@@ -56,7 +57,7 @@ const triggers: Record<LifeArea, string[]> = {
 const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 if (recognition) {
-  recognition.continuous = false; 
+  recognition.continuous = false;
   recognition.interimResults = true;
   recognition.lang = 'en-US';
 }
@@ -68,13 +69,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
   const [selectedTrigger, setSelectedTrigger] = useState<string | null>(null);
   const [elaboration, setElaboration] = useState('');
   const [insight, setInsight] = useState<InstantInsight | null>(null);
-  
+
   // Enhancements
   const [isListening, setIsListening] = useState(false);
   const [processingText, setProcessingText] = useState("Connecting patterns...");
   const [displayedInsight, setDisplayedInsight] = useState('');
   const [showMicPulse, setShowMicPulse] = useState(false);
-  
+
   const recognitionRef = useRef(recognition);
 
   // Idle timer for Mic Pulse
@@ -101,7 +102,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       }
       if (finalTranscript) {
         setElaboration(prev => prev + (prev.length > 0 ? ' ' : '') + finalTranscript);
-        setIsListening(false); 
+        setIsListening(false);
       }
     };
 
@@ -117,8 +118,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-        alert("Sorry, your browser doesn't support voice recognition.");
-        return;
+      alert("Sorry, your browser doesn't support voice recognition.");
+      return;
     }
     if (isListening) {
       recognitionRef.current.stop();
@@ -134,13 +135,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     if (step === 'awe' && insight) {
       let i = 0;
       const text = insight.insight;
-      setDisplayedInsight(''); 
-      
+      setDisplayedInsight('');
+
       const interval = setInterval(() => {
         setDisplayedInsight(text.slice(0, i + 1));
         i++;
         if (i > text.length) clearInterval(interval);
-      }, 30); 
+      }, 30);
 
       return () => clearInterval(interval);
     }
@@ -157,20 +158,20 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       ];
       let i = 0;
       setProcessingText(steps[0]);
-      
+
       const interval = setInterval(() => {
         i++;
         if (i < steps.length) {
           setProcessingText(steps[i]);
         }
-      }, 1500); 
+      }, 1500);
 
       return () => clearInterval(interval);
     }
   }, [step, selectedArea, selectedTrigger]);
 
   const handleEnterSanctuary = () => setStep('spark');
-  
+
   const handleSentimentSelect = (sentiment: Sentiment) => {
     setSelectedSentiment(sentiment);
     setStep('container');
@@ -188,103 +189,103 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
   // Fixed Logic Gap: Comprehensive Prompt Matrix
   const getPromptPlaceholder = () => {
-      if (!selectedTrigger || !selectedSentiment) return "I'm thinking about...";
-      
-      const isPositive = ['Excited', 'Calm', 'Inspired', 'Grateful', 'Joyful', 'Hopeful', 'Proud', 'Content'].includes(selectedSentiment);
-      
-      const negativePrompts: Record<string, string> = {
-        // Work
-        'Deadlines': "Which deliverable is weighing on you the most?",
-        'Conflict': "What happened that caused this tension?",
-        'Burnout': "What specifically is draining your energy right now?",
-        'Imposter Syndrome': "What is one specific task making you doubt yourself?",
-        'Boredom': "What feels uninspiring about your work right now?",
-        // Relationships
-        'Misunderstanding': "What do you wish they understood?",
-        'Distance': "Who are you missing right now, and why?",
-        'Boundaries': "Where do you feel your limits were crossed?",
-        'Loneliness': "What kind of connection are you craving?",
-        'Trust': "What happened to shake your trust?",
-        // Health
-        'Fatigue': "What is stopping you from resting?",
-        'Sleep': "What thoughts are keeping you awake?",
-        'Diet': "How is your body reacting to your recent choices?",
-        'Body Image': "What negative thought is cycling in your mind?",
-        'Pain': "How is this physical sensation affecting your mood?",
-        // Self
-        'Purpose': "What feels meaningless right now?",
-        'Motivation': "What block is standing in your way?",
-        'Self-Worth': "What is making you question your value?",
-        'Regret': "What past action are you holding onto?",
-        'Growth': "Where do you feel stuck in your journey?",
-        // Finance
-        'Debt': "What specific financial worry is on your mind?",
-        'Budgeting': "Where is the stress coming from in your finances?",
-        'Spending': "What purchase are you feeling unsure about?",
-        'Future Security': "What 'what if' scenario is worrying you?",
-        'Income': "How is your current income affecting your peace of mind?"
-      };
+    if (!selectedTrigger || !selectedSentiment) return "I'm thinking about...";
 
-      const positivePrompts: Record<string, string> = {
-        // Work
-        'Deadlines': "What progress are you celebrating?",
-        'Conflict': "How did you handle that situation well?",
-        'Burnout': "How are you finding balance today?",
-        'Imposter Syndrome': "How did you overcome that doubt today?",
-        'Boredom': "What new interest is sparking your curiosity?",
-        // Relationships
-        'Misunderstanding': "How did you find clarity?",
-        'Distance': "How are you bridging the gap today?",
-        'Boundaries': "How did protecting your energy help you?",
-        'Loneliness': "Who made you feel seen today?",
-        'Trust': "What strengthened your trust today?",
-        // Health
-        'Fatigue': "How are you prioritizing your rest?",
-        'Sleep': "How is your energy feeling after resting?",
-        'Diet': "How are you nourishing yourself today?",
-        'Body Image': "What do you appreciate about your body right now?",
-        'Pain': "How are you being gentle with yourself?",
-        // Self
-        'Purpose': "What reinforced your sense of purpose today?",
-        'Motivation': "What is fueling your drive right now?",
-        'Self-Worth': "What reinforced your value today?",
-        'Regret': "What lesson have you made peace with?",
-        'Growth': "What small step forward did you take?",
-        // Finance
-        'Debt': "What positive step did you take for your finances?",
-        'Budgeting': "How did you stay on track today?",
-        'Spending': "What purchase brought you genuine value?",
-        'Future Security': "What is making you feel secure right now?",
-        'Income': "What are you grateful for regarding your resources?"
-      };
+    const isPositive = ['Excited', 'Calm', 'Inspired', 'Grateful', 'Joyful', 'Hopeful', 'Proud', 'Content'].includes(selectedSentiment);
 
-      const map = isPositive ? positivePrompts : negativePrompts;
-      
-      if (map[selectedTrigger]) return map[selectedTrigger];
+    const negativePrompts: Record<string, string> = {
+      // Work
+      'Deadlines': "Which deliverable is weighing on you the most?",
+      'Conflict': "What happened that caused this tension?",
+      'Burnout': "What specifically is draining your energy right now?",
+      'Imposter Syndrome': "What is one specific task making you doubt yourself?",
+      'Boredom': "What feels uninspiring about your work right now?",
+      // Relationships
+      'Misunderstanding': "What do you wish they understood?",
+      'Distance': "Who are you missing right now, and why?",
+      'Boundaries': "Where do you feel your limits were crossed?",
+      'Loneliness': "What kind of connection are you craving?",
+      'Trust': "What happened to shake your trust?",
+      // Health
+      'Fatigue': "What is stopping you from resting?",
+      'Sleep': "What thoughts are keeping you awake?",
+      'Diet': "How is your body reacting to your recent choices?",
+      'Body Image': "What negative thought is cycling in your mind?",
+      'Pain': "How is this physical sensation affecting your mood?",
+      // Self
+      'Purpose': "What feels meaningless right now?",
+      'Motivation': "What block is standing in your way?",
+      'Self-Worth': "What is making you question your value?",
+      'Regret': "What past action are you holding onto?",
+      'Growth': "Where do you feel stuck in your journey?",
+      // Finance
+      'Debt': "What specific financial worry is on your mind?",
+      'Budgeting': "Where is the stress coming from in your finances?",
+      'Spending': "What purchase are you feeling unsure about?",
+      'Future Security': "What 'what if' scenario is worrying you?",
+      'Income': "How is your current income affecting your peace of mind?"
+    };
 
-      // Fallback dynamic generation (Linguistically safe)
-      return `Tell me more about your ${selectedSentiment} feelings regarding ${selectedTrigger}.`;
+    const positivePrompts: Record<string, string> = {
+      // Work
+      'Deadlines': "What progress are you celebrating?",
+      'Conflict': "How did you handle that situation well?",
+      'Burnout': "How are you finding balance today?",
+      'Imposter Syndrome': "How did you overcome that doubt today?",
+      'Boredom': "What new interest is sparking your curiosity?",
+      // Relationships
+      'Misunderstanding': "How did you find clarity?",
+      'Distance': "How are you bridging the gap today?",
+      'Boundaries': "How did protecting your energy help you?",
+      'Loneliness': "Who made you feel seen today?",
+      'Trust': "What strengthened your trust today?",
+      // Health
+      'Fatigue': "How are you prioritizing your rest?",
+      'Sleep': "How is your energy feeling after resting?",
+      'Diet': "How are you nourishing yourself today?",
+      'Body Image': "What do you appreciate about your body right now?",
+      'Pain': "How are you being gentle with yourself?",
+      // Self
+      'Purpose': "What reinforced your sense of purpose today?",
+      'Motivation': "What is fueling your drive right now?",
+      'Self-Worth': "What reinforced your value today?",
+      'Regret': "What lesson have you made peace with?",
+      'Growth': "What small step forward did you take?",
+      // Finance
+      'Debt': "What positive step did you take for your finances?",
+      'Budgeting': "How did you stay on track today?",
+      'Spending': "What purchase brought you genuine value?",
+      'Future Security': "What is making you feel secure right now?",
+      'Income': "What are you grateful for regarding your resources?"
+    };
+
+    const map = isPositive ? positivePrompts : negativePrompts;
+
+    if (map[selectedTrigger]) return map[selectedTrigger];
+
+    // Fallback dynamic generation (Linguistically safe)
+    return `Tell me more about your ${selectedSentiment} feelings regarding ${selectedTrigger}.`;
   };
 
   const handleAnalyze = async () => {
     if (!selectedSentiment || !selectedArea || !selectedTrigger || !elaboration.trim()) return;
-    
+
     setStep('processing');
-    
+
     try {
       const insightData = await gemini.generateInstantInsight(
-          elaboration, 
-          selectedSentiment, 
-          selectedArea, 
-          selectedTrigger
+        elaboration,
+        selectedSentiment,
+        selectedArea,
+        selectedTrigger
       );
       setInsight(insightData);
 
       const aiEntryData = await gemini.processEntry(elaboration);
       const enhancedTags = [
-          ...(aiEntryData.tags || []), 
-          selectedArea, 
-          selectedTrigger
+        ...(aiEntryData.tags || []),
+        selectedArea,
+        selectedTrigger
       ];
 
       await db.addEntry(userId, {
@@ -306,13 +307,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     }
   };
 
-  const bgClass = selectedSentiment 
-    ? sentimentGradients[selectedSentiment] 
+  const bgClass = selectedSentiment
+    ? sentimentGradients[selectedSentiment]
     : 'bg-brand-indigo';
 
   return (
     <div className={`h-screen w-screen transition-colors duration-1000 ease-in-out ${bgClass} flex flex-col items-center justify-center p-6 overflow-hidden relative`}>
-      
+
       {/* Step 1: Sanctuary */}
       {step === 'sanctuary' && (
         <div className="text-center animate-fade-in flex flex-col items-center relative z-10">
@@ -321,7 +322,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
           </div>
           <h1 className="text-3xl font-bold font-display text-white mb-4">Your Private Sanctuary</h1>
           <p className="text-gray-300 max-w-md mb-12 text-lg leading-relaxed">
-            Mindstream is an encrypted space for your unfiltered mind. 
+            Mindstream is an encrypted space for your unfiltered mind.
             What you write here is seen only by you.
           </p>
           <button
@@ -331,6 +332,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
             <span>Enter Sanctuary</span>
             <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />
           </button>
+        </div>
+      )}
+
+      {/* Step 1.5: Personality */}
+      {step === 'personality' && (
+        <div className="w-full max-w-6xl px-6 animate-fade-in relative z-10 h-full overflow-y-auto py-10 flex items-center justify-center">
+          <PersonalitySelector onSelect={() => setStep('spark')} />
         </div>
       )}
 
@@ -379,7 +387,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {step === 'friction' && selectedArea && (
         <div className="flex flex-col items-center w-full animate-fade-in relative z-10">
           <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center">
-             What specific theme is weighing on you?
+            What specific theme is weighing on you?
           </h2>
           <div className="flex flex-wrap justify-center gap-3 max-w-2xl w-full">
             {triggers[selectedArea].map((trigger) => (
@@ -399,55 +407,54 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {step === 'elaboration' && selectedSentiment && (
         <>
           <FloatingBubbles sentiment={selectedSentiment} visible={elaboration.length === 0 && !isListening} />
-          
+
           <div className="max-w-xl w-full animate-fade-in-up flex flex-col items-center relative z-10">
-              <div className="flex items-center gap-2 mb-6 text-sm text-brand-teal/80 font-mono uppercase tracking-widest bg-dark-surface/30 px-3 py-1 rounded-full backdrop-blur-sm">
-                   <span>{selectedSentiment}</span>
-                   <span>•</span>
-                   <span>{selectedArea}</span>
-                   <span>•</span>
-                   <span>{selectedTrigger}</span>
-              </div>
-              
-              <h2 className="text-2xl font-bold font-display text-white mb-6 text-center">
-                 {getPromptPlaceholder()}
-              </h2>
-              
-              <div className="w-full relative">
-                  <textarea
-                      value={elaboration}
-                      onChange={(e) => setElaboration(e.target.value)}
-                      placeholder={isListening ? "Listening..." : "Type here or tap the mic..."}
-                      className="w-full h-40 bg-dark-surface/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all"
-                      autoFocus
-                  />
-                  <button 
-                      onClick={toggleListening}
-                      className={`absolute bottom-4 right-4 p-3 rounded-full transition-all duration-500 ${
-                        isListening 
-                          ? 'bg-brand-teal text-brand-indigo shadow-[0_0_15px_rgba(44,229,195,0.5)] scale-110' 
-                          : showMicPulse 
-                            ? 'bg-white/20 text-white animate-pulse shadow-[0_0_10px_rgba(255,255,255,0.3)]' 
-                            : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
-                      title="Use Voice Input"
-                  >
-                      <MicIcon className="w-6 h-6" />
-                  </button>
-              </div>
-              
-              <div className="mt-8 flex justify-between items-center w-full">
-                  <span className={`text-sm font-medium transition-colors ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
-                      {elaboration.length < 10 ? 'Just one sentence is enough...' : 'Ready to analyze'}
-                  </span>
-                  <button
-                      onClick={handleAnalyze}
-                      disabled={elaboration.length < 10}
-                      className="bg-white text-brand-indigo font-bold py-3 px-8 rounded-full hover:bg-brand-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                  >
-                      Analyze
-                  </button>
-              </div>
+            <div className="flex items-center gap-2 mb-6 text-sm text-brand-teal/80 font-mono uppercase tracking-widest bg-dark-surface/30 px-3 py-1 rounded-full backdrop-blur-sm">
+              <span>{selectedSentiment}</span>
+              <span>•</span>
+              <span>{selectedArea}</span>
+              <span>•</span>
+              <span>{selectedTrigger}</span>
+            </div>
+
+            <h2 className="text-2xl font-bold font-display text-white mb-6 text-center">
+              {getPromptPlaceholder()}
+            </h2>
+
+            <div className="w-full relative">
+              <textarea
+                value={elaboration}
+                onChange={(e) => setElaboration(e.target.value)}
+                placeholder={isListening ? "Listening..." : "Type here or tap the mic..."}
+                className="w-full h-40 bg-dark-surface/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all"
+                autoFocus
+              />
+              <button
+                onClick={toggleListening}
+                className={`absolute bottom-4 right-4 p-3 rounded-full transition-all duration-500 ${isListening
+                  ? 'bg-brand-teal text-brand-indigo shadow-[0_0_15px_rgba(44,229,195,0.5)] scale-110'
+                  : showMicPulse
+                    ? 'bg-white/20 text-white animate-pulse shadow-[0_0_10px_rgba(255,255,255,0.3)]'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                title="Use Voice Input"
+              >
+                <MicIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="mt-8 flex justify-between items-center w-full">
+              <span className={`text-sm font-medium transition-colors ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
+                {elaboration.length < 10 ? 'Just one sentence is enough...' : 'Ready to analyze'}
+              </span>
+              <button
+                onClick={handleAnalyze}
+                disabled={elaboration.length < 10}
+                className="bg-white text-brand-indigo font-bold py-3 px-8 rounded-full hover:bg-brand-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              >
+                Analyze
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -455,46 +462,46 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {/* Step 6: Processing */}
       {step === 'processing' && (
         <div className="flex flex-col items-center justify-center relative z-10">
-           <div className="relative w-24 h-24 mb-8">
-              <div className="absolute inset-0 border-4 border-brand-teal/20 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-              <SparklesIcon className="absolute inset-0 m-auto w-8 h-8 text-brand-teal animate-pulse" />
-           </div>
-           <h2 className="text-xl font-bold text-white animate-pulse text-center min-h-[2rem] transition-all duration-300">
-             {processingText}
-           </h2>
+          <div className="relative w-24 h-24 mb-8">
+            <div className="absolute inset-0 border-4 border-brand-teal/20 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+            <SparklesIcon className="absolute inset-0 m-auto w-8 h-8 text-brand-teal animate-pulse" />
+          </div>
+          <h2 className="text-xl font-bold text-white animate-pulse text-center min-h-[2rem] transition-all duration-300">
+            {processingText}
+          </h2>
         </div>
       )}
 
       {/* Step 7: Awe (Typewriter Reveal) */}
       {step === 'awe' && insight && (
         <div className="max-w-md w-full bg-dark-surface/30 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl animate-fade-in-up relative z-10">
-            <div className="flex items-center gap-3 mb-6">
-                <SparklesIcon className="w-6 h-6 text-brand-teal animate-pulse" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-brand-teal">Instant Insight</h3>
+          <div className="flex items-center gap-3 mb-6">
+            <SparklesIcon className="w-6 h-6 text-brand-teal animate-pulse" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-brand-teal">Instant Insight</h3>
+          </div>
+
+          <p className="text-xl md:text-2xl text-white font-display leading-relaxed mb-8 min-h-[100px]">
+            "{displayedInsight}"<span className="animate-pulse text-brand-teal">|</span>
+          </p>
+
+          {displayedInsight.length === insight.insight.length && (
+            <div className="flex flex-col gap-3 animate-fade-in">
+              <button
+                onClick={() => onComplete('chat', elaboration, insight.followUpQuestion)}
+                className="w-full flex items-center justify-center gap-2 bg-brand-teal text-brand-indigo font-bold py-4 rounded-xl hover:bg-teal-300 transition-all shadow-lg"
+              >
+                <ChatBubbleIcon className="w-5 h-5" />
+                Unpack this with AI
+              </button>
+              <button
+                onClick={() => onComplete('stream')}
+                className="w-full text-gray-400 hover:text-white py-3 text-sm font-medium transition-colors"
+              >
+                Go to my Stream
+              </button>
             </div>
-            
-            <p className="text-xl md:text-2xl text-white font-display leading-relaxed mb-8 min-h-[100px]">
-                "{displayedInsight}"<span className="animate-pulse text-brand-teal">|</span>
-            </p>
-            
-            {displayedInsight.length === insight.insight.length && (
-                <div className="flex flex-col gap-3 animate-fade-in">
-                    <button
-                        onClick={() => onComplete('chat', elaboration, insight.followUpQuestion)}
-                        className="w-full flex items-center justify-center gap-2 bg-brand-teal text-brand-indigo font-bold py-4 rounded-xl hover:bg-teal-300 transition-all shadow-lg"
-                    >
-                        <ChatBubbleIcon className="w-5 h-5" />
-                        Unpack this with AI
-                    </button>
-                    <button
-                        onClick={() => onComplete('stream')}
-                        className="w-full text-gray-400 hover:text-white py-3 text-sm font-medium transition-colors"
-                    >
-                        Go to my Stream
-                    </button>
-                </div>
-            )}
+          )}
         </div>
       )}
 
