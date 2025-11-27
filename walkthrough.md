@@ -78,3 +78,33 @@ Implemented a system to detect patterns in user behavior and offer proactive ins
 - `services/dbService.ts`
 - `types.ts`
 - `supabase/migrations/007_create_proactive_nudges.sql` (New)
+
+## Phase 4.3: Voice Output (TTS)
+
+Added Text-to-Speech capabilities to the chat interface, allowing the AI to speak its responses.
+
+### Features
+- **Web Speech API Integration**: Uses the browser's native TTS engine.
+- **Voice Toggle**: Users can enable/disable voice output in the chat view.
+- **Auto-Speak**: AI responses are automatically spoken when enabled.
+- **Voice Selection**: Prefers natural-sounding voices.
+
+### Files Modified
+- `utils/tts.ts` (New)
+- `components/ChatView.tsx`
+
+## Phase 4.4: Smart Onboarding
+
+Enhanced the onboarding experience with AI-generated habit and intention suggestions.
+
+### Features
+- **AI Analysis**: Analyzes the user's first "brain dump" entry.
+- **Smart Suggestions**: Generates 2-3 specific habits and 1-2 intentions based on the entry.
+- **Suggestion UI**: Users can review, edit, accept, or reject suggestions.
+- **Seamless Integration**: Accepted suggestions are automatically created in the database.
+
+### Files Modified
+- `services/onboardingSuggestions.ts` (New)
+- `components/OnboardingSuggestionCard.tsx` (New)
+- `components/OnboardingWizard.tsx`
+- `services/geminiService.ts`

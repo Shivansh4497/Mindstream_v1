@@ -9,13 +9,15 @@ import * as gemini from '../services/geminiService';
 import * as db from '../services/dbService';
 import type { InstantInsight } from '../types';
 import { PersonalitySelector } from './PersonalitySelector';
+import { generateOnboardingSuggestions, OnboardingSuggestion } from '../services/onboardingSuggestions';
+import { OnboardingSuggestionCard } from './OnboardingSuggestionCard';
 
 interface OnboardingWizardProps {
   userId: string;
   onComplete: (destination: 'stream' | 'chat', initialContext?: string, aiQuestion?: string) => void;
 }
 
-type Step = 'sanctuary' | 'spark' | 'container' | 'friction' | 'elaboration' | 'processing' | 'awe';
+type Step = 'sanctuary' | 'personality' | 'spark' | 'container' | 'friction' | 'elaboration' | 'processing' | 'suggestions' | 'awe';
 type Sentiment = 'Anxious' | 'Excited' | 'Overwhelmed' | 'Calm' | 'Tired' | 'Inspired' | 'Frustrated' | 'Grateful';
 type LifeArea = 'Work' | 'Relationships' | 'Health' | 'Self' | 'Finance';
 
@@ -71,7 +73,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
   const [insight, setInsight] = useState<InstantInsight | null>(null);
 
   // Enhancements
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ habits: OnboardingSuggestion[], intentions: OnboardingSuggestion[] } | null>(null);
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<OnboardingSuggestion[]>([]);
   const [processingText, setProcessingText] = useState("Connecting patterns...");
   const [displayedInsight, setDisplayedInsight] = useState('');
   const [showMicPulse, setShowMicPulse] = useState(false);
@@ -288,6 +293,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         selectedTrigger
       ];
 
+      const entryText = elaboration; // Store elaboration for suggestions
+
       await db.addEntry(userId, {
         ...aiEntryData,
         tags: enhancedTags,
@@ -296,14 +303,51 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         primary_sentiment: selectedSentiment as any,
       });
 
-      setStep('awe');
+      // Generate suggestions
+      try {
+        const generatedSuggestions = await generateOnboardingSuggestions(entryText);
+        setSuggestions(generatedSuggestions);
+        setStep('suggestions');
+      } catch (error) {
+        console.error('Error generating suggestions:', error);
+        setStep('awe'); // Skip to end if error
+      }
     } catch (error) {
-      console.error("Onboarding error:", error);
+      console.error('Error saving entry:', error);
+      setIsProcessing(false);
       setInsight({
         insight: "Your feelings are valid. Taking the time to write them down is the first step towards clarity.",
         followUpQuestion: "What is one small step you can take today?"
       });
       setStep('awe');
+    }
+  };
+
+  const handleAcceptSuggestion = (suggestion: OnboardingSuggestion) => {
+    setAcceptedSuggestions(prev => [...prev, suggestion]);
+  };
+
+  const handleRejectSuggestion = (suggestion: OnboardingSuggestion) => {
+    // Just remove from UI if needed, or track rejections
+  };
+
+  const handleCompleteSuggestions = async () => {
+    setIsProcessing(true);
+    try {
+      // Save accepted suggestions
+      for (const s of acceptedSuggestions) {
+        if (s.type === 'habit') {
+          await db.addHabit(userId, s.name, s.emoji, s.category as any || 'System', s.frequency || 'daily');
+        } else if (s.type === 'intention') {
+          await db.addIntention(userId, s.name, s.timeframe || 'weekly');
+        }
+      }
+      setStep('awe');
+    } catch (error) {
+      console.error('Error saving suggestions:', error);
+      setStep('awe');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -473,7 +517,57 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         </div>
       )}
 
-      {/* Step 7: Awe (Typewriter Reveal) */}
+      {/* Step 7: Suggestions */}
+      {step === 'suggestions' && suggestions && (
+        <div className="w-full max-w-4xl px-6 animate-fade-in relative z-10 h-full overflow-y-auto py-10">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-display font-bold text-white mb-3">
+              I noticed a few things...
+            </h2>
+            <p className="text-gray-400 text-lg">
+              Based on your thoughts, here are some habits and intentions that might help.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="space-y-4">
+              <h3 className="text-brand-teal font-bold uppercase tracking-wider text-sm">Suggested Habits</h3>
+              {suggestions.habits.map((habit, idx) => (
+                <OnboardingSuggestionCard
+                  key={`habit-${idx}`}
+                  suggestion={{ ...habit, type: 'habit' }}
+                  onAccept={handleAcceptSuggestion}
+                  onReject={() => { }}
+                />
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-brand-teal font-bold uppercase tracking-wider text-sm">Suggested Intentions</h3>
+              {suggestions.intentions.map((intention, idx) => (
+                <OnboardingSuggestionCard
+                  key={`intention-${idx}`}
+                  suggestion={{ ...intention, type: 'intention' }}
+                  onAccept={handleAcceptSuggestion}
+                  onReject={() => { }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            <button
+              onClick={handleCompleteSuggestions}
+              className="group flex items-center gap-3 px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:scale-105 transition-all shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)]"
+            >
+              Continue
+              <ArrowRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 8: Awe (Typewriter Reveal) */}
       {step === 'awe' && insight && (
         <div className="max-w-md w-full bg-dark-surface/30 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl animate-fade-in-up relative z-10">
           <div className="flex items-center gap-3 mb-6">
