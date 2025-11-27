@@ -1,5 +1,5 @@
 import React from 'react';
-<parameter name="Target, Book, Dumbbell, Droplet } from 'lucide-react';
+import { Target } from 'lucide-react';
 
 interface EmptyHabitsStateProps {
   onCreateHabit?: (name: string, emoji: string) => void;
@@ -19,17 +19,17 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
 
   return (
     <div className="flex-1 flex items-center justify-center p-8">
-    < div className = "max-w-lg text-center space-y-6" >
-        {/* Icon */ }
-        < div className = "flex justify-center" >
-            <div className="relative">
-                <Target className="w-16 h-16 text-brand-teal" />
-                <div className="absolute inset-0 bg-brand-teal/20 blur-2xl rounded-full" />
-            </div>
+      < div className="max-w-lg text-center space-y-6" >
+        {/* Icon */}
+        < div className="flex justify-center" >
+          <div className="relative">
+            <Target className="w-16 h-16 text-brand-teal" />
+            <div className="absolute inset-0 bg-brand-teal/20 blur-2xl rounded-full" />
+          </div>
         </div >
 
-    {/* Heading */ }
-    < div >
+        {/* Heading */}
+        < div >
           <h2 className="text-2xl font-display font-bold text-white mb-2">
             Build your first habit
           </h2>
@@ -38,8 +38,8 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
           </p>
         </div >
 
-    {/* Starter Habits */ }
-    < div className = "space-y-3" >
+        {/* Starter Habits */}
+        < div className="space-y-3" >
           <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">
             Popular starters:
           </p>
@@ -63,8 +63,8 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
           </div>
         </div >
 
-    {/* Custom Habit CTA */ }
-    < div className = "pt-4 border-t border-white/10" >
+        {/* Custom Habit CTA */}
+        < div className="pt-4 border-t border-white/10" >
           <p className="text-sm text-gray-400 mb-3">
             Or create your own custom habit below
           </p>
