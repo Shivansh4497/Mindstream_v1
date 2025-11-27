@@ -675,7 +675,6 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
         latestReflection: reflections.length > 0 ? reflections[0] : null,
         personalityId
     };
-};
 }
 
 // Proactive Nudges
