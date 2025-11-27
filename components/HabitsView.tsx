@@ -4,6 +4,7 @@ import type { Habit, HabitLog, HabitFrequency } from '../types';
 import { HabitCard } from './HabitCard';
 import { celebrate, getCelebrationTypeForStreak } from '../utils/celebrations';
 import { calculateStreak } from '../utils/streak';
+import { EmptyHabitsState } from './EmptyHabitsState';
 
 interface HabitsViewProps {
     habits: Habit[];
@@ -103,12 +104,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
 
             <main className="flex-grow overflow-y-auto p-4">
                 {filteredHabits.length === 0 && (
-                    <div className="h-full flex items-center justify-center text-center text-gray-400">
-                        <div>
-                            <h3 className="text-2xl font-bold font-display text-white mb-2">No {activeFrequency} Habits Yet</h3>
-                            <p>Building a system starts with one small step.<br />Add your first {activeFrequency} habit below.</p>
-                        </div>
-                    </div>
+                    <EmptyHabitsState />
                 )}
 
                 {/* Habits List */}

@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import type { Intention, IntentionTimeframe } from '../types';
 import { IntentionCard } from './IntentionCard';
 import { getDisplayDate, getFormattedDate } from '../utils/date';
+import { EmptyIntentionsState } from './EmptyIntentionsState';
 
 interface IntentionsViewProps {
     intentions: Intention[];
@@ -73,12 +74,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
 
             <main className="flex-grow overflow-y-auto p-4">
                 {sortedDates.length === 0 && (
-                    <div className="h-full flex items-center justify-center text-center text-gray-400">
-                        <div>
-                            <h3 className="text-2xl font-bold font-display text-white mb-2">No '{activeTimeframe}' Intentions Yet</h3>
-                            <p>Set a new intention using the bar below.<br />What do you want to accomplish?</p>
-                        </div>
-                    </div>
+                    <EmptyIntentionsState />
                 )}
 
                 {sortedDates.map(date => (

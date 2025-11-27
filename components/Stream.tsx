@@ -6,6 +6,7 @@ import { EntryCard } from './EntryCard';
 import { InsightCard as InsightCardComponent } from './InsightCard';
 import { AutoReflectionCard } from './AutoReflectionCard';
 import { TodaysFocusBanner } from './TodaysFocusBanner';
+import { EmptyStreamState } from './EmptyStreamState';
 
 interface StreamProps {
   entries: Entry[];
@@ -82,12 +83,7 @@ export const Stream: React.FC<StreamProps> = ({
     return (
       <div className="h-full flex flex-col">
         {todaysIntentions.length > 0 && <TodaysFocusBanner intentions={todaysIntentions} />}
-        <div className="flex-grow flex items-center justify-center text-center text-gray-400 p-4">
-          <div>
-            <h2 className="text-2xl font-bold font-display text-white mb-2">Your Stream is Empty</h2>
-            <p>Use the bar below to add your first thought.<br />What's on your mind right now?</p>
-          </div>
-        </div>
+        <EmptyStreamState />
       </div>
     );
   }
