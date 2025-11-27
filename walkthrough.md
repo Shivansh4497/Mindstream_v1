@@ -55,3 +55,26 @@ Defined 5 distinct personalities in `config/personalities.ts`:
 - `services/dbService.ts`
 - `types.ts`
 - `supabase/migrations/006_add_ai_personality.sql` (New)
+
+## Phase 4.2: Proactive Nudges
+
+Implemented a system to detect patterns in user behavior and offer proactive insights.
+
+### Features
+- **Pattern Detection**: Automatically detects:
+    - **Mood Decline**: 3+ days of negative sentiment.
+    - **Habit Abandonment**: Breaking a consistent streak.
+    - **Intention Stagnation**: Goals pending for 7+ days.
+    - **Positive Reinforcement**: Celebrating positive streaks.
+- **Nudge UI**: A subtle, dismissible banner in the Stream view.
+- **Actionable Insights**: Nudges lead to specific actions like "Chat Reflection" or "Review Goals".
+
+### Files Modified
+- `services/patternDetector.ts` (New)
+- `services/nudgeEngine.ts` (New)
+- `components/ProactiveNudge.tsx` (New)
+- `components/Stream.tsx`
+- `hooks/useAppLogic.ts`
+- `services/dbService.ts`
+- `types.ts`
+- `supabase/migrations/007_create_proactive_nudges.sql` (New)

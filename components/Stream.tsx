@@ -1,23 +1,27 @@
 
 import React, { useMemo } from 'react';
 import { getDisplayDate, getFormattedDate, isSameDay } from '../utils/date';
-import type { Entry, Intention, EntrySuggestion, InsightCard, Reflection } from '../types';
+import type { Entry, Intention, EntrySuggestion, InsightCard, Reflection, Nudge } from '../types';
 import { EntryCard } from './EntryCard';
 import { InsightCard as InsightCardComponent } from './InsightCard';
 import { AutoReflectionCard } from './AutoReflectionCard';
 import { TodaysFocusBanner } from './TodaysFocusBanner';
 import { EmptyStreamState } from './EmptyStreamState';
+import { ProactiveNudge } from './ProactiveNudge';
 
 interface StreamProps {
   entries: Entry[];
   intentions: Intention[];
   insights: InsightCard[];
   autoReflections: Reflection[];
+  nudges: Nudge[];
   onTagClick?: (tag: string) => void;
   onEditEntry: (entry: Entry) => void;
   onDeleteEntry: (entry: Entry) => void;
   onAcceptSuggestion: (entryId: string, suggestion: EntrySuggestion) => void;
   onDismissInsight: (insightId: string) => void;
+  onAcceptNudge: (nudge: Nudge) => void;
+  onDismissNudge: (nudge: Nudge) => void;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -33,11 +37,14 @@ export const Stream: React.FC<StreamProps> = ({
   intentions,
   insights,
   autoReflections,
+  nudges,
   onTagClick,
   onEditEntry,
   onDeleteEntry,
   onAcceptSuggestion,
   onDismissInsight,
+  onAcceptNudge,
+  onDismissNudge,
   onLoadMore,
   hasMore,
   isLoadingMore
@@ -91,6 +98,18 @@ export const Stream: React.FC<StreamProps> = ({
   return (
     <div>
       {todaysIntentions.length > 0 && <TodaysFocusBanner intentions={todaysIntentions} />}
+
+      <div className="px-4 pt-4">
+        {nudges.map(nudge => (
+          <ProactiveNudge
+            key={nudge.id}
+            nudge={nudge}
+            onAccept={onAcceptNudge}
+            onDismiss={onDismissNudge}
+          />
+        ))}
+      </div>
+
       <div className="p-4">
         {sortedDates.map(date => {
           const itemsForDay = groupedFeed[date];

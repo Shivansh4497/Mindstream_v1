@@ -675,4 +675,58 @@ export const getUserContext = async (userId: string): Promise<UserContext> => {
         latestReflection: reflections.length > 0 ? reflections[0] : null,
         personalityId
     };
+};
 }
+
+// Proactive Nudges
+export const createNudge = async (userId: string, nudge: { pattern_type: string, message: string, suggested_action: string, status: string }): Promise<any> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('proactive_nudges')
+        .insert({ ...nudge, user_id: userId })
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating nudge:', error);
+        return null;
+    }
+    return data;
+};
+
+export const getRecentNudges = async (userId: string, patternType: string): Promise<any[]> => {
+    if (!supabase) return [];
+    // Check for nudges in the last 24 hours
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const { data, error } = await supabase
+        .from('proactive_nudges')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('pattern_type', patternType)
+        .gte('created_at', yesterday.toISOString());
+
+    if (error) return [];
+    return data || [];
+};
+
+export const getPendingNudges = async (userId: string): Promise<any[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+        .from('proactive_nudges')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+    if (error) return [];
+    return data || [];
+};
+
+export const updateNudgeStatus = async (nudgeId: string, status: 'accepted' | 'dismissed'): Promise<void> => {
+    if (!supabase) return;
+    await supabase
+        .from('proactive_nudges')
+        .update({ status, acted_on_at: new Date().toISOString() })
+        .eq('id', nudgeId);
+};

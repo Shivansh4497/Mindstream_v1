@@ -122,3 +122,14 @@ export interface UserContext {
 }
 
 export type AIStatus = 'initializing' | 'verifying' | 'ready' | 'error';
+
+export interface Nudge {
+  id: string;
+  user_id: string;
+  pattern_type: 'mood_decline' | 'habit_abandonment' | 'intention_stagnation' | 'positive_reinforcement';
+  message: string;
+  suggested_action: 'chat_reflection' | 'log_entry' | 'review_goals';
+  status: 'pending' | 'accepted' | 'dismissed';
+  created_at: string;
+  acted_on_at?: string;
+}

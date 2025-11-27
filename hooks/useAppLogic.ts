@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as db from '../services/dbService';
 import * as gemini from '../services/geminiService';
-import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext, HabitCategory, InsightCard } from '../types';
+import * as nudgeEngine from '../services/nudgeEngine';
+import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext, HabitCategory, InsightCard, Nudge } from '../types';
 import { isSameDay, getWeekId, getMonthId } from '../utils/date';
 import { calculateStreak } from '../utils/streak';
 
@@ -18,6 +19,7 @@ export const useAppLogic = () => {
     const [habits, setHabits] = useState<Habit[]>([]);
     const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
     const [insights, setInsights] = useState<InsightCard[]>([]);
+    const [nudges, setNudges] = useState<Nudge[]>([]);
     const [autoReflections, setAutoReflections] = useState<Reflection[]>([]);
     const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
 
@@ -76,7 +78,8 @@ export const useAppLogic = () => {
                     db.getHabits(user.id),
                     db.getCurrentPeriodHabitLogs(user.id),
                     db.getInsightCards(user.id),
-                    db.getAutoReflections(user.id, 1)
+                    db.getAutoReflections(user.id, 1),
+                    db.getPendingNudges(user.id)
                 ]);
 
                 if (isMounted.current) {
@@ -91,6 +94,7 @@ export const useAppLogic = () => {
                     setHabitLogs(userHabitLogs);
                     setInsights(userInsights);
                     setAutoReflections(userAutoReflections);
+                    setNudges(userNudges);
                     // Ref will sync via effect
                 }
 
@@ -116,6 +120,21 @@ export const useAppLogic = () => {
         };
         fetchDataAndVerifyAI();
     }, [user]);
+
+    // Check for Nudges
+    useEffect(() => {
+        if (isDataLoaded && user) {
+            const timer = setTimeout(() => {
+                nudgeEngine.checkForNudges(user.id, entries, habits, habitLogs, intentions)
+                    .then(() => db.getPendingNudges(user.id))
+                    .then(newNudges => {
+                        if (isMounted.current) setNudges(newNudges);
+                    })
+                    .catch(console.error);
+            }, 2000); // Delay to ensure data is settled
+            return () => clearTimeout(timer);
+        }
+    }, [isDataLoaded, user, entries.length, habitLogs.length, intentions.length]);
 
     const handleLoadMore = async () => {
         if (!user || isLoadingMore || !hasMore) return;
@@ -386,8 +405,24 @@ export const useAppLogic = () => {
         await db.dismissInsightCard(insightId);
     };
 
+    const handleAcceptNudge = async (nudge: Nudge) => {
+        setNudges(prev => prev.filter(n => n.id !== nudge.id));
+        await db.updateNudgeStatus(nudge.id, 'accepted');
+
+        if (nudge.suggested_action === 'chat_reflection') {
+            const context = await db.getUserContext(user!.id);
+            handleSendMessage(`I'd like to talk about this insight: "${nudge.message}"`, context);
+            showToast("Chat started. Go to Chat tab.");
+        }
+    };
+
+    const handleDismissNudge = async (nudge: Nudge) => {
+        setNudges(prev => prev.filter(n => n.id !== nudge.id));
+        await db.updateNudgeStatus(nudge.id, 'dismissed');
+    };
+
     return {
-        state: { entries, reflections, intentions, habits, habitLogs, insights, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore },
-        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections }
+        state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore },
+        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections }
     };
 };
