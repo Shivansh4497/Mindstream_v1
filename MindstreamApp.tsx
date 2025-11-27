@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
@@ -90,112 +91,149 @@ export const MindstreamApp: React.FC = () => {
             <AIStatusBanner status={state.aiStatus} error={state.aiError} />
 
             <main className="flex-grow overflow-hidden relative">
-                {view === 'stream' && (
-                    <div className="absolute inset-0 flex flex-col">
-                        <div className="flex-grow overflow-y-auto">
-                            <Stream
+                <AnimatePresence mode="wait">
+                    {view === 'stream' && (
+                        <motion.div
+                            key="stream"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <div className="flex-grow overflow-y-auto">
+                                <Stream
+                                    entries={state.entries}
+                                    intentions={state.intentions}
+                                    insights={state.insights}
+                                    autoReflections={state.autoReflections}
+                                    onTagClick={(tag) => { setSelectedTag(tag); setShowThematicModal(true); }}
+                                    onEditEntry={setEntryToEdit}
+                                    onDeleteEntry={setEntryToDelete}
+                                    onAcceptSuggestion={async (id, suggestion) => {
+                                        const type = await actions.handleAcceptSuggestion(id, suggestion);
+                                        if (type === 'reflection') setView('chat');
+                                    }}
+                                    onDismissInsight={actions.handleDismissInsight}
+                                    onLoadMore={actions.handleLoadMore}
+                                    hasMore={state.hasMore}
+                                    isLoadingMore={state.isLoadingMore}
+                                />
+                            </div>
+                            <InputBar onAddEntry={actions.handleAddEntry} />
+                        </motion.div>
+                    )}
+
+                    {view === 'habits' && (
+                        <motion.div
+                            key="habits"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <HabitsView
+                                habits={state.habits}
+                                todaysLogs={state.habitLogs}
+                                onToggle={actions.handleToggleHabit}
+                                onEdit={setHabitToEdit}
+                                onDelete={actions.handleDeleteHabit}
+                                activeFrequency={activeHabitFrequency}
+                                onFrequencyChange={setActiveHabitFrequency}
+                            />
+                            <HabitsInputBar onAddHabit={actions.handleAddHabit} isLoading={state.isAddingHabit} activeFrequency={activeHabitFrequency} />
+                        </motion.div>
+                    )}
+
+                    {view === 'intentions' && (
+                        <motion.div
+                            key="intentions"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <IntentionsView
+                                intentions={state.intentions}
+                                onToggle={actions.handleToggleIntention}
+                                onDelete={actions.handleDeleteIntention}
+                                activeTimeframe={activeIntentionTimeframe}
+                                onTimeframeChange={setActiveIntentionTimeframe}
+                            />
+                            <IntentionsInputBar onAddIntention={actions.handleAddIntention} activeTimeframe={activeIntentionTimeframe} />
+                        </motion.div>
+                    )}
+
+                    {view === 'chat' && (
+                        <motion.div
+                            key="chat"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => { }} />
+                            {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
+                            <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
+                        </motion.div>
+                    )}
+
+                    {view === 'reflections' && (
+                        <motion.div
+                            key="reflections"
+                            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -20, scale: 0.98 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <ReflectionsView
                                 entries={state.entries}
                                 intentions={state.intentions}
-                                insights={state.insights}
-                                autoReflections={state.autoReflections}
-                                onTagClick={(tag) => { setSelectedTag(tag); setShowThematicModal(true); }}
-                                onEditEntry={setEntryToEdit}
-                                onDeleteEntry={setEntryToDelete}
-                                onAcceptSuggestion={async (id, suggestion) => {
-                                    const type = await actions.handleAcceptSuggestion(id, suggestion);
-                                    if (type === 'reflection') setView('chat');
+                                reflections={state.reflections}
+                                habits={state.habits}
+                                habitLogs={state.habitLogs}
+                                onGenerateDaily={async (date, dayEntries) => {
+                                    actions.setIsGeneratingReflection(date);
+                                    const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
+                                    const saved = await db.addReflection(user!.id, { ...res, date, type: 'daily' });
+                                    actions.setReflections(prev => [...prev.filter(r => !(r.date === date && r.type === 'daily')), saved]);
+                                    actions.setIsGeneratingReflection(null);
                                 }}
-                                onDismissInsight={actions.handleDismissInsight}
-                                onLoadMore={actions.handleLoadMore}
-                                hasMore={state.hasMore}
-                                isLoadingMore={state.isLoadingMore}
+                                onGenerateWeekly={async (weekId, weekEntries) => {
+                                    actions.setIsGeneratingReflection(weekId);
+                                    const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
+                                    const saved = await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
+                                    // Override date with weekId for local state consistency
+                                    const reflectionForState = { ...saved, date: weekId };
+                                    actions.setReflections(prev => [...prev.filter(r => !(r.date === weekId && r.type === 'weekly')), reflectionForState]);
+                                    actions.setIsGeneratingReflection(null);
+                                }}
+                                onGenerateMonthly={async (monthId, monthEntries) => {
+                                    actions.setIsGeneratingReflection(monthId);
+                                    const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
+                                    const saved = await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
+                                    // Override date with monthId for local state consistency
+                                    const reflectionForState = { ...saved, date: monthId };
+                                    actions.setReflections(prev => [...prev.filter(r => !(r.date === monthId && r.type === 'monthly')), reflectionForState]);
+                                    actions.setIsGeneratingReflection(null);
+                                }}
+                                onExploreInChat={(summary) => {
+                                    setView('chat');
+                                    actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
+                                }}
+                                isGenerating={state.isGeneratingReflection}
+                                onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
+                                aiStatus={state.aiStatus}
+                                onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({ message: "Debug check console", id: 1 }))}
+                                debugOutput={null}
                             />
-                        </div>
-                        <InputBar onAddEntry={actions.handleAddEntry} />
-                    </div>
-                )}
-
-                {view === 'habits' && (
-                    <div className="absolute inset-0 flex flex-col">
-                        <HabitsView
-                            habits={state.habits}
-                            todaysLogs={state.habitLogs}
-                            onToggle={actions.handleToggleHabit}
-                            onEdit={setHabitToEdit}
-                            onDelete={actions.handleDeleteHabit}
-                            activeFrequency={activeHabitFrequency}
-                            onFrequencyChange={setActiveHabitFrequency}
-                        />
-                        <HabitsInputBar onAddHabit={actions.handleAddHabit} isLoading={state.isAddingHabit} activeFrequency={activeHabitFrequency} />
-                    </div>
-                )}
-
-                {view === 'intentions' && (
-                    <div className="absolute inset-0 flex flex-col">
-                        <IntentionsView
-                            intentions={state.intentions}
-                            onToggle={actions.handleToggleIntention}
-                            onDelete={actions.handleDeleteIntention}
-                            activeTimeframe={activeIntentionTimeframe}
-                            onTimeframeChange={setActiveIntentionTimeframe}
-                        />
-                        <IntentionsInputBar onAddIntention={actions.handleAddIntention} activeTimeframe={activeIntentionTimeframe} />
-                    </div>
-                )}
-
-                {view === 'chat' && (
-                    <div className="absolute inset-0 flex flex-col">
-                        <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => { }} />
-                        {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
-                        <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
-                    </div>
-                )}
-
-                {view === 'reflections' && (
-                    <div className="absolute inset-0 flex flex-col">
-                        <ReflectionsView
-                            entries={state.entries}
-                            intentions={state.intentions}
-                            reflections={state.reflections}
-                            habits={state.habits}
-                            habitLogs={state.habitLogs}
-                            onGenerateDaily={async (date, dayEntries) => {
-                                actions.setIsGeneratingReflection(date);
-                                const res = await reflections.generateReflection(dayEntries, state.intentions, state.habits, state.habitLogs);
-                                const saved = await db.addReflection(user!.id, { ...res, date, type: 'daily' });
-                                actions.setReflections(prev => [...prev.filter(r => !(r.date === date && r.type === 'daily')), saved]);
-                                actions.setIsGeneratingReflection(null);
-                            }}
-                            onGenerateWeekly={async (weekId, weekEntries) => {
-                                actions.setIsGeneratingReflection(weekId);
-                                const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
-                                const saved = await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
-                                // Override date with weekId for local state consistency
-                                const reflectionForState = { ...saved, date: weekId };
-                                actions.setReflections(prev => [...prev.filter(r => !(r.date === weekId && r.type === 'weekly')), reflectionForState]);
-                                actions.setIsGeneratingReflection(null);
-                            }}
-                            onGenerateMonthly={async (monthId, monthEntries) => {
-                                actions.setIsGeneratingReflection(monthId);
-                                const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
-                                const saved = await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
-                                // Override date with monthId for local state consistency
-                                const reflectionForState = { ...saved, date: monthId };
-                                actions.setReflections(prev => [...prev.filter(r => !(r.date === monthId && r.type === 'monthly')), reflectionForState]);
-                                actions.setIsGeneratingReflection(null);
-                            }}
-                            onExploreInChat={(summary) => {
-                                setView('chat');
-                                actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
-                            }}
-                            isGenerating={state.isGeneratingReflection}
-                            onAddSuggestion={(s) => actions.handleAddIntention(s.text, s.timeframe)}
-                            aiStatus={state.aiStatus}
-                            onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({ message: "Debug check console", id: 1 }))}
-                            debugOutput={null}
-                        />
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </main>
 
             <NavBar activeView={view} onViewChange={setView} />
