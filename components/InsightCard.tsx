@@ -16,11 +16,14 @@ export const InsightCard: React.FC<InsightCardProps> = ({ title, insight, childr
         <motion.div
             layout
             onClick={() => setIsExpanded(!isExpanded)}
-            className={`relative w-full overflow-hidden rounded-2xl cursor-pointer border border-white/10 shadow-xl transition-colors duration-500 ${isExpanded ? 'bg-gray-900/90' : 'bg-gray-800/50 hover:bg-gray-800'
+            whileHover={{ scale: 1.02, rotateY: 2 }}
+            whileTap={{ scale: 0.98 }}
+            className={`relative w-full overflow-hidden rounded-2xl cursor-pointer border border-white/10 shadow-xl transition-all duration-500 ${isExpanded ? 'bg-gray-900/90' : 'bg-gray-800/50 hover:bg-gray-800 hover:shadow-2xl'
                 }`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            style={{ perspective: 1000 }}
         >
             {/* Background Gradient */}
             <div className={`absolute inset-0 opacity-10 ${color} blur-3xl`} />

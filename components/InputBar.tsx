@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MicIcon } from './icons/MicIcon';
 import { SendIcon } from './icons/SendIcon';
+import { celebrate, CelebrationType } from '../utils/celebrations';
+import { triggerHaptic } from '../utils/haptics';
+import { useToast, Toast } from './Toast';
 
 // FIX: Define types for the Web Speech API to resolve TypeScript errors.
 // These are not included in default DOM typings.
@@ -57,6 +60,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(recognition);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     const rec = recognitionRef.current;
@@ -77,7 +81,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
     rec.onend = () => {
       setIsListening(false);
     };
-    
+
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error', event.error);
       alert(`Speech recognition error: ${event.error}`);
@@ -96,24 +100,31 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
     if (text.trim()) {
       onAddEntry(text.trim());
       setText('');
+
+      // Show success feedback
+      showToast('Entry saved ✓', 'success');
+      celebrate(CelebrationType.ENTRY_SAVED);
+      triggerHaptic('light');
     }
   };
 
   const handlePromptClick = (prompt: string) => {
     setText(prompt);
   };
-  
+
   const toggleListening = () => {
     if (!recognitionRef.current) {
-        alert("Sorry, your browser doesn't support voice recognition.");
-        return;
+      alert("Sorry, your browser doesn't support voice recognition.");
+      return;
     }
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
+      triggerHaptic('light');
     } else {
       recognitionRef.current.start();
       setIsListening(true);
+      triggerHaptic('medium');
     }
   };
 
@@ -145,15 +156,15 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
           rows={1}
         />
         <div className="relative">
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={toggleListening}
-            className={`p-3 rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'hover:bg-white/10'}`} 
+            className={`p-3 rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'hover:bg-white/10'}`}
             aria-label={isListening ? "Stop listening" : "Start voice input"}
           >
             <MicIcon className={`w-6 h-6 ${isListening ? 'text-brand-indigo' : 'text-white'}`} />
           </button>
-           {isListening && (
+          {isListening && (
             <div className="absolute top-0 left-0 w-full h-full rounded-full border-2 border-brand-teal animate-pulse-ring pointer-events-none"></div>
           )}
         </div>
@@ -161,6 +172,12 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
           <SendIcon className="w-6 h-6 text-brand-indigo" />
         </button>
       </form>
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+      />
     </footer>
   );
 };
