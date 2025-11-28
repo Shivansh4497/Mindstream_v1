@@ -23,6 +23,9 @@ import { EditHabitModal } from './components/EditHabitModal';
 import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
 import { SettingsView } from './components/SettingsView';
+import { LifeAreaDashboard } from './components/LifeAreaDashboard';
+import { YearlyReview } from './components/YearlyReview';
+import { generateYearlyReview, YearlyReviewData } from './services/yearlyReviewService';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -52,6 +55,8 @@ export const MindstreamApp: React.FC = () => {
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [thematicReflection, setThematicReflection] = useState<string | null>(null);
     const [isGeneratingThematic, setIsGeneratingThematic] = useState(false);
+    const [yearlyReviewData, setYearlyReviewData] = useState<YearlyReviewData | null>(null);
+    const [isGeneratingYearly, setIsGeneratingYearly] = useState(false);
 
     // Onboarding State
     const onboardingKey = user ? `onboardingStep_${user.id}` : 'onboardingStep';
@@ -254,6 +259,38 @@ export const MindstreamApp: React.FC = () => {
                             <SettingsView onBack={() => setView('stream')} />
                         </motion.div>
                     )}
+
+                    {view === 'life' && (
+                        <motion.div
+                            key="life"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <LifeAreaDashboard
+                                habits={state.habits}
+                                entries={state.entries}
+                                intentions={state.intentions}
+                                onBack={() => setView('stream')}
+                                onOpenYearlyReview={async () => {
+                                    if (!user) return;
+                                    setIsGeneratingYearly(true);
+                                    try {
+                                        const data = await generateYearlyReview(user.id, new Date().getFullYear());
+                                        setYearlyReviewData(data);
+                                    } catch (e) {
+                                        console.error(e);
+                                        actions.setToast({ message: "Failed to generate yearly review", id: Date.now() });
+                                    } finally {
+                                        setIsGeneratingYearly(false);
+                                    }
+                                }}
+                                isGeneratingYearly={isGeneratingYearly}
+                            />
+                        </motion.div>
+                    )}
                 </AnimatePresence>
             </main>
 
@@ -278,6 +315,12 @@ export const MindstreamApp: React.FC = () => {
                     }}
                     isGenerating={isGeneratingThematic}
                     reflectionResult={thematicReflection}
+                />
+            )}
+            {yearlyReviewData && (
+                <YearlyReview
+                    data={yearlyReviewData}
+                    onClose={() => setYearlyReviewData(null)}
                 />
             )}
         </div>

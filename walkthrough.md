@@ -108,3 +108,34 @@ Enhanced the onboarding experience with AI-generated habit and intention suggest
 - `components/OnboardingSuggestionCard.tsx` (New)
 - `components/OnboardingWizard.tsx`
 - `services/geminiService.ts`
+
+## Phase 5: The "Life" View
+
+Shifted focus to long-term life management and data ownership.
+
+### Features
+
+#### 1. Data Export (Phase 5.1)
+- **JSON & Markdown Export**: Users can download their entire history (entries, habits, intentions, reflections).
+- **Privacy First**: Emphasizes data ownership.
+- **UI**: Accessible via the Settings page.
+
+#### 2. Life Areas (Phase 5.2)
+- **Focus Dashboards**: Dedicated views for Health, Career, Growth, Finance, Connection, and System.
+- **Filtering**: Shows habits and intentions specific to each area.
+- **Visuals**: Distinct color coding and icons for each area.
+
+#### 3. Yearly Review (Phase 5.3)
+- **"Spotify Wrapped" Style**: A beautiful, animated slideshow summarizing the year.
+- **Key Metrics**: Total words, top moods, longest streaks.
+- **AI Themes**: Identifies major themes and "Core Memories" from the year's entries.
+- **Integration**: Accessible from the "Life Areas" dashboard.
+
+### Files Modified
+- `services/dataExportService.ts` (New)
+- `services/yearlyReviewService.ts` (New)
+- `components/LifeAreaDashboard.tsx` (New)
+- `components/YearlyReview.tsx` (New)
+- `components/SettingsView.tsx`
+- `components/NavBar.tsx`
+- `MindstreamApp.tsx`

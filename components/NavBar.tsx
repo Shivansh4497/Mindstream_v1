@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { Activity } from 'lucide-react';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { ChatIcon } from './icons/ChatIcon';
 import { IntentionsIcon } from './icons/IntentionsIcon';
@@ -12,8 +12,7 @@ const StreamIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
-
-export type View = 'stream' | 'reflections' | 'chat' | 'intentions' | 'habits' | 'settings';
+export type View = 'stream' | 'reflections' | 'chat' | 'intentions' | 'habits' | 'life' | 'settings';
 
 interface NavBarProps {
   activeView: View;
@@ -28,6 +27,7 @@ export const NavBar: React.FC<NavBarProps> = ({ activeView, onViewChange, isChat
     { id: 'chat', label: 'Chat', icon: ChatIcon },
     { id: 'intentions', label: 'Goals', icon: IntentionsIcon },
     { id: 'habits', label: 'Habits', icon: RepeatIcon },
+    { id: 'life', label: 'Life', icon: Activity },
   ];
 
   return (
