@@ -729,3 +729,36 @@ export const updateNudgeStatus = async (nudgeId: string, status: 'accepted' | 'd
         .update({ status, acted_on_at: new Date().toISOString() })
         .eq('id', nudgeId);
 };
+
+// User Preferences Functions
+export const getUserPreferences = async (userId: string): Promise<any | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('Error getting user preferences:', error);
+    }
+    return data;
+};
+
+export const updateUserPreference = async (userId: string, preferences: Record<string, any>): Promise<void> => {
+    if (!supabase) return;
+
+    // Upsert: insert if doesn't exist, update if exists
+    const { error } = await supabase
+        .from('user_preferences')
+        .upsert({
+            user_id: userId,
+            ...preferences,
+            updated_at: new Date().toISOString(),
+        });
+
+    if (error) {
+        console.error('Error updating user preferences:', error);
+        throw error;
+    }
+};
