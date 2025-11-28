@@ -1,13 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AnimatePresence } from 'framer-motion';
 import { MicIcon } from './icons/MicIcon';
 import { SendIcon } from './icons/SendIcon';
 import { celebrate, CelebrationType } from '../utils/celebrations';
 import { triggerHaptic } from '../utils/haptics';
 import { useToast, Toast } from './Toast';
-import { MindfulPause } from './MindfulPause';
-import { useMindfulMode } from '../hooks/useMindfulMode';
-import { useAuth } from '../context/AuthContext';
 
 // FIX: Define types for the Web Speech API to resolve TypeScript errors.
 // These are not included in default DOM typings.
@@ -61,15 +57,10 @@ if (recognition) {
 
 
 export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
-  const { user } = useAuth();
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [showPause, setShowPause] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef(recognition);
   const { toast, showToast, hideToast } = useToast();
-  const { mindfulModeEnabled } = useMindfulMode(user?.id);
 
   useEffect(() => {
     const rec = recognitionRef.current;
@@ -126,13 +117,6 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
       alert("Sorry, your browser doesn't support voice recognition.");
       return;
     }
-
-    // Show pause before voice input if enabled and first interaction
-    if (!isListening && mindfulModeEnabled && !hasInteracted) {
-      setShowPause(true);
-      return;
-    }
-
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -141,27 +125,6 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
       recognitionRef.current.start();
       setIsListening(true);
       triggerHaptic('medium');
-    }
-  };
-
-  const handleTextareaClick = () => {
-    // Show pause on first click if mindful mode enabled and no text yet
-    if (mindfulModeEnabled && !hasInteracted && text.length === 0) {
-      setShowPause(true);
-    }
-  };
-
-  const handlePauseComplete = () => {
-    setShowPause(false);
-    setHasInteracted(true);
-
-    // If voice was triggered, start listening
-    if (!text && recognitionRef.current) {
-      recognitionRef.current.start();
-      setIsListening(true);
-    } else {
-      // Otherwise focus textarea
-      textareaRef.current?.focus();
     }
   };
 
@@ -180,10 +143,8 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
       </div>
       <form onSubmit={handleSubmit} className="flex items-center gap-3">
         <textarea
-          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onClick={handleTextareaClick}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -217,17 +178,6 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
         isVisible={toast.isVisible}
         onClose={hideToast}
       />
-
-      {/* Mindful Pause Overlay */}
-      <AnimatePresence>
-        {showPause && (
-          <MindfulPause
-            onComplete={handlePauseComplete}
-            duration={3000}
-            canSkip={true}
-          />
-        )}
-      </AnimatePresence>
     </footer>
   );
 };

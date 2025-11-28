@@ -5,18 +5,14 @@ import { PersonalitySelector } from './PersonalitySelector';
 import { supabase } from '../services/supabaseClient';
 import { fetchAllUserData, downloadData } from '../services/dataExportService';
 import { useToast } from './Toast';
-import { useMindfulMode } from '../hooks/useMindfulMode';
-import { useAuth } from '../context/AuthContext';
 
 interface SettingsViewProps {
     onBack: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onBack }) => {
-    const { user } = useAuth();
     const [isExporting, setIsExporting] = useState(false);
     const { showToast } = useToast();
-    const { mindfulModeEnabled, toggleMindfulMode } = useMindfulMode(user?.id);
 
     const handleExport = async (type: 'json' | 'markdown') => {
         setIsExporting(true);
@@ -58,44 +54,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onBack }) => {
                         </div>
 
                         <PersonalitySelector />
-                    </section>
-
-                    <section>
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold text-brand-teal mb-2">Mindful Experience</h2>
-                            <p className="text-gray-400">Customize how you interact with your journal.</p>
-                        </div>
-
-                        <div className="bg-dark-surface border border-white/10 rounded-xl p-6">
-                            <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                    <h3 className="text-lg font-bold text-white mb-2">Mindful Pause</h3>
-                                    <p className="text-gray-400 text-sm leading-relaxed">
-                                        Take a 3-second breathing pause before writing. This moment of presence
-                                        helps you ground yourself and reflect with more intention.
-                                    </p>
-                                </div>
-
-                                <button
-                                    onClick={() => {
-                                        toggleMindfulMode();
-                                        showToast(
-                                            mindfulModeEnabled ? 'Mindful pause disabled' : 'Mindful pause enabled',
-                                            'success'
-                                        );
-                                    }}
-                                    className={`ml-6 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-teal focus:ring-offset-2 focus:ring-offset-dark-bg ${mindfulModeEnabled ? 'bg-brand-teal' : 'bg-gray-600'
-                                        }`}
-                                    role="switch"
-                                    aria-checked={mindfulModeEnabled}
-                                >
-                                    <span
-                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${mindfulModeEnabled ? 'translate-x-5' : 'translate-x-0'
-                                            }`}
-                                    />
-                                </button>
-                            </div>
-                        </div>
                     </section>
 
                     <section>
