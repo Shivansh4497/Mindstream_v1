@@ -273,6 +273,7 @@ export const MindstreamApp: React.FC = () => {
                                 habits={state.habits}
                                 entries={state.entries}
                                 intentions={state.intentions}
+                                habitLogs={state.habitLogs}
                                 onBack={() => setView('stream')}
                                 onOpenYearlyReview={async () => {
                                     if (!user) return;

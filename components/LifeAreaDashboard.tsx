@@ -130,8 +130,10 @@ export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, en
                                         <HabitCard
                                             key={habit.id}
                                             habit={habit}
+                                            logs={habitLogs.filter(l => l.habit_id === habit.id)}
                                             onToggle={() => { }} // Read-only view for now
-                                            isCompleted={false} // Would need real log data here
+                                            onEdit={() => { }}
+                                            onDelete={() => { }}
                                         />
                                     ))
                                 ) : (
