@@ -3,7 +3,7 @@ import type { Entry, Message, HabitCategory, InstantInsight, EntrySuggestion, Us
 import { getAiClient, callWithFallback, parseGeminiJson, verifyApiKey, GEMINI_API_KEY_AVAILABLE } from './geminiClient';
 import { getPersonality, DEFAULT_PERSONALITY, PersonalityId } from '../config/personalities';
 
-export { verifyApiKey, GEMINI_API_KEY_AVAILABLE };
+export { verifyApiKey, GEMINI_API_KEY_AVAILABLE, getAiClient };
 
 // --- RAG HELPERS ---
 
