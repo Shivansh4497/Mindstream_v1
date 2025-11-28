@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Briefcase, Heart, DollarSign, Zap, Layers, ArrowLeft, Trophy, Loader2 } from 'lucide-react';
-import { Habit, HabitCategory, Entry, Intention } from '../types';
+import { Habit, HabitCategory, Entry, Intention, HabitLog } from '../types';
 import { HabitCard } from './HabitCard';
 import { IntentionCard } from './IntentionCard';
 
@@ -9,6 +9,7 @@ interface LifeAreaDashboardProps {
     habits: Habit[];
     entries: Entry[];
     intentions: Intention[];
+    habitLogs: HabitLog[];
     onBack: () => void;
     onOpenYearlyReview: () => void;
     isGeneratingYearly: boolean;
@@ -23,7 +24,7 @@ const AREA_CONFIG: Record<HabitCategory, { icon: React.ElementType, color: strin
     System: { icon: Layers, color: 'text-gray-400', description: 'Organization and productivity' }
 };
 
-export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, entries, intentions, onBack, onOpenYearlyReview, isGeneratingYearly }) => {
+export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, entries, intentions, habitLogs, onBack, onOpenYearlyReview, isGeneratingYearly }) => {
     const [selectedArea, setSelectedArea] = useState<HabitCategory>('Health');
 
     const filteredHabits = useMemo(() =>
