@@ -25,7 +25,7 @@ export const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection, onEx
   };
 
   return (
-    <div className="bg-gradient-to-br from-indigo-800 to-indigo-900 border border-brand-teal/30 rounded-lg shadow-lg animate-fade-in-up">
+    <div className="bg-gradient-to-br from-indigo-950 to-indigo-900 border border-brand-teal/30 rounded-lg shadow-lg animate-fade-in-up">
       <div className="p-5">
         <div className="flex items-center mb-3">
           <SparklesIcon className="w-6 h-6 text-brand-teal mr-3" />
@@ -35,26 +35,26 @@ export const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection, onEx
       </div>
 
       {reflection.suggestions && reflection.suggestions.length > 0 && (
-          <div className="px-5 pb-4 flex flex-col gap-2">
-              {reflection.suggestions.map((suggestion, index) => (
-                  <ActionableSuggestion 
-                    key={index}
-                    suggestion={suggestion}
-                    onAdd={() => onAddSuggestion(suggestion)}
-                  />
-              ))}
-          </div>
+        <div className="px-5 pb-4 flex flex-col gap-2">
+          {reflection.suggestions.map((suggestion, index) => (
+            <ActionableSuggestion
+              key={index}
+              suggestion={suggestion}
+              onAdd={() => onAddSuggestion(suggestion)}
+            />
+          ))}
+        </div>
       )}
 
       {onExplore && (
         <div className="border-t border-brand-teal/20 p-3">
-            <button
-                onClick={() => onExplore(reflection.summary)}
-                className="w-full flex items-center justify-center gap-2 bg-dark-surface/50 hover:bg-dark-surface text-brand-teal font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
-            >
-                <ChatBubbleIcon className="w-5 h-5" />
-                <span>Explore in Chat</span>
-            </button>
+          <button
+            onClick={() => onExplore(reflection.summary)}
+            className="w-full flex items-center justify-center gap-2 bg-brand-teal/10 hover:bg-brand-teal/20 text-brand-teal font-semibold py-2 px-4 rounded-lg transition-colors text-sm border border-brand-teal/30"
+          >
+            <ChatBubbleIcon className="w-5 h-5" />
+            <span>Explore in Chat</span>
+          </button>
         </div>
       )}
     </div>

@@ -29,10 +29,10 @@ export const HabitLogButton: React.FC<HabitLogButtonProps> = ({ date, isLogged, 
                 className={`
                     flex flex-col items-center justify-center w-8 h-10 rounded-md transition-all duration-300
                     ${isLogged
-                        ? 'bg-brand-teal text-brand-indigo shadow-[0_0_10px_rgba(44,229,195,0.4)]'
+                        ? 'bg-brand-teal text-white shadow-[0_0_10px_rgba(44,229,195,0.4)]'
                         : isToday
-                            ? 'bg-white/5 ring-1 ring-brand-teal/50 text-white'
-                            : 'bg-white/5 text-gray-500 hover:bg-white/10'
+                            ? 'bg-white/5 ring-2 ring-brand-teal text-white'
+                            : 'bg-transparent border border-gray-600 text-gray-300 hover:border-gray-400 hover:bg-white/5'
                     }
                 `}
             >
@@ -51,8 +51,8 @@ export const HabitLogButton: React.FC<HabitLogButtonProps> = ({ date, isLogged, 
                 flex items-center justify-center rounded-md transition-all duration-300 border
                 ${frequency === 'weekly' ? 'w-10 h-10' : 'w-12 h-10'}
                 ${isLogged
-                    ? 'bg-brand-teal border-brand-teal text-brand-indigo shadow-[0_0_8px_rgba(44,229,195,0.3)]'
-                    : 'bg-transparent border-gray-700 hover:border-gray-500 text-gray-500'
+                    ? 'bg-brand-teal border-brand-teal text-white shadow-[0_0_8px_rgba(44,229,195,0.3)]'
+                    : 'bg-transparent border-2 border-gray-600 hover:border-gray-400 text-gray-300'
                 }
             `}
         >

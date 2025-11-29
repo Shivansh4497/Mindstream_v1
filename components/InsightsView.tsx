@@ -46,7 +46,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
                 {activeTab === 'reflect' && (
                     <button
                         onClick={() => setActiveTab('deep_dive')}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs font-medium text-brand-teal transition-colors border border-brand-teal/20"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-teal/10 hover:bg-brand-teal/20 rounded-full text-xs font-medium text-brand-teal transition-colors border border-brand-teal/40"
                     >
                         <Activity className="w-3 h-3" />
                         Deep Dive
