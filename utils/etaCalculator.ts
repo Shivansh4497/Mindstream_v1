@@ -31,6 +31,7 @@ export const ETA_PRESETS: ETAOption[] = [
     { id: 'this_year', label: 'This Year', description: 'By Dec 31' },
     { id: 'next_year', label: 'Next Year', description: 'By next Dec 31' },
     { id: 'life', label: 'Life Goal', description: 'Ongoing, no deadline' },
+    { id: 'custom', label: 'Custom Date', description: 'Pick a specific date' },
 ];
 
 /**
