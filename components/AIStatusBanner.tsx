@@ -26,7 +26,7 @@ export const AIStatusBanner: React.FC<AIStatusBannerProps> = ({ status, error })
         <p className="text-sm text-center">
           AI features are disabled. Please resolve the following issue:
         </p>
-        <p className="text-sm text-center font-mono bg-black/30 p-1 rounded mt-1 max-w-2xl mx-auto">
+        <p className="text-sm text-center font-mono bg-blue-900/20 p-1 rounded mt-1 max-w-2xl mx-auto">
           {error || 'An unknown configuration error occurred.'}
         </p>
       </div>

@@ -126,7 +126,7 @@ export const YearlyReview: React.FC<YearlyReviewProps> = ({ data, onClose }) => 
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black text-white flex flex-col">
+        <div className="fixed inset-0 z-50 bg-mindstream-bg-primary text-white flex flex-col">
             {/* Controls */}
             <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-20">
                 <div className="flex gap-1">

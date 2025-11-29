@@ -35,8 +35,8 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
 
   const dailyReflectionsMap = useMemo(() => {
     return dailyReflections.reduce((acc, r) => {
-        acc[r.date] = r;
-        return acc;
+      acc[r.date] = r;
+      return acc;
     }, {} as Record<string, Reflection>);
   }, [dailyReflections]);
 
@@ -52,7 +52,7 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4 animate-fade-in">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">Your Reflections</h2>
-          <p>Add some thoughts to your Stream to get started.<br/>Reflections about your day will appear here.</p>
+          <p>Add some thoughts to your Stream to get started.<br />Reflections about your day will appear here.</p>
         </div>
       </div>
     );
@@ -63,20 +63,20 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
       {/* --- DEBUGGING UI --- */}
       {SHOW_DEBUG && (
         <div className="mb-8 p-4 bg-red-900/50 border border-red-500 rounded-lg">
-            <h3 className="font-bold text-red-300 mb-2 font-display">Developer Diagnostics</h3>
-            <p className="text-sm text-red-200 mb-3">If AI features are not working, click this button. It will attempt one API call and show the raw success or error message below, bypassing any app logic.</p>
-            <button 
-            onClick={onDebug} 
+          <h3 className="font-bold text-red-300 mb-2 font-display">Developer Diagnostics</h3>
+          <p className="text-sm text-red-200 mb-3">If AI features are not working, click this button. It will attempt one API call and show the raw success or error message below, bypassing any app logic.</p>
+          <button
+            onClick={onDebug}
             className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
-            >
+          >
             Debug AI Connection
-            </button>
-            {debugOutput && (
-            <div className="mt-4 p-3 bg-black/50 rounded">
-                <h4 className="text-sm font-semibold text-gray-300 mb-2">Raw AI Output:</h4>
-                <pre className="text-xs text-white whitespace-pre-wrap font-mono">{debugOutput}</pre>
+          </button>
+          {debugOutput && (
+            <div className="mt-4 p-3 bg-red-900/30 rounded">
+              <h4 className="text-sm font-semibold text-gray-300 mb-2">Raw AI Output:</h4>
+              <pre className="text-xs text-white whitespace-pre-wrap font-mono">{debugOutput}</pre>
             </div>
-            )}
+          )}
         </div>
       )}
       {/* --- END DEBUGGING UI --- */}
@@ -91,13 +91,13 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
         return (
           <div key={date} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
-            
+
             {reflectionForDay && (
               <div className="mb-4">
                 <ReflectionCard reflection={reflectionForDay} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
               </div>
             )}
-            
+
             {hasEntries && (
               <div className="mt-4">
                 <button

@@ -25,7 +25,7 @@ export const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection, onEx
   };
 
   return (
-    <div className="bg-gradient-to-br from-indigo-950 to-indigo-900 border border-brand-teal/30 rounded-lg shadow-lg animate-fade-in-up">
+    <div className="bg-mindstream-bg-elevated border border-brand-teal/30 rounded-lg shadow-lg animate-fade-in-up">
       <div className="p-5">
         <div className="flex items-center mb-3">
           <SparklesIcon className="w-6 h-6 text-brand-teal mr-3" />
