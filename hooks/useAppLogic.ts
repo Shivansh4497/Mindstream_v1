@@ -371,11 +371,16 @@ export const useAppLogic = () => {
         }
     };
 
-    const handleAddIntention = async (t: string, tf: IntentionTimeframe) => {
+    const handleAddIntention = async (text: string, dueDate: Date | null, isLifeGoal: boolean) => {
         if (!user) return;
-        await db.addIntention(user.id, t, tf).then(i => {
-            if (isMounted.current && i) setIntentions(prev => [i, ...prev]);
-        });
+        try {
+            const newIntention = await db.addIntention(user.id, text, dueDate, isLifeGoal);
+            if (isMounted.current && newIntention) {
+                setIntentions(prev => [newIntention, ...prev]);
+            }
+        } catch (error) {
+            console.error('Error adding intention:', error);
+        }
     };
 
     const handleToggleIntention = async (id: string, s: string) => {
@@ -395,7 +400,12 @@ export const useAppLogic = () => {
 
     const handleAcceptSuggestion = async (id: string, s: EntrySuggestion) => {
         if (s.type === 'habit') await handleAddHabit(s.label, s.data.frequency || 'daily');
-        if (s.type === 'intention') await handleAddIntention(s.label, s.data.timeframe || 'daily');
+        if (s.type === 'intention') {
+            // Default to "this week" for AI suggestions
+            const oneWeekFromNow = new Date();
+            oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+            await handleAddIntention(s.label, oneWeekFromNow, false);
+        }
         return s.type;
     };
 
