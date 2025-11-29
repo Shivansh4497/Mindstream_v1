@@ -371,7 +371,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
           </p>
           <button
             onClick={handleEnterSanctuary}
-            className="group relative inline-flex items-center gap-3 bg-brand-teal text-brand-indigo font-bold py-4 px-8 rounded-full hover:bg-teal-300 transition-all duration-300 shadow-lg hover:shadow-brand-teal/20 hover:-translate-y-1"
+            className="group relative inline-flex items-center gap-3 bg-brand-teal text-white font-bold py-4 px-8 rounded-full hover:bg-teal-300 transition-all duration-300 shadow-lg hover:shadow-brand-teal/20 hover:-translate-y-1"
           >
             <span>Enter Sanctuary</span>
             <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />

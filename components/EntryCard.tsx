@@ -70,82 +70,82 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
 
   return (
     <div className={`bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] ${isProcessing ? 'opacity-70' : ''}`}>
-      
+
       <div className="flex justify-between items-start mb-3 gap-4">
         <div className="flex-grow">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                {entry.emoji && <span>{entry.emoji}</span>}
-                <span>{entry.title}</span>
-                {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
-            </h3>
-            {isUnprocessed && (
-                <div className="text-xs text-gray-500 mt-1 italic">
-                    AI processing unavailable. Saved as draft.
-                </div>
-            )}
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            {entry.emoji && <span>{entry.emoji}</span>}
+            <span>{entry.title}</span>
+            {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
+          </h3>
+          {isUnprocessed && (
+            <div className="text-xs text-gray-500 mt-1 italic">
+              AI processing unavailable. Saved as draft.
+            </div>
+          )}
         </div>
-        
+
         <div className="flex items-center gap-2 flex-shrink-0">
           {hasSuggestions && !isProcessing && (
             <button
-                onClick={() => setIsSuggestionsOpen(!isSuggestionsOpen)}
-                className={`p-2 rounded-full transition-all duration-300 ${isSuggestionsOpen ? 'bg-brand-teal/20 text-brand-teal rotate-12' : 'text-brand-teal hover:bg-brand-teal/10 hover:scale-110 animate-pulse'}`}
-                aria-label="View AI Suggestions"
+              onClick={() => setIsSuggestionsOpen(!isSuggestionsOpen)}
+              className={`p-2 rounded-full transition-all duration-300 ${isSuggestionsOpen ? 'bg-brand-teal/20 text-brand-teal rotate-12' : 'text-brand-teal hover:bg-brand-teal/10 hover:scale-110 animate-pulse'}`}
+              aria-label="View AI Suggestions"
             >
-                <SparklesIcon className="w-5 h-5" />
+              <SparklesIcon className="w-5 h-5" />
             </button>
           )}
 
-          <time className="text-sm text-gray-400">{entryTime}</time>
-          
+          <time className="text-sm text-gray-300">{entryTime}</time>
+
           {!isProcessing && (
             <div className="relative" ref={menuRef}>
-                <button
+              <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="p-2 -m-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
                 aria-label="More options"
-                >
+              >
                 <MoreOptionsIcon className="w-5 h-5" />
-                </button>
-                {isMenuOpen && (
+              </button>
+              {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
-                    <button
+                  <button
                     onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
                     className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
-                    >
+                  >
                     <PencilIcon className="w-4 h-4" />
                     Edit Entry
-                    </button>
-                    <button
+                  </button>
+                  <button
                     onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
                     className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
-                    >
+                  >
                     <TrashIcon className="w-4 h-4" />
                     Delete Entry
-                    </button>
+                  </button>
                 </div>
-                )}
+              )}
             </div>
           )}
         </div>
       </div>
-      
+
       <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">
         {entry.text}
       </p>
 
       {!isProcessing && ((entry.tags && entry.tags.length > 0) || entry.primary_sentiment) && (
         <div className="flex flex-wrap items-center gap-2">
-           {entry.primary_sentiment && (
-             <div className={`text-xs font-bold py-1 px-2 rounded-full ring-1 ring-inset ${getSentimentClasses(entry.primary_sentiment)}`}>
-               {entry.primary_sentiment}
-             </div>
-           )}
-           {entry.secondary_sentiment && (
-             <div className="text-xs font-medium py-1 px-2 rounded-full ring-1 ring-inset ring-gray-500/50 text-gray-300">
-                {entry.secondary_sentiment}
-             </div>
-           )}
+          {entry.primary_sentiment && (
+            <div className={`text-xs font-bold py-1 px-2 rounded-full ring-1 ring-inset ${getSentimentClasses(entry.primary_sentiment)}`}>
+              {entry.primary_sentiment}
+            </div>
+          )}
+          {entry.secondary_sentiment && (
+            <div className="text-xs font-medium py-1 px-2 rounded-full ring-1 ring-inset ring-gray-500/50 text-gray-300">
+              {entry.secondary_sentiment}
+            </div>
+          )}
           {entry.tags?.map((tag, index) => (
             <button
               key={index}
@@ -160,40 +160,40 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
 
       {/* Suggestions Drawer */}
       {isSuggestionsOpen && hasSuggestions && (
-          <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in-up">
-              <div className="text-xs font-bold text-brand-teal uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <SparklesIcon className="w-3 h-3" />
-                  Mindstream Suggests
-              </div>
-              <div className="flex flex-col gap-2">
-                  {entry.suggestions!.map((suggestion, index) => (
-                      <button
-                        key={index}
-                        onClick={() => onAcceptSuggestion?.(entry.id, suggestion)}
-                        className="flex items-center justify-between w-full p-3 rounded-lg bg-brand-indigo/50 hover:bg-brand-indigo border border-brand-teal/20 hover:border-brand-teal/50 transition-all group text-left"
-                      >
-                          <div className="flex items-center gap-3">
-                                {suggestion.type === 'habit' && <div className="p-1.5 rounded-full bg-rose-500/20 text-rose-400"><PlusCircleIcon className="w-4 h-4" /></div>}
-                                {suggestion.type === 'intention' && <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400"><PlusCircleIcon className="w-4 h-4" /></div>}
-                                {suggestion.type === 'reflection' && <div className="p-1.5 rounded-full bg-sky-500/20 text-sky-400"><ChatBubbleIcon className="w-4 h-4" /></div>}
-                                
-                                <div>
-                                    <div className="text-sm font-medium text-white group-hover:text-brand-teal transition-colors">
-                                        {suggestion.label}
-                                    </div>
-                                    <div className="text-[10px] text-gray-400 capitalize">
-                                        {suggestion.type === 'habit' ? `${suggestion.data.frequency} Habit` : 
-                                         suggestion.type === 'intention' ? `${suggestion.data.timeframe} Goal` : 'Discuss in Chat'}
-                                    </div>
-                                </div>
-                          </div>
-                          <div className="text-brand-teal opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold">
-                              {suggestion.type === 'reflection' ? 'Start Chat' : 'Add'} &rarr;
-                          </div>
-                      </button>
-                  ))}
-              </div>
+        <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in-up">
+          <div className="text-xs font-bold text-brand-teal uppercase tracking-wider mb-2 flex items-center gap-1">
+            <SparklesIcon className="w-3 h-3" />
+            Mindstream Suggests
           </div>
+          <div className="flex flex-col gap-2">
+            {entry.suggestions!.map((suggestion, index) => (
+              <button
+                key={index}
+                onClick={() => onAcceptSuggestion?.(entry.id, suggestion)}
+                className="flex items-center justify-between w-full p-3 rounded-lg bg-brand-indigo/50 hover:bg-brand-indigo border border-brand-teal/20 hover:border-brand-teal/50 transition-all group text-left"
+              >
+                <div className="flex items-center gap-3">
+                  {suggestion.type === 'habit' && <div className="p-1.5 rounded-full bg-rose-500/20 text-rose-400"><PlusCircleIcon className="w-4 h-4" /></div>}
+                  {suggestion.type === 'intention' && <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400"><PlusCircleIcon className="w-4 h-4" /></div>}
+                  {suggestion.type === 'reflection' && <div className="p-1.5 rounded-full bg-sky-500/20 text-sky-400"><ChatBubbleIcon className="w-4 h-4" /></div>}
+
+                  <div>
+                    <div className="text-sm font-medium text-white group-hover:text-brand-teal transition-colors">
+                      {suggestion.label}
+                    </div>
+                    <div className="text-[10px] text-gray-400 capitalize">
+                      {suggestion.type === 'habit' ? `${suggestion.data.frequency} Habit` :
+                        suggestion.type === 'intention' ? `${suggestion.data.timeframe} Goal` : 'Discuss in Chat'}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-brand-teal opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold">
+                  {suggestion.type === 'reflection' ? 'Start Chat' : 'Add'} &rarr;
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

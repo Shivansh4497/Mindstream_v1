@@ -29,8 +29,8 @@ export const OnboardingSuggestionCard: React.FC<OnboardingSuggestionCardProps> =
     return (
         <div
             className={`relative p-4 rounded-xl border transition-all duration-300 ${isAccepted
-                    ? 'bg-brand-teal/10 border-brand-teal'
-                    : 'bg-dark-surface border-white/10 hover:border-white/20'
+                ? 'bg-brand-teal/10 border-brand-teal'
+                : 'bg-dark-surface border-white/10 hover:border-white/20'
                 }`}
         >
             <div className="flex items-start gap-3">
@@ -82,7 +82,7 @@ export const OnboardingSuggestionCard: React.FC<OnboardingSuggestionCardProps> =
                             </button>
                             <button
                                 onClick={handleAccept}
-                                className="p-2 rounded-lg bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-brand-indigo transition-colors"
+                                className="p-2 rounded-lg bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white transition-colors"
                                 title="Accept"
                             >
                                 <Check className="w-4 h-4" />
