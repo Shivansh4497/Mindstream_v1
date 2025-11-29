@@ -37,7 +37,7 @@ export const InsightCard: React.FC<InsightCardProps> = ({ title, insight, childr
                             {title}
                         </h3>
                     </div>
-                    <button className="text-gray-500 hover:text-white transition-colors">
+                    <button className="text-gray-400 hover:text-white transition-colors">
                         {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                     </button>
                 </div>
@@ -73,7 +73,7 @@ export const InsightCard: React.FC<InsightCardProps> = ({ title, insight, childr
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.5 }}
-                        className="flex items-center gap-2 text-xs text-gray-500 mt-2"
+                        className="flex items-center gap-2 text-xs text-gray-400 mt-2"
                     >
                         <span>Tap to view proof</span>
                         <div className={`h-px flex-1 ${color} opacity-20`} />

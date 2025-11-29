@@ -40,7 +40,7 @@ export const EmptyIntentionsState: React.FC<EmptyIntentionsStateProps> = ({
 
                 {/* Templates */}
                 <div className="space-y-3">
-                    <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">
+                    <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold">
                         Templates:
                     </p>
 

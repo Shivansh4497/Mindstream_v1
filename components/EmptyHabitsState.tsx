@@ -40,7 +40,7 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
 
         {/* Starter Habits */}
         < div className="space-y-3" >
-          <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">
+          <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold">
             Popular starters:
           </p>
 
@@ -56,7 +56,7 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
                   <div className="text-sm font-medium text-white truncate">
                     {habit.name}
                   </div>
-                  <div className="text-xs text-gray-500">{habit.category}</div>
+                  <div className="text-xs text-gray-400">{habit.category}</div>
                 </div>
               </button>
             ))}

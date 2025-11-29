@@ -68,7 +68,7 @@ export const ETASelector: React.FC<ETASelectorProps> = ({
                                 <div className="flex-1">
                                     <div className="font-medium text-sm">{preset.label}</div>
                                     {displayDate && (
-                                        <div className="text-xs text-gray-500 mt-0.5">
+                                        <div className="text-xs text-gray-400 mt-0.5">
                                             {displayDate}
                                         </div>
                                     )}
@@ -88,7 +88,7 @@ export const ETASelector: React.FC<ETASelectorProps> = ({
                             </div>
 
                             {preset.id === 'custom' && isSelected && preset.description && (
-                                <div className="text-xs text-gray-500 mt-1">{preset.description}</div>
+                                <div className="text-xs text-gray-400 mt-1">{preset.description}</div>
                             )}
                         </button>
                     );

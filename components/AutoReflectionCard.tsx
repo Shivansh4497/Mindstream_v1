@@ -20,7 +20,7 @@ export const AutoReflectionCard: React.FC<AutoReflectionCardProps> = ({ reflecti
                     <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
                         {reflection.type === 'daily' ? 'Daily' : reflection.type === 'weekly' ? 'Weekly' : 'Monthly'} Reflection
                     </h3>
-                    <p className="text-xs text-gray-500">{displayDate}</p>
+                    <p className="text-xs text-gray-400">{displayDate}</p>
                 </div>
                 {reflection.auto_generated && (
                     <span className="text-xs bg-brand-teal/20 text-brand-teal px-2 py-1 rounded-full font-medium">
@@ -39,7 +39,7 @@ export const AutoReflectionCard: React.FC<AutoReflectionCardProps> = ({ reflecti
                             <span className="text-brand-teal mt-0.5">→</span>
                             <div className="flex-1">
                                 <p className="text-sm text-gray-300">{suggestion.text}</p>
-                                <span className="text-xs text-gray-500 capitalize">{suggestion.timeframe}</span>
+                                <span className="text-xs text-gray-400 capitalize">{suggestion.timeframe}</span>
                             </div>
                         </div>
                     ))}

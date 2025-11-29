@@ -116,7 +116,7 @@ export const Stream: React.FC<StreamProps> = ({
 
           return (
             <div key={date} className="mb-8">
-              <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
+              <h2 className="text-xl font-bold text-white font-display mb-4">{getDisplayDate(date)}</h2>
               {itemsForDay.map((item, index) => {
                 if (item.type === 'entry') {
                   return (

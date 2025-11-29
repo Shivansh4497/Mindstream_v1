@@ -34,9 +34,9 @@ const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): s
     case 'Confused': return 'bg-indigo-800/50 text-indigo-300 ring-indigo-500/50';
     // Contemplative
     case 'Reflective': return 'bg-slate-700/50 text-slate-300 ring-slate-500/50';
-    case 'Inquisitive': return 'bg-gray-700/50 text-gray-300 ring-gray-500/50';
+    case 'Inquisitive': return 'bg-gray-600/50 text-gray-200 ring-gray-500/50';
     case 'Observational': return 'bg-zinc-700/50 text-zinc-300 ring-zinc-500/50';
-    default: return 'bg-gray-700 text-gray-300 ring-gray-600';
+    default: return 'bg-gray-600 text-gray-200 ring-gray-600';
   }
 };
 
@@ -79,7 +79,7 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
             {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
           </h3>
           {isUnprocessed && (
-            <div className="text-xs text-gray-500 mt-1 italic">
+            <div className="text-xs text-gray-400 mt-1 italic">
               AI processing unavailable. Saved as draft.
             </div>
           )}

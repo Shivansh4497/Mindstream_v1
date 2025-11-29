@@ -119,12 +119,12 @@ export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, en
                                 </div>
                                 <div className="text-right">
                                     <div className="text-4xl font-bold text-white">{completionRate}</div>
-                                    <div className="text-sm text-gray-500 uppercase tracking-wider">Avg Streak</div>
+                                    <div className="text-sm text-gray-400 uppercase tracking-wider">Avg Streak</div>
                                 </div>
                             </div>
 
                             {/* Habits Grid */}
-                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Active Habits</h3>
+                            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Active Habits</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {filteredHabits.length > 0 ? (
                                     filteredHabits.map(habit => (
@@ -138,7 +138,7 @@ export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, en
                                         />
                                     ))
                                 ) : (
-                                    <div className="col-span-2 p-8 text-center border border-dashed border-white/10 rounded-xl text-gray-500">
+                                    <div className="col-span-2 p-8 text-center border border-dashed border-white/10 rounded-xl text-gray-400">
                                         No active habits in this area yet.
                                     </div>
                                 )}

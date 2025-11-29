@@ -120,12 +120,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, 
 
         <main className="flex-grow overflow-y-auto p-4">
           {query.trim() === '' && (
-            <div className="h-full flex items-center justify-center text-center text-gray-500">
+            <div className="h-full flex items-center justify-center text-center text-gray-400">
               <p>Start typing to search your entries and reflections.</p>
             </div>
           )}
           {query.trim() !== '' && searchResults.length === 0 && (
-            <div className="h-full flex items-center justify-center text-center text-gray-500">
+            <div className="h-full flex items-center justify-center text-center text-gray-400">
               <p>No results found for "{query}".</p>
             </div>
           )}

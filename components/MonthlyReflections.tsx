@@ -14,7 +14,7 @@ interface MonthlyReflectionsProps {
 }
 
 export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries, monthlyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
-  
+
   const groupedEntriesByMonth = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(e => {
@@ -44,7 +44,7 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries,
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">No Monthly Reflections Yet</h2>
-          <p>Write some journal entries first.<br/>Once you have entries, you can summarize your month here.</p>
+          <p>Write some journal entries first.<br />Once you have entries, you can summarize your month here.</p>
         </div>
       </div>
     );
@@ -61,10 +61,10 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries,
         return (
           <div key={monthId} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getMonthDisplay(monthId)}</h2>
-            
+
             {existingReflection && (
               <div className="mb-4">
-                <ReflectionCard reflection={existingReflection} onExplore={onExplore} onAddSuggestion={onAddSuggestion}/>
+                <ReflectionCard reflection={existingReflection} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
               </div>
             )}
 
@@ -95,9 +95,9 @@ export const MonthlyReflections: React.FC<MonthlyReflectionsProps> = ({ entries,
             )}
 
             {!existingReflection && !canGenerate && (
-                <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
-                    You have no journal entries for this month.
-                </div>
+              <div className="text-center text-gray-400 text-sm p-4 bg-dark-surface rounded-lg">
+                You have no journal entries for this month.
+              </div>
             )}
           </div>
         );

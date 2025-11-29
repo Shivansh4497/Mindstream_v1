@@ -49,7 +49,7 @@ export const ProactiveNudge: React.FC<ProactiveNudgeProps> = ({ nudge, onAccept,
 
                 <button
                     onClick={() => onDismiss(nudge)}
-                    className="text-gray-500 hover:text-white transition-colors"
+                    className="text-gray-400 hover:text-white transition-colors"
                 >
                     <XIcon className="w-4 h-4" />
                 </button>

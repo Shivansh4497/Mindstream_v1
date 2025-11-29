@@ -48,7 +48,7 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
         <span className={`text-lg block ${intention.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
           {intention.text}
         </span>
-        <span className={`text-sm block mt-1 ${intention.status === 'completed' ? 'text-gray-600' : 'text-gray-400'}`}>
+        <span className={`text-sm block mt-1 ${intention.status === 'completed' ? 'text-gray-500' : 'text-gray-300'}`}>
           {dueDateText}
         </span>
       </div>

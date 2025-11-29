@@ -44,7 +44,7 @@ export const EmptyStreamState: React.FC<EmptyStreamStateProps> = ({
 
                 {/* Quick Actions */}
                 <div className="space-y-3">
-                    <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">
+                    <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold">
                         Start by:
                     </p>
 
@@ -83,7 +83,7 @@ export const EmptyStreamState: React.FC<EmptyStreamStateProps> = ({
 
                 {/* Guided Prompt */}
                 <div className="pt-4 border-t border-white/10">
-                    <p className="text-sm text-gray-500 mb-2">Or answer this:</p>
+                    <p className="text-sm text-gray-400 mb-2">Or answer this:</p>
                     <button
                         onClick={() => {
                             const newPrompt = guidedPrompts[Math.floor(Math.random() * guidedPrompts.length)];

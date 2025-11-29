@@ -14,7 +14,7 @@ interface WeeklyReflectionsProps {
 }
 
 export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, weeklyReflections, onGenerate, onExplore, isGenerating, onAddSuggestion }) => {
-  
+
   const groupedEntriesByWeek = useMemo(() => {
     const groups: Record<string, Entry[]> = {};
     entries.forEach(e => {
@@ -44,7 +44,7 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, w
       <div className="h-full flex items-center justify-center text-center text-gray-400 p-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-white mb-2">No Weekly Reflections Yet</h2>
-          <p>Write some journal entries first.<br/>Once you have entries, you can summarize your week here.</p>
+          <p>Write some journal entries first.<br />Once you have entries, you can summarize your week here.</p>
         </div>
       </div>
     );
@@ -61,7 +61,7 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, w
         return (
           <div key={weekId} className="mb-8">
             <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getWeekDisplay(weekId)}</h2>
-            
+
             {existingReflection && (
               <div className="mb-4">
                 <ReflectionCard reflection={existingReflection} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
@@ -69,35 +69,35 @@ export const WeeklyReflections: React.FC<WeeklyReflectionsProps> = ({ entries, w
             )}
 
             {canGenerate && (
-                 <div className="mt-4">
-                 <button
-                   onClick={() => onGenerate(weekId, entriesForWeek)}
-                   disabled={isGeneratingForThis}
-                   className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-                 >
-                   {isGeneratingForThis ? (
-                     <>
-                       <div className="w-5 h-5 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-                       <span>Generating...</span>
-                     </>
-                   ) : (
-                     <>
-                       <SparklesIcon className="w-5 h-5 text-brand-teal" />
-                       <span>
-                         {existingReflection
-                           ? 'Update weekly reflection'
-                           : 'Generate weekly reflection'}
-                        </span>
-                     </>
-                   )}
-                 </button>
-               </div>
+              <div className="mt-4">
+                <button
+                  onClick={() => onGenerate(weekId, entriesForWeek)}
+                  disabled={isGeneratingForThis}
+                  className="w-full flex items-center justify-center gap-2 bg-dark-surface hover:bg-dark-surface-light disabled:bg-dark-surface/50 disabled:cursor-wait text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                >
+                  {isGeneratingForThis ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <SparklesIcon className="w-5 h-5 text-brand-teal" />
+                      <span>
+                        {existingReflection
+                          ? 'Update weekly reflection'
+                          : 'Generate weekly reflection'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
-            
+
             {!existingReflection && !canGenerate && (
-                <div className="text-center text-gray-500 text-sm p-4 bg-dark-surface rounded-lg">
-                    You have no journal entries for this week.
-                </div>
+              <div className="text-center text-gray-400 text-sm p-4 bg-dark-surface rounded-lg">
+                You have no journal entries for this week.
+              </div>
             )}
           </div>
         );

@@ -17,7 +17,7 @@ export const TodaysFocusBanner: React.FC<TodaysFocusBannerProps> = ({ intentions
         <div className="flex-grow overflow-x-auto whitespace-nowrap text-sm text-gray-300">
           {intentions.map((intention, index) => (
             <span key={intention.id}>
-              {index > 0 && <span className="mx-2 text-gray-500">&bull;</span>}
+              {index > 0 && <span className="mx-2 text-gray-400">&bull;</span>}
               {intention.text}
             </span>
           ))}

@@ -42,13 +42,13 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                     </h3>
                     <InfoTooltip text="GitHub-style contribution graph showing daily habit completion. Each cell represents one day. Use this to identify streaks, spot gaps, and understand your consistency patterns." />
                 </div>
-                <div className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                <div className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
                     {completionRate}% complete
                 </div>
             </div>
 
             {/* Color Legend */}
-            <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
+            <div className="flex items-center gap-3 mb-3 text-xs text-gray-400">
                 <div className="flex items-center gap-1">
                     <div className="w-3 h-3 rounded-sm bg-brand-teal" />
                     <span>Completed</span>
@@ -72,7 +72,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({ habit, logs, days = 
                 ))}
             </div>
 
-            <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+            <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
                 <span>{format(subDays(new Date(), days - 1), 'MMM d')}</span>
                 <span>Today</span>
             </div>

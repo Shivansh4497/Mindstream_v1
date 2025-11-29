@@ -97,7 +97,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                 <h2 className={`text-xl font-bold font-display ${getCategoryColor(category)}`}>
                                     {getUrgencyCategoryLabel(category)}
                                 </h2>
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-gray-300">
                                     {pendingList.length}
                                 </span>
                             </div>
@@ -127,11 +127,11 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                 ) : (
                                     <ChevronRight className="w-5 h-5 text-gray-400" />
                                 )}
-                                <span className="text-lg font-medium text-gray-300">
+                                <span className="text-lg font-medium text-gray-200">
                                     Completed
                                 </span>
                             </div>
-                            <span className="text-sm text-gray-500">
+                            <span className="text-sm text-gray-300">
                                 {allCompleted.length}
                             </span>
                         </button>
