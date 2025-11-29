@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Intention } from '../types';
 import { IntentionCard } from './IntentionCard';
 import { EmptyIntentionsState } from './EmptyIntentionsState';
@@ -17,44 +18,47 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     onToggle,
     onDelete
 }) => {
+    const [showCompleted, setShowCompleted] = useState(false);
 
-    const groupedIntentions = useMemo(() => {
-        const groups: Record<UrgencyCategory, { pending: Intention[], completed: Intention[] }> = {
-            overdue: { pending: [], completed: [] },
-            today: { pending: [], completed: [] },
-            this_week: { pending: [], completed: [] },
-            this_month: { pending: [], completed: [] },
-            later: { pending: [], completed: [] },
-            life: { pending: [], completed: [] },
+    const { pendingByCategory, allCompleted } = useMemo(() => {
+        const pendingGroups: Record<UrgencyCategory, Intention[]> = {
+            overdue: [],
+            today: [],
+            this_week: [],
+            this_month: [],
+            later: [],
+            life: [],
         };
+        const completedIntentions: Intention[] = [];
 
         intentions.forEach(intention => {
-            const dueDate = intention.due_date ? new Date(intention.due_date) : null;
-            const isLifeGoal = intention.is_life_goal || false;
-            const category = getUrgencyCategory(dueDate, isLifeGoal);
-
-            if (intention.status === 'pending') {
-                groups[category].pending.push(intention);
+            if (intention.status === 'completed') {
+                completedIntentions.push(intention);
             } else {
-                groups[category].completed.push(intention);
+                const dueDate = intention.due_date ? new Date(intention.due_date) : null;
+                const isLifeGoal = intention.is_life_goal || false;
+                const category = getUrgencyCategory(dueDate, isLifeGoal);
+                pendingGroups[category].push(intention);
             }
         });
 
-        // Sort within each category by due date (earliest first)
-        Object.keys(groups).forEach(key => {
+        // Sort pending by due date within each category
+        Object.keys(pendingGroups).forEach(key => {
             const category = key as UrgencyCategory;
-            groups[category].pending.sort((a, b) => {
+            pendingGroups[category].sort((a, b) => {
                 if (!a.due_date) return 1;
                 if (!b.due_date) return -1;
                 return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
             });
-            groups[category].completed.sort((a, b) => {
-                if (!a.completed_at || !b.completed_at) return 0;
-                return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
-            });
         });
 
-        return groups;
+        // Sort completed by completion date (most recent first)
+        completedIntentions.sort((a, b) => {
+            if (!a.completed_at || !b.completed_at) return 0;
+            return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
+        });
+
+        return { pendingByCategory: pendingGroups, allCompleted: completedIntentions };
     }, [intentions]);
 
     const hasAnyIntentions = intentions.length > 0;
@@ -82,11 +86,10 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                     <EmptyIntentionsState />
                 )}
 
+                {/* Pending Intentions by Urgency */}
                 {urgencyCategoryOrder.map(category => {
-                    const group = groupedIntentions[category];
-                    const totalCount = group.pending.length + group.completed.length;
-
-                    if (totalCount === 0) return null;
+                    const pendingList = pendingByCategory[category];
+                    if (pendingList.length === 0) return null;
 
                     return (
                         <div key={category} className="mb-8">
@@ -95,12 +98,11 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                     {getUrgencyCategoryLabel(category)}
                                 </h2>
                                 <span className="text-sm text-gray-500">
-                                    {group.pending.length} pending
+                                    {pendingList.length}
                                 </span>
                             </div>
 
-                            {/* Pending Intentions */}
-                            {group.pending.map(intention => (
+                            {pendingList.map(intention => (
                                 <IntentionCard
                                     key={intention.id}
                                     intention={intention}
@@ -108,30 +110,46 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                     onDelete={onDelete}
                                 />
                             ))}
-
-                            {/* Completed Intentions */}
-                            {group.completed.length > 0 && (
-                                <div className="mt-4">
-                                    {group.pending.length > 0 && (
-                                        <div className="flex items-center gap-2 my-3">
-                                            <div className="flex-1 border-b border-white/10"></div>
-                                            <span className="text-xs text-gray-500 px-2">Completed</span>
-                                            <div className="flex-1 border-b border-white/10"></div>
-                                        </div>
-                                    )}
-                                    {group.completed.map(intention => (
-                                        <IntentionCard
-                                            key={intention.id}
-                                            intention={intention}
-                                            onToggle={onToggle}
-                                            onDelete={onDelete}
-                                        />
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     );
                 })}
+
+                {/* Completed Intentions (Collapsible) */}
+                {allCompleted.length > 0 && (
+                    <div className="mt-8 border-t border-white/10 pt-6">
+                        <button
+                            onClick={() => setShowCompleted(!showCompleted)}
+                            className="w-full flex items-center justify-between p-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                {showCompleted ? (
+                                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                                )}
+                                <span className="text-lg font-medium text-gray-300">
+                                    Completed
+                                </span>
+                            </div>
+                            <span className="text-sm text-gray-500">
+                                {allCompleted.length}
+                            </span>
+                        </button>
+
+                        {showCompleted && (
+                            <div className="mt-4 space-y-2">
+                                {allCompleted.map(intention => (
+                                    <IntentionCard
+                                        key={intention.id}
+                                        intention={intention}
+                                        onToggle={onToggle}
+                                        onDelete={onDelete}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </main>
         </div>
     );
