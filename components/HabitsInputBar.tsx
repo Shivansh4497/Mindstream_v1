@@ -42,7 +42,7 @@ export const HabitsInputBar: React.FC<HabitsInputBarProps> = ({ onAddHabit, isLo
               <div className="w-5 h-5 border-2 border-brand-indigo border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : (
-            <PlusCircleIcon className="w-6 h-6 text-brand-indigo" />
+            <PlusCircleIcon className="w-6 h-6 text-white" />
           )}
         </button>
       </form>

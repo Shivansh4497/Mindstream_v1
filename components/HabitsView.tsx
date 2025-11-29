@@ -92,7 +92,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                             key={freq.id}
                             onClick={() => onFrequencyChange(freq.id)}
                             className={`py-2 px-4 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${activeFrequency === freq.id
-                                ? 'bg-brand-teal text-brand-indigo'
+                                ? 'bg-brand-teal text-white'
                                 : 'text-gray-300 hover:bg-white/10 hover:text-white'
                                 }`}
                         >

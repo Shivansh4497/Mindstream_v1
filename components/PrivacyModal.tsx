@@ -14,7 +14,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ onClose }) => {
         </p>
         <button
           onClick={onClose}
-          className="w-full bg-brand-teal text-brand-indigo font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-all duration-300 shadow-lg"
+          className="w-full bg-brand-teal text-white font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-all duration-300 shadow-lg"
         >
           I Understand, Let's Begin
         </button>

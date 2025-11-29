@@ -34,7 +34,7 @@ export const ProactiveNudge: React.FC<ProactiveNudgeProps> = ({ nudge, onAccept,
                     <div className="flex gap-3">
                         <button
                             onClick={() => onAccept(nudge)}
-                            className="px-4 py-2 bg-brand-teal text-brand-indigo text-sm font-bold rounded-lg hover:bg-teal-300 transition-colors shadow-lg shadow-brand-teal/20"
+                            className="px-4 py-2 bg-brand-teal text-white text-sm font-bold rounded-lg hover:bg-teal-300 transition-colors shadow-lg shadow-brand-teal/20"
                         >
                             Let's Chat
                         </button>

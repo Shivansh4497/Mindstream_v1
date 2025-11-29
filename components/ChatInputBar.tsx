@@ -41,7 +41,7 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({ onSendMessage, isLoa
           aria-label="Send message"
           disabled={isLoading || !text.trim()}
         >
-          <SendIcon className="w-6 h-6 text-brand-indigo" />
+          <SendIcon className="w-6 h-6 text-white" />
         </button>
       </form>
     </footer>

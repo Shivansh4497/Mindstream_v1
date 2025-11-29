@@ -46,7 +46,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
                     <button
                         onClick={() => setActiveTab('habits')}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'habits'
-                            ? 'bg-brand-teal text-brand-indigo shadow-lg'
+                            ? 'bg-brand-teal text-white shadow-lg'
                             : 'text-gray-400 hover:text-white hover:bg-white/5'
                             }`}
                     >
@@ -56,7 +56,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
                     <button
                         onClick={() => setActiveTab('goals')}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'goals'
-                            ? 'bg-brand-teal text-brand-indigo shadow-lg'
+                            ? 'bg-brand-teal text-white shadow-lg'
                             : 'text-gray-400 hover:text-white hover:bg-white/5'
                             }`}
                     >

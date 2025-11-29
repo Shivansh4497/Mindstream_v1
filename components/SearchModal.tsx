@@ -12,7 +12,7 @@ interface SearchModalProps {
   initialQuery?: string;
 }
 
-type SearchResult = 
+type SearchResult =
   | { type: 'entry'; data: Entry }
   | { type: 'reflection'; data: Reflection };
 
@@ -20,7 +20,7 @@ type SearchResult =
 export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, onClose, initialQuery = '' }) => {
   const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<'all' | 'entries' | 'reflections'>('all');
-  
+
   // Add keyboard listener for Esc key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -62,9 +62,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, 
     }
 
     return results.sort((a, b) => {
-        const dateA = new Date(a.type === 'entry' ? a.data.timestamp : a.data.date).getTime();
-        const dateB = new Date(b.type === 'entry' ? b.data.timestamp : b.data.date).getTime();
-        return dateB - dateA;
+      const dateA = new Date(a.type === 'entry' ? a.data.timestamp : a.data.date).getTime();
+      const dateB = new Date(b.type === 'entry' ? b.data.timestamp : b.data.date).getTime();
+      return dateB - dateA;
     });
 
   }, [query, entries, reflections, filter]);
@@ -86,18 +86,18 @@ export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, 
       </span>
     );
   };
-  
+
   return (
-    <div 
-        className="fixed inset-0 bg-black/70 z-50 flex justify-center p-4 pt-[10vh] animate-fade-in"
-        onClick={onClose}
+    <div
+      className="fixed inset-0 bg-black/70 z-50 flex justify-center p-4 pt-[10vh] animate-fade-in"
+      onClick={onClose}
     >
-      <div 
+      <div
         className="bg-dark-surface rounded-xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex-shrink-0 p-4 border-b border-white/10 flex items-center gap-4">
-          <SearchIcon className="w-6 h-6 text-gray-400"/>
+          <SearchIcon className="w-6 h-6 text-gray-400" />
           <input
             type="text"
             value={query}
@@ -112,49 +112,49 @@ export const SearchModal: React.FC<SearchModalProps> = ({ entries, reflections, 
         </header>
 
         <div className="flex-shrink-0 p-3 border-b border-white/10 flex items-center gap-2">
-            <span className="text-sm text-gray-400">Filter:</span>
-            <button onClick={() => setFilter('all')} className={`text-sm py-1 px-3 rounded-full ${filter === 'all' ? 'bg-brand-teal text-brand-indigo font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>All</button>
-            <button onClick={() => setFilter('entries')} className={`text-sm py-1 px-3 rounded-full ${filter === 'entries' ? 'bg-brand-teal text-brand-indigo font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>Entries</button>
-            <button onClick={() => setFilter('reflections')} className={`text-sm py-1 px-3 rounded-full ${filter === 'reflections' ? 'bg-brand-teal text-brand-indigo font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>Reflections</button>
+          <span className="text-sm text-gray-400">Filter:</span>
+          <button onClick={() => setFilter('all')} className={`text-sm py-1 px-3 rounded-full ${filter === 'all' ? 'bg-brand-teal text-white font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>All</button>
+          <button onClick={() => setFilter('entries')} className={`text-sm py-1 px-3 rounded-full ${filter === 'entries' ? 'bg-brand-teal text-white font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>Entries</button>
+          <button onClick={() => setFilter('reflections')} className={`text-sm py-1 px-3 rounded-full ${filter === 'reflections' ? 'bg-brand-teal text-white font-semibold' : 'bg-white/10 hover:bg-white/20'}`}>Reflections</button>
         </div>
 
         <main className="flex-grow overflow-y-auto p-4">
-            {query.trim() === '' && (
-                <div className="h-full flex items-center justify-center text-center text-gray-500">
-                    <p>Start typing to search your entries and reflections.</p>
-                </div>
-            )}
-            {query.trim() !== '' && searchResults.length === 0 && (
-                 <div className="h-full flex items-center justify-center text-center text-gray-500">
-                    <p>No results found for "{query}".</p>
-                </div>
-            )}
-            {searchResults.map((result, index) => (
-                <div key={`${result.type}-${result.type === 'entry' ? result.data.id : result.data.id}-${index}`} className="p-4 mb-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors">
-                    {result.type === 'entry' && (
-                        <>
-                            <div className="flex justify-between items-center mb-1">
-                                <h4 className="font-bold text-white">{highlightText(result.data.title || 'Entry', query)}</h4>
-                                <span className="text-xs text-gray-400">{getDisplayDate(result.data.timestamp)}</span>
-                            </div>
-                            <p className="text-sm text-gray-300 line-clamp-2">
-                                {highlightText(result.data.text, query)}
-                            </p>
-                        </>
-                    )}
-                    {result.type === 'reflection' && (
-                         <>
-                            <div className="flex justify-between items-center mb-1">
-                                <h4 className="font-bold text-white">Daily Reflection</h4>
-                                <span className="text-xs text-gray-400">{getDisplayDate(result.data.date)}</span>
-                            </div>
-                            <p className="text-sm text-gray-300 line-clamp-2">
-                                {highlightText(result.data.summary, query)}
-                            </p>
-                        </>
-                    )}
-                </div>
-            ))}
+          {query.trim() === '' && (
+            <div className="h-full flex items-center justify-center text-center text-gray-500">
+              <p>Start typing to search your entries and reflections.</p>
+            </div>
+          )}
+          {query.trim() !== '' && searchResults.length === 0 && (
+            <div className="h-full flex items-center justify-center text-center text-gray-500">
+              <p>No results found for "{query}".</p>
+            </div>
+          )}
+          {searchResults.map((result, index) => (
+            <div key={`${result.type}-${result.type === 'entry' ? result.data.id : result.data.id}-${index}`} className="p-4 mb-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors">
+              {result.type === 'entry' && (
+                <>
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-white">{highlightText(result.data.title || 'Entry', query)}</h4>
+                    <span className="text-xs text-gray-400">{getDisplayDate(result.data.timestamp)}</span>
+                  </div>
+                  <p className="text-sm text-gray-300 line-clamp-2">
+                    {highlightText(result.data.text, query)}
+                  </p>
+                </>
+              )}
+              {result.type === 'reflection' && (
+                <>
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-white">Daily Reflection</h4>
+                    <span className="text-xs text-gray-400">{getDisplayDate(result.data.date)}</span>
+                  </div>
+                  <p className="text-sm text-gray-300 line-clamp-2">
+                    {highlightText(result.data.summary, query)}
+                  </p>
+                </>
+              )}
+            </div>
+          ))}
         </main>
       </div>
     </div>

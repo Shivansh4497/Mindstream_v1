@@ -60,7 +60,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
             aria-label="Add intention"
             disabled={!text.trim()}
           >
-            <SendIcon className="w-6 h-6 text-brand-indigo" />
+            <SendIcon className="w-6 h-6 text-white" />
           </button>
         </form>
       </footer>
@@ -104,7 +104,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
                 </button>
                 <button
                   onClick={handleConfirmETA}
-                  className="flex-1 px-4 py-3 bg-brand-teal hover:bg-teal-400 rounded-lg text-brand-indigo font-medium transition-colors"
+                  className="flex-1 px-4 py-3 bg-brand-teal hover:bg-teal-400 rounded-lg text-white font-medium transition-colors"
                 >
                   Create Intention
                 </button>

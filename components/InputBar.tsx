@@ -172,7 +172,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
           )}
         </div>
         <button type="submit" className="bg-brand-teal p-3 rounded-full hover:bg-teal-300 transition-colors shadow-lg" aria-label="Send thought">
-          <SendIcon className="w-6 h-6 text-brand-indigo" />
+          <SendIcon className="w-6 h-6 text-white" />
         </button>
       </form>
       <Toast

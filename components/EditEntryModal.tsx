@@ -21,11 +21,11 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ entry, onSave, o
   };
 
   return (
-    <div 
-        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in"
-        onClick={onCancel}
+    <div
+      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in"
+      onClick={onCancel}
     >
-      <div 
+      <div
         className="bg-dark-surface rounded-xl p-6 max-w-2xl w-full flex flex-col shadow-2xl animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
@@ -46,7 +46,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ entry, onSave, o
           <button
             onClick={handleSave}
             disabled={!hasChanged || isSaving}
-            className="bg-brand-teal text-brand-indigo font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="bg-brand-teal text-white font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isSaving && <div className="w-5 h-5 border-2 border-brand-indigo border-t-transparent rounded-full animate-spin"></div>}
             {isSaving ? 'Saving...' : 'Save Changes'}
