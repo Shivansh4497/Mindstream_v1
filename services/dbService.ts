@@ -258,22 +258,30 @@ export const getIntentions = async (userId: string): Promise<Intention[]> => {
 
 export const addIntention = async (userId: string, text: string, dueDate: Date | null = null, isLifeGoal: boolean = false): Promise<Intention | null> => {
     if (!supabase) return null;
+
+    const intentionData = {
+        user_id: userId,
+        text,
+        due_date: dueDate ? dueDate.toISOString() : null,
+        is_life_goal: isLifeGoal,
+        status: 'pending',
+        is_recurring: false,
+    };
+
+    console.log('Creating intention with data:', intentionData);
+
     const { data, error } = await (supabase as any)
         .from('intentions')
-        .insert({
-            user_id: userId,
-            text,
-            due_date: dueDate ? dueDate.toISOString() : null,
-            is_life_goal: isLifeGoal,
-            status: 'pending',
-            is_recurring: false,
-        } as any)
+        .insert(intentionData as any)
         .select()
         .single();
+
     if (error) {
         console.error('Error adding intention:', error);
         throw error;
     }
+
+    console.log('Intention created successfully:', data);
     return data;
 };
 
