@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Target, Repeat } from 'lucide-react';
 import { HabitsView } from './HabitsView';
 import { IntentionsView } from './IntentionsView';
 import { HabitsInputBar } from './HabitsInputBar';
 import { IntentionsInputBar } from './IntentionsInputBar';
+import { sortHabitsByRelevance } from '../services/smartDefaults';
 import type { Habit, HabitLog, Intention, HabitFrequency } from '../types';
 
 interface FocusViewProps {
@@ -33,6 +34,9 @@ export const FocusView: React.FC<FocusViewProps> = ({
     intentions, onToggleIntention, onDeleteIntention, onAddIntention
 }) => {
     const [activeTab, setActiveTab] = useState<FocusTab>('habits');
+
+    // Smart sort habits by time of day
+    const sortedHabits = useMemo(() => sortHabitsByRelevance(habits), [habits]);
 
     return (
         <div className="flex flex-col h-full relative">
@@ -75,7 +79,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
                             className="absolute inset-0 flex flex-col"
                         >
                             <HabitsView
-                                habits={habits}
+                                habits={sortedHabits}
                                 todaysLogs={todaysLogs}
                                 onToggle={onToggleHabit}
                                 onEdit={onEditHabit}

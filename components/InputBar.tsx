@@ -4,6 +4,7 @@ import { SendIcon } from './icons/SendIcon';
 import { celebrate, CelebrationType } from '../utils/celebrations';
 import { triggerHaptic } from '../utils/haptics';
 import { useToast, Toast } from './Toast';
+import { getStreamPrompt } from '../services/smartDefaults';
 
 // FIX: Define types for the Web Speech API to resolve TypeScript errors.
 // These are not included in default DOM typings.
@@ -50,7 +51,7 @@ const GUIDED_PROMPTS = [
 const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 if (recognition) {
-  recognition.continuous = true;
+  recognition.continuous = false;
   recognition.interimResults = true;
   recognition.lang = 'en-US';
 }
@@ -59,8 +60,10 @@ if (recognition) {
 export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const recognitionRef = useRef(recognition);
   const { toast, showToast, hideToast } = useToast();
+  const [placeholder, setPlaceholder] = useState(getStreamPrompt());
 
   useEffect(() => {
     const rec = recognitionRef.current;
@@ -151,7 +154,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
               handleSubmit();
             }
           }}
-          placeholder={isListening ? "Listening..." : "What's on your mind?"}
+          placeholder={isListening ? "Listening..." : placeholder}
           className="w-full bg-dark-surface-light rounded-lg p-3 text-white placeholder-gray-400 resize-none focus:ring-2 focus:ring-brand-teal focus:outline-none transition-shadow"
           rows={1}
         />
