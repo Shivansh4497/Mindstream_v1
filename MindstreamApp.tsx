@@ -24,6 +24,8 @@ import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
 import { SettingsView } from './components/SettingsView';
 import { LifeAreaDashboard } from './components/LifeAreaDashboard';
+import { FocusView } from './components/FocusView';
+import { InsightsView } from './components/InsightsView';
 import { YearlyReview } from './components/YearlyReview';
 import { generateYearlyReview, YearlyReviewData } from './services/yearlyReviewService';
 
@@ -136,71 +138,46 @@ export const MindstreamApp: React.FC = () => {
                         </motion.div>
                     )}
 
-                    {view === 'habits' && (
+                    {view === 'focus' && (
                         <motion.div
-                            key="habits"
+                            key="focus"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.3, ease: 'easeInOut' }}
                             className="absolute inset-0 flex flex-col"
                         >
-                            <HabitsView
+                            <FocusView
+                                // Habits Props
                                 habits={state.habits}
                                 todaysLogs={state.habitLogs}
-                                onToggle={actions.handleToggleHabit}
-                                onEdit={setHabitToEdit}
-                                onDelete={actions.handleDeleteHabit}
-                                activeFrequency={activeHabitFrequency}
-                                onFrequencyChange={setActiveHabitFrequency}
-                            />
-                            <HabitsInputBar onAddHabit={actions.handleAddHabit} isLoading={state.isAddingHabit} activeFrequency={activeHabitFrequency} />
-                        </motion.div>
-                    )}
-
-                    {view === 'intentions' && (
-                        <motion.div
-                            key="intentions"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="absolute inset-0 flex flex-col"
-                        >
-                            <IntentionsView
+                                onToggleHabit={actions.handleToggleHabit}
+                                onEditHabit={setHabitToEdit}
+                                onDeleteHabit={actions.handleDeleteHabit}
+                                onAddHabit={actions.handleAddHabit}
+                                isAddingHabit={state.isAddingHabit}
+                                activeHabitFrequency={activeHabitFrequency}
+                                onHabitFrequencyChange={setActiveHabitFrequency}
+                                // Intentions Props
                                 intentions={state.intentions}
-                                onToggle={actions.handleToggleIntention}
-                                onDelete={actions.handleDeleteIntention}
+                                onToggleIntention={actions.handleToggleIntention}
+                                onDeleteIntention={actions.handleDeleteIntention}
+                                onAddIntention={actions.handleAddIntention}
                             />
-                            <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
                         </motion.div>
                     )}
 
-                    {view === 'chat' && (
+                    {view === 'insights' && (
                         <motion.div
-                            key="chat"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
+                            key="insights"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.3, ease: 'easeInOut' }}
                             className="absolute inset-0 flex flex-col"
                         >
-                            <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => { }} />
-                            {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
-                            <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
-                        </motion.div>
-                    )}
-
-                    {view === 'reflections' && (
-                        <motion.div
-                            key="reflections"
-                            initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -20, scale: 0.98 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="absolute inset-0 flex flex-col"
-                        >
-                            <ReflectionsView
+                            <InsightsView
+                                // Reflections Props
                                 entries={state.entries}
                                 intentions={state.intentions}
                                 reflections={state.reflections}
@@ -217,7 +194,6 @@ export const MindstreamApp: React.FC = () => {
                                     actions.setIsGeneratingReflection(weekId);
                                     const res = await reflections.generateWeeklyReflection(weekEntries, state.intentions);
                                     const saved = await db.addReflection(user!.id, { ...res, date: weekId, type: 'weekly' });
-                                    // Override date with weekId for local state consistency
                                     const reflectionForState = { ...saved, date: weekId };
                                     actions.setReflections(prev => [...prev.filter(r => !(r.date === weekId && r.type === 'weekly')), reflectionForState]);
                                     actions.setIsGeneratingReflection(null);
@@ -226,7 +202,6 @@ export const MindstreamApp: React.FC = () => {
                                     actions.setIsGeneratingReflection(monthId);
                                     const res = await reflections.generateMonthlyReflection(monthEntries, state.intentions);
                                     const saved = await db.addReflection(user!.id, { ...res, date: monthId, type: 'monthly' });
-                                    // Override date with monthId for local state consistency
                                     const reflectionForState = { ...saved, date: monthId };
                                     actions.setReflections(prev => [...prev.filter(r => !(r.date === monthId && r.type === 'monthly')), reflectionForState]);
                                     actions.setIsGeneratingReflection(null);
@@ -240,38 +215,7 @@ export const MindstreamApp: React.FC = () => {
                                 aiStatus={state.aiStatus}
                                 onDebug={() => reflections.getRawReflectionForDebug(state.entries, state.intentions).then(res => actions.setToast({ message: "Debug check console", id: 1 }))}
                                 debugOutput={null}
-                            />
-                        </motion.div>
-                    )}
-
-                    {view === 'settings' && (
-                        <motion.div
-                            key="settings"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="absolute inset-0 flex flex-col z-30 bg-brand-indigo"
-                        >
-                            <SettingsView onBack={() => setView('stream')} />
-                        </motion.div>
-                    )}
-
-                    {view === 'life' && (
-                        <motion.div
-                            key="life"
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="absolute inset-0 flex flex-col"
-                        >
-                            <LifeAreaDashboard
-                                habits={state.habits}
-                                entries={state.entries}
-                                intentions={state.intentions}
-                                habitLogs={state.habitLogs}
-                                onBack={() => setView('stream')}
+                                // Life Dashboard Props
                                 onOpenYearlyReview={async () => {
                                     if (!user) return;
                                     setIsGeneratingYearly(true);

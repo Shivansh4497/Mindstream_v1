@@ -1,9 +1,6 @@
 import React from 'react';
-import { Activity } from 'lucide-react';
-import { SparklesIcon } from './icons/SparklesIcon';
+import { Target, Sparkles } from 'lucide-react';
 import { ChatIcon } from './icons/ChatIcon';
-import { IntentionsIcon } from './icons/IntentionsIcon';
-import { RepeatIcon } from './icons/RepeatIcon';
 
 // An icon for the "Stream" view is defined inline to avoid creating new files.
 const StreamIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -12,7 +9,7 @@ const StreamIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
-export type View = 'stream' | 'reflections' | 'chat' | 'intentions' | 'habits' | 'life' | 'settings';
+export type View = 'stream' | 'focus' | 'insights' | 'chat' | 'settings';
 
 interface NavBarProps {
   activeView: View;
@@ -23,11 +20,9 @@ interface NavBarProps {
 export const NavBar: React.FC<NavBarProps> = ({ activeView, onViewChange, isChatDisabled }) => {
   const navItems = [
     { id: 'stream', label: 'Stream', icon: StreamIcon },
-    { id: 'reflections', label: 'Reflect', icon: SparklesIcon },
+    { id: 'focus', label: 'Focus', icon: Target },
+    { id: 'insights', label: 'Insights', icon: Sparkles },
     { id: 'chat', label: 'Chat', icon: ChatIcon },
-    { id: 'intentions', label: 'Goals', icon: IntentionsIcon },
-    { id: 'habits', label: 'Habits', icon: RepeatIcon },
-    { id: 'life', label: 'Life', icon: Activity },
   ];
 
   return (
