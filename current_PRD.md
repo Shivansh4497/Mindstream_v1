@@ -1,5 +1,5 @@
 # Product Requirement Document: Mindstream
-**Version:** 4.0  
+**Version:** 4.1  
 **Last Updated:** November 29, 2025  
 **Status:** Production (Live on Vercel)  
 **Repository:** [github.com/Shivansh4497/Mindstream_v1](https://github.com/Shivansh4497/Mindstream_v1)  
@@ -190,18 +190,27 @@ SYSTEM • 2 day streak
 
 ### Pillar 3: **Intentions** (Goal Management)
 
-**Purpose:** Finite goals across timeframes (vs. infinite habits).
+**Purpose:** Finite goals with clear deadlines (vs. infinite habits).
 
 **Features:**
-- **Timeframe Tabs:** Daily | Weekly | Monthly | Yearly | Life
-- **Focus Banner:** Stream shows pending Daily intentions at top
-- **AI Suggestions:** Reflections and onboarding auto-generate intentions
-- **Completion Tracking:** Mark done, tracks `completed_at` timestamp
-- **Stagnation Detection:** Nudges if goals pending too long
+- **ETA-Based System (NEW!):** Replaces rigid timeframes with natural language deadlines.
+  - **Presets:** Today | Tomorrow | This Week | Next Week | This Month | Life | Custom Date
+  - **Smart Calculation:** Auto-sets due dates (e.g., "This Week" → Sunday at 23:59)
+- **Urgency Grouping:** Intentions auto-sorted by deadline:
+  - 🔴 Overdue
+  - 🟢 Today
+  - 🔵 This Week
+  - 🟣 This Month
+  - ⚪ Later
+  - 🟡 Life Goals
+- **Collapsible History:** Completed items move to a hidden dropdown to reduce clutter.
+- **AI Suggestions:** Reflections and onboarding auto-generate intentions with default deadlines (e.g., "This Week").
 
 **UI Pattern:**
-- Checkbox list grouped by creation date
-- Completed items shown as strikethrough below active ones
+- **Input:** Modal with one-tap ETA presets + Custom Date picker.
+- **List:** Grouped by urgency color codes.
+- **Life Goals:** Distinct section for ongoing aspirations without deadlines.
+- **Completed:** Collapsible "Completed (X)" section at bottom.
 
 ---
 
@@ -696,11 +705,13 @@ create table intentions (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references auth.users(id) on delete cascade not null,
   text text not null,
-  timeframe intention_timeframe not null,
+  due_date timestamptz, -- NEW: Replaces timeframe
+  is_life_goal boolean default false, -- NEW: For ongoing goals
+  timeframe intention_timeframe, -- DEPRECATED: Kept for migration
   status intention_status default 'pending',
   is_recurring bool default false,
   tags text[],
-  target_date date,
+  target_date date, -- DEPRECATED
   completed_at timestamptz,
   created_at timestamptz default now()
 );
@@ -854,7 +865,7 @@ Based on their history, provide insight."
 **Patterns Detected:**
 1. **Mood Decline:** 3+ consecutive entries with negative sentiment
 2. **Habit Abandonment:** Breaking a 7+ day streak
-3. **Intention Stagnation:** Daily intention pending >3 days
+3. **Intention Stagnation:** Intention is overdue or pending >7 days without progress
 4. **Positive Reinforcement:** Milestone streaks (7, 30, 100 days)
 
 **Implementation:**
@@ -1080,6 +1091,11 @@ Production URL: mindstream-v1.vercel.app
 ---
 
 **Document Change Log:**
+- **v4.1 (Nov 29, 2025):** Intentions System Redesign
+  - Replaced timeframe buckets with ETA-based system (Due Dates)
+  - Added "Custom Date" and natural language presets
+  - Updated schema with `due_date` and `is_life_goal`
+  - Added collapsible "Completed" section for cleaner UI
 - **v4.0 (Nov 29, 2025):** Major update reflecting Phases 4-5 implementation
   - Added AI Personality System (5 personalities)
   - Added Proactive Nudges with pattern detection
