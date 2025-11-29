@@ -35,10 +35,10 @@ export const EmptyStreamState: React.FC<EmptyStreamStateProps> = ({
                 {/* Heading */}
                 <div>
                     <h2 className="text-2xl font-display font-bold text-white mb-2">
-                        Your mind is a blank canvas
+                        Your first thought starts here
                     </h2>
                     <p className="text-gray-400">
-                        Start capturing your thoughts and watch patterns emerge
+                        Capture what's on your mind and watch patterns emerge
                     </p>
                 </div>
 

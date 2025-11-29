@@ -31,7 +31,7 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
         {/* Heading */}
         < div >
           <h2 className="text-2xl font-display font-bold text-white mb-2">
-            Build your first habit
+            Your first habit starts here
           </h2>
           <p className="text-gray-400">
             Small, consistent actions compound into extraordinary results
