@@ -233,6 +233,34 @@ export const MindstreamApp: React.FC = () => {
                             />
                         </motion.div>
                     )}
+
+                    {view === 'chat' && (
+                        <motion.div
+                            key="chat"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <ChatView messages={state.messages} isLoading={state.isChatLoading} onAddSuggestion={() => { }} />
+                            {state.messages.length === 1 && <SuggestionChips starters={chatStarters} isLoading={isGeneratingStarters} onStarterClick={actions.handleSendMessage} />}
+                            <ChatInputBar onSendMessage={actions.handleSendMessage} isLoading={state.isChatLoading} />
+                        </motion.div>
+                    )}
+
+                    {view === 'settings' && (
+                        <motion.div
+                            key="settings"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="absolute inset-0 flex flex-col z-30 bg-brand-indigo"
+                        >
+                            <SettingsView onBack={() => setView('stream')} />
+                        </motion.div>
+                    )}
                 </AnimatePresence>
             </main>
 
