@@ -41,7 +41,6 @@ export const MindstreamApp: React.FC = () => {
     const { state, actions } = useAppLogic();
 
     const [view, setView] = useState<View>('stream');
-    const [activeIntentionTimeframe, setActiveIntentionTimeframe] = useState<IntentionTimeframe>('daily');
     const [activeHabitFrequency, setActiveHabitFrequency] = useState<HabitFrequency>('daily');
     const [showSearchModal, setShowSearchModal] = useState(false);
     const [chatStarters, setChatStarters] = useState<string[]>([]);
@@ -172,10 +171,8 @@ export const MindstreamApp: React.FC = () => {
                                 intentions={state.intentions}
                                 onToggle={actions.handleToggleIntention}
                                 onDelete={actions.handleDeleteIntention}
-                                activeTimeframe={activeIntentionTimeframe}
-                                onTimeframeChange={setActiveIntentionTimeframe}
                             />
-                            <IntentionsInputBar onAddIntention={actions.handleAddIntention} activeTimeframe={activeIntentionTimeframe} />
+                            <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
                         </motion.div>
                     )}
 

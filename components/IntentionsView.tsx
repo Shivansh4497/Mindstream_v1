@@ -1,104 +1,137 @@
-
 import React, { useMemo } from 'react';
-import type { Intention, IntentionTimeframe } from '../types';
+import type { Intention } from '../types';
 import { IntentionCard } from './IntentionCard';
-import { getDisplayDate, getFormattedDate } from '../utils/date';
 import { EmptyIntentionsState } from './EmptyIntentionsState';
+import { getUrgencyCategory, getUrgencyCategoryLabel, type UrgencyCategory } from '../utils/etaCalculator';
 
 interface IntentionsViewProps {
     intentions: Intention[];
     onToggle: (id: string, currentStatus: Intention['status']) => void;
     onDelete: (id: string) => void;
-    activeTimeframe: IntentionTimeframe;
-    onTimeframeChange: (timeframe: IntentionTimeframe) => void;
 }
 
-const timeframes: { id: IntentionTimeframe; label: string }[] = [
-    { id: 'daily', label: 'Daily' },
-    { id: 'weekly', label: 'Weekly' },
-    { id: 'monthly', label: 'Monthly' },
-    { id: 'yearly', label: 'Yearly' },
-    { id: 'life', label: 'Life' },
-];
+const urgencyCategoryOrder: UrgencyCategory[] = ['overdue', 'today', 'this_week', 'this_month', 'later', 'life'];
 
 export const IntentionsView: React.FC<IntentionsViewProps> = ({
     intentions,
     onToggle,
-    onDelete,
-    activeTimeframe,
-    onTimeframeChange
+    onDelete
 }) => {
 
     const groupedIntentions = useMemo(() => {
-        const filtered = intentions.filter(i => i.timeframe === activeTimeframe);
+        const groups: Record<UrgencyCategory, { pending: Intention[], completed: Intention[] }> = {
+            overdue: { pending: [], completed: [] },
+            today: { pending: [], completed: [] },
+            this_week: { pending: [], completed: [] },
+            this_month: { pending: [], completed: [] },
+            later: { pending: [], completed: [] },
+            life: { pending: [], completed: [] },
+        };
 
-        const groups: Record<string, { pending: Intention[], completed: Intention[] }> = {};
+        intentions.forEach(intention => {
+            const dueDate = intention.due_date ? new Date(intention.due_date) : null;
+            const isLifeGoal = intention.is_life_goal || false;
+            const category = getUrgencyCategory(dueDate, isLifeGoal);
 
-        filtered.forEach(intention => {
-            const date = getFormattedDate(new Date(intention.created_at));
-            if (!groups[date]) {
-                groups[date] = { pending: [], completed: [] };
-            }
             if (intention.status === 'pending') {
-                groups[date].pending.push(intention);
+                groups[category].pending.push(intention);
             } else {
-                groups[date].completed.push(intention);
+                groups[category].completed.push(intention);
             }
         });
 
-        return groups;
-    }, [intentions, activeTimeframe]);
+        // Sort within each category by due date (earliest first)
+        Object.keys(groups).forEach(key => {
+            const category = key as UrgencyCategory;
+            groups[category].pending.sort((a, b) => {
+                if (!a.due_date) return 1;
+                if (!b.due_date) return -1;
+                return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+            });
+            groups[category].completed.sort((a, b) => {
+                if (!a.completed_at || !b.completed_at) return 0;
+                return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
+            });
+        });
 
-    const sortedDates = useMemo(() => {
-        return Object.keys(groupedIntentions).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-    }, [groupedIntentions]);
+        return groups;
+    }, [intentions]);
+
+    const hasAnyIntentions = intentions.length > 0;
+
+    const getCategoryColor = (category: UrgencyCategory): string => {
+        switch (category) {
+            case 'overdue': return 'text-red-400';
+            case 'today': return 'text-brand-teal';
+            case 'this_week': return 'text-blue-400';
+            case 'this_month': return 'text-purple-400';
+            case 'later': return 'text-gray-400';
+            case 'life': return 'text-amber-400';
+        }
+    };
 
     return (
         <div className="flex-grow flex flex-col overflow-hidden">
-            <header className="flex-shrink-0 p-4 border-b border-white/10 flex items-center overflow-x-auto">
-                <div className="flex items-center gap-2">
-                    {timeframes.map(tf => (
-                        <button
-                            key={tf.id}
-                            onClick={() => onTimeframeChange(tf.id)}
-                            className={`py-2 px-4 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${activeTimeframe === tf.id
-                                ? 'bg-brand-teal text-brand-indigo'
-                                : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                                }`}
-                        >
-                            {tf.label}
-                        </button>
-                    ))}
-                </div>
+            <header className="flex-shrink-0 p-4 border-b border-white/10">
+                <h1 className="text-2xl font-bold text-white font-display">Intentions</h1>
+                <p className="text-sm text-gray-400 mt-1">What you want to achieve, organized by timeline</p>
             </header>
 
             <main className="flex-grow overflow-y-auto p-4">
-                {sortedDates.length === 0 && (
+                {!hasAnyIntentions && (
                     <EmptyIntentionsState />
                 )}
 
-                {sortedDates.map(date => (
-                    <div key={date} className="mb-8">
-                        <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
+                {urgencyCategoryOrder.map(category => {
+                    const group = groupedIntentions[category];
+                    const totalCount = group.pending.length + group.completed.length;
 
-                        {groupedIntentions[date].pending.length > 0 && (
-                            groupedIntentions[date].pending.map(intention => (
-                                <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
-                            ))
-                        )}
+                    if (totalCount === 0) return null;
 
-                        {groupedIntentions[date].completed.length > 0 && (
-                            <div className="mt-4">
-                                {groupedIntentions[date].pending.length > 0 && (
-                                    <div className="border-b border-white/10 my-3"></div>
-                                )}
-                                {groupedIntentions[date].completed.map(intention => (
-                                    <IntentionCard key={intention.id} intention={intention} onToggle={onToggle} onDelete={onDelete} />
-                                ))}
+                    return (
+                        <div key={category} className="mb-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className={`text-xl font-bold font-display ${getCategoryColor(category)}`}>
+                                    {getUrgencyCategoryLabel(category)}
+                                </h2>
+                                <span className="text-sm text-gray-500">
+                                    {group.pending.length} pending
+                                </span>
                             </div>
-                        )}
-                    </div>
-                ))}
+
+                            {/* Pending Intentions */}
+                            {group.pending.map(intention => (
+                                <IntentionCard
+                                    key={intention.id}
+                                    intention={intention}
+                                    onToggle={onToggle}
+                                    onDelete={onDelete}
+                                />
+                            ))}
+
+                            {/* Completed Intentions */}
+                            {group.completed.length > 0 && (
+                                <div className="mt-4">
+                                    {group.pending.length > 0 && (
+                                        <div className="flex items-center gap-2 my-3">
+                                            <div className="flex-1 border-b border-white/10"></div>
+                                            <span className="text-xs text-gray-500 px-2">Completed</span>
+                                            <div className="flex-1 border-b border-white/10"></div>
+                                        </div>
+                                    )}
+                                    {group.completed.map(intention => (
+                                        <IntentionCard
+                                            key={intention.id}
+                                            intention={intention}
+                                            onToggle={onToggle}
+                                            onDelete={onDelete}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </main>
         </div>
     );

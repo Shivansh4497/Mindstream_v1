@@ -63,7 +63,7 @@ export interface InsightCard {
   dismissed: boolean;
 }
 
-export type IntentionTimeframe = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'life';
+export type IntentionTimeframe = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'life'; // Deprecated, kept for migration
 export type IntentionStatus = 'pending' | 'completed';
 
 export interface Intention {
@@ -71,7 +71,9 @@ export interface Intention {
   user_id: string;
   text: string;
   status: IntentionStatus;
-  timeframe: IntentionTimeframe;
+  timeframe?: IntentionTimeframe; //  Deprecated, use due_date instead
+  due_date?: string | null; // NEW: ISO timestamp for deadline
+  is_life_goal?: boolean; // NEW: True for ongoing life goals
   is_recurring: boolean;
   tags?: string[];
   target_date?: string | null;

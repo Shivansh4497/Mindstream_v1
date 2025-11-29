@@ -256,14 +256,15 @@ export const getIntentions = async (userId: string): Promise<Intention[]> => {
     return data || [];
 };
 
-export const addIntention = async (userId: string, text: string, timeframe: IntentionTimeframe): Promise<Intention | null> => {
+export const addIntention = async (userId: string, text: string, dueDate: Date | null = null, isLifeGoal: boolean = false): Promise<Intention | null> => {
     if (!supabase) return null;
     const { data, error } = await (supabase as any)
         .from('intentions')
         .insert({
             user_id: userId,
             text,
-            timeframe,
+            due_date: dueDate ? dueDate.toISOString() : null,
+            is_life_goal: isLifeGoal,
             status: 'pending',
             is_recurring: false,
         } as any)
