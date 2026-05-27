@@ -31,27 +31,11 @@ export const Login: React.FC = () => {
 
                 {/* Auth Buttons */}
                 <div className="flex flex-col items-center gap-3 w-full">
-                    {/* Primary: Google Sign In */}
-                    <button
-                        onClick={loginWithGoogle}
-                        className="w-full bg-white text-black font-bold py-3.5 px-6 rounded-xl hover:bg-gray-100 transition-all duration-300 shadow-lg flex items-center justify-center gap-3"
-                    >
-                        <GoogleIcon className="w-5 h-5" />
-                        Continue with Google
-                    </button>
-
-                    {/* Divider */}
-                    <div className="flex items-center gap-3 w-full my-1">
-                        <div className="flex-1 h-px bg-white/10" />
-                        <span className="text-xs text-gray-500 uppercase tracking-wider">or</span>
-                        <div className="flex-1 h-px bg-white/10" />
-                    </div>
-
-                    {/* Secondary: Try a Demo */}
+                    {/* Primary: Try a Demo */}
                     <button
                         onClick={handleTryDemo}
                         disabled={isDemoLoading}
-                        className="w-full py-3.5 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-teal/15 to-brand-coral/15 text-white border border-white/10 hover:border-white/20 hover:from-brand-teal/25 hover:to-brand-coral/25 active:scale-[0.98] disabled:opacity-50"
+                        className="w-full bg-brand-teal text-white font-bold py-3.5 px-6 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         {isDemoLoading ? (
                             <>
@@ -60,14 +44,30 @@ export const Login: React.FC = () => {
                             </>
                         ) : (
                             <>
-                                <FlaskConical className="w-4 h-4 text-brand-teal" />
+                                <FlaskConical className="w-4 h-4" />
                                 Try a Demo
                             </>
                         )}
                     </button>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                         No account needed · See the AI in action
                     </p>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 w-full my-2">
+                        <div className="flex-1 h-px bg-white/10" />
+                        <span className="text-xs text-gray-500 uppercase tracking-wider">OR</span>
+                        <div className="flex-1 h-px bg-white/10" />
+                    </div>
+
+                    {/* Secondary: Google Sign In */}
+                    <button
+                        onClick={loginWithGoogle}
+                        className="w-full bg-transparent text-white font-bold py-3.5 px-6 rounded-xl border border-white/20 hover:bg-white/5 hover:border-white/30 transition-all duration-300 shadow-md flex items-center justify-center gap-3"
+                    >
+                        <GoogleIcon className="w-5 h-5" />
+                        Continue with Google
+                    </button>
                 </div>
 
                 {/* Feature Highlights */}

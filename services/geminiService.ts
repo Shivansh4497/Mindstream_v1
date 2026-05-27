@@ -1,11 +1,17 @@
-import type { Entry, Message, HabitCategory, InstantInsight, EntrySuggestion, UserContext } from '../types';
-import { callAIProxy, verifyApiKey, parseGeminiJson, GEMINI_API_KEY_AVAILABLE, getAiClient } from './geminiClient';
+import type { Entry, Message, HabitCategory, InstantInsight, EntrySuggestion, UserContext, Habit, Intention, SearchResult } from '../types';
+import { callAIProxy, verifyApiKey, parseGeminiJson, GEMINI_API_KEY_AVAILABLE, getAiClient, enrichLastAIMeta, getLastAIMeta } from './geminiClient';
+export { GEMINI_API_KEY_AVAILABLE, verifyApiKey };
 import { getPersonality, DEFAULT_PERSONALITY, PersonalityId } from '../config/personalities';
+import { parseTemporalIntent } from './temporalParser';
+import { classifyQueryIntent, ClassifiedQuery } from './queryClassifier';
+import * as db from './dbService';
+import { supabase } from './supabaseClient';
 
-export { verifyApiKey, GEMINI_API_KEY_AVAILABLE, getAiClient };
-
-// --- RAG HELPERS ---
-
+// --- TOKEN ESTIMATION ---
+const estimateTokens = (text: string): number => {
+    if (typeof text !== 'string' || !text) return 0;
+    return Math.ceil(text.length / 4);
+};
 export const extractSearchKeywords = async (userQuery: string): Promise<string[]> => {
     // 1. Try AI extraction first
     try {
@@ -31,7 +37,167 @@ export const extractSearchKeywords = async (userQuery: string): Promise<string[]
     return [...new Set(keywords)].slice(0, 4);
 };
 
-export const buildSystemContext = (context: UserContext): string => {
+export function unwrapResponse(text: string): string {
+  try {
+    const parsed = JSON.parse(text.trim());
+    return parsed.response 
+      || parsed.text 
+      || parsed.content 
+      || parsed.message
+      || text;
+  } catch {
+    return text;
+  }
+}
+
+async function generateQueryEmbedding(
+  queryText: string
+): Promise<number[] | null> {
+  try {
+    const { data } = await supabase.functions
+      .invoke('ai-proxy', {
+        body: {
+          action: 'generate-embedding',
+          payload: { text: queryText }
+        }
+      });
+    return data?.data?.embedding ?? data?.embedding ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface AdaptiveRetrievalResult {
+    intent: ClassifiedQuery;
+    queryIntent: ClassifiedQuery;
+    matches: Array<Entry & { similarity?: number }>;
+    entries: Array<Entry & { similarity?: number }>;
+    retrievalStrategy: string;
+    strategy: string;
+    behavioralContext?: {
+        habits: Habit[];
+        goals: Intention[];
+        habitLogs: any[];
+    };
+    analyticalContext?: {
+        topTags: string[];
+        sentimentDistribution: Record<string, number>;
+    };
+    classifierLatencyMs?: number;
+    embeddingLatencyMs?: number;
+}
+
+export async function adaptiveRetrieval(
+    userId: string,
+    userMessage: string,
+    conversationHistory: string[]
+): Promise<AdaptiveRetrievalResult> {
+    const retrievalStart = Date.now();
+
+    const [intent, preGeneratedEmbedding] = await Promise.all([
+        classifyQueryIntent(userMessage, conversationHistory),
+        generateQueryEmbedding(userMessage)
+    ]);
+
+    const classifierLatencyMs = Date.now() - retrievalStart;
+
+    let matches: Array<Entry & { similarity?: number }> = [];
+    let behavioralContext;
+    let analyticalContext;
+    
+    // Ensure exact string match for switch statement (Fix B)
+    const normalizedIntent = intent.intent?.trim() || 'SEMANTIC_TOPIC';
+    let retrievalStrategy: string = normalizedIntent;
+
+    switch (normalizedIntent) {
+        case 'TEMPORAL_SUMMARY':
+            if (intent.startDate && intent.endDate) {
+                matches = await db.getEntriesByDateRange(userId, intent.startDate, intent.endDate);
+            } else {
+                matches = await db.getRecentEntries(userId, 15);
+                retrievalStrategy = 'TEMPORAL_SUMMARY_FALLBACK';
+            }
+            break;
+            
+        case 'TEMPORAL_TOPIC':
+            if (intent.startDate && intent.endDate) {
+                matches = await db.semanticSearchWithBounds(
+                    userId,
+                    userMessage,
+                    intent.startDate,
+                    intent.endDate,
+                    5,
+                    0.70,
+                    preGeneratedEmbedding ?? undefined
+                );
+            } else {
+                matches = await db.semanticSearchEntries(
+                    userId,
+                    userMessage,
+                    3,
+                    0.82,
+                    null,
+                    null,
+                    preGeneratedEmbedding ?? undefined
+                );
+                retrievalStrategy = 'TEMPORAL_TOPIC_FALLBACK';
+            }
+            break;
+            
+        case 'SEMANTIC_TOPIC':
+            console.log('[DEBUG] adaptiveRetrieval hit SEMANTIC_TOPIC case');
+            matches = await db.semanticSearchEntries(
+                userId,
+                userMessage,
+                5,
+                0.82,
+                null,
+                null,
+                preGeneratedEmbedding ?? undefined
+            );
+            retrievalStrategy = 'Vector search · threshold 0.82';
+            break;
+            
+        case 'BEHAVIORAL':
+            behavioralContext = await db.getBehavioralContext(userId);
+            matches = await db.getRecentEntries(userId, 5); // Add recent entries as grounding
+            break;
+            
+        case 'ANALYTICAL':
+            const analytics = await db.getAnalyticalContext(userId);
+            analyticalContext = { topTags: analytics.topTags, sentimentDistribution: analytics.sentimentDistribution };
+            matches = analytics.entries.slice(0, 5); // Top 5 recent for context
+            break;
+            
+        case 'CONVERSATIONAL':
+            matches = await db.getConversationContext(userId);
+            break;
+    }
+
+    if (normalizedIntent === 'SEMANTIC_TOPIC' && matches.length === 0) {
+        const keywords = await extractSearchKeywords(userMessage);
+        const results = await db.searchUniversal(userId, keywords);
+        matches = results
+            .filter((r: SearchResult) => r.type === 'entry')
+            .map((r: SearchResult) => ({ ...r.item, similarity: 0.5 })) as Array<Entry & { similarity?: number }>;
+        retrievalStrategy = 'KEYWORD_FALLBACK';
+    }
+
+    return {
+        intent,
+        queryIntent: intent,
+        matches,
+        entries: matches,
+        retrievalStrategy,
+        strategy: retrievalStrategy,
+        classifierLatencyMs,
+        embeddingLatencyMs: classifierLatencyMs,
+        behavioralContext,
+        analyticalContext
+    };
+}
+
+export const buildSystemContext = (context: UserContext, retrieval?: AdaptiveRetrievalResult): string => {
     // Optimize Context Window: Limit tokens by slicing arrays
     const recentEntriesSummary = context.recentEntries
         .slice(0, 10) // Limit to 10 most recent
@@ -87,9 +253,23 @@ When referencing these, use phrases like:
         contextString += `RELEVANT PAST HISTORY (Entries, Habits, Goals):\n${historySummary}\n\n`;
     }
 
+    if (retrieval?.behavioralContext) {
+        const { habits, goals } = retrieval.behavioralContext;
+        const habitStats = habits.map(h => `- ${h.name} (Streak: ${h.current_streak}, Completion: ${((h as any).completion_rate || 0).toFixed(1)}%)`).join('\n');
+        const goalStats = goals.map(g => `- [${g.timeframe}] ${g.text}`).join('\n');
+        contextString += `BEHAVIORAL CONTEXT (Prominent Stats):\nHABITS:\n${habitStats || "None"}\nGOALS:\n${goalStats || "None"}\n\n`;
+    } else {
+        contextString += `CONTEXT from my active intentions/goals:\n${intentionsSummary || "No active goals."}\n\n`;
+        contextString += `CONTEXT from my active habits:\n${habitsSummary || "No habits."}\n\n`;
+    }
+
+    if (retrieval?.analyticalContext) {
+        const { topTags, sentimentDistribution } = retrieval.analyticalContext;
+        const sentiments = Object.entries(sentimentDistribution).map(([k,v]) => `${k}: ${v}`).join(', ');
+        contextString += `ANALYTICAL CONTEXT:\nTop Tags: ${topTags.join(', ')}\nSentiment Distribution: ${sentiments}\n\n`;
+    }
+
     contextString += `CONTEXT from my recent journal entries:\n${recentEntriesSummary || "No recent entries."}\n\n`;
-    contextString += `CONTEXT from my active intentions/goals:\n${intentionsSummary || "No active goals."}\n\n`;
-    contextString += `CONTEXT from my active habits:\n${habitsSummary || "No habits."}\n\n`;
     contextString += `CONTEXT: My latest reflection was: "${context.latestReflection?.summary || "None"}"\n\n`;
 
     // Balanced instruction: Use context only when semantically aligned
@@ -122,8 +302,28 @@ If in doubt, just listen.
 // Chat uses a simplified non-streaming approach for now
 // Can be upgraded to streaming Edge Function later
 
-export const getChatResponseStream = async (history: Message[], context: UserContext) => {
+export const getChatResponseStream = async (history: Message[], context: UserContext, retrieval?: AdaptiveRetrievalResult) => {
+    const userMessage = history[history.length - 1]?.text ?? '';
+    const temporal = parseTemporalIntent(userMessage);
+
+    if (
+        temporal.hasTemporalIntent &&
+        temporal.startDate &&
+        temporal.endDate
+    ) {
+    }
+
     const contextPrompt = buildSystemContext(context);
+
+    // Compute and enrich context inventory for GlassBox Retrieval step
+    const contextInventory = {
+        recentEntriesCount: context.recentEntries ? context.recentEntries.slice(0, 10).length : 0,
+        semanticMatchCount: context.searchResults ? context.searchResults.length : 0,
+        habits: context.activeHabits ? context.activeHabits.slice(0, 15).map(h => ({ name: h.name, category: h.category, streak: h.current_streak ?? 0 })) : [],
+        goals: context.pendingIntentions ? context.pendingIntentions.slice(0, 10).map(i => ({ text: i.text, category: i.category ?? 'Growth' })) : [],
+        hasReflection: !!context.latestReflection
+    };
+    enrichLastAIMeta({ context_inventory: contextInventory });
     const personalityId = (context.personalityId as PersonalityId) || DEFAULT_PERSONALITY;
     const personality = getPersonality(personalityId) || getPersonality(DEFAULT_PERSONALITY);
 
@@ -142,7 +342,8 @@ export const getChatResponseStream = async (history: Message[], context: UserCon
     if (hasActiveHabits) personalizedRefs.push(`Habits: "${context.activeHabits[0]?.name}"`);
     if (hasTemporalMemory) personalizedRefs.push(`Past moments available`);
 
-    const systemInstruction = `${personality.systemPrompt}
+    const personalitySection = personality.systemPrompt;
+    const systemInstruction = `${personalitySection}
 
 === MINDSTREAM CHAT ===
 
@@ -314,7 +515,26 @@ Less eagerness. More listening. Know when to shut up.
 You're valuable because you DON'T need to prove it every message.`;
 
 
-    const userPrompt = history[history.length - 1].text;
+    const userPrompt = history[history.length - 1]?.text ?? '';
+
+    // --- PER-LAYER TOKEN INSTRUMENTATION ---
+    // Build the conversation history string to measure its tokens
+    const chatHistoryForTokens = history.slice(0, -1)
+        .map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+        .join('\n');
+
+    const cleanSystemPrompt = systemInstruction.replace(contextPrompt, '');
+
+    console.log(`[Token Est] cleanSystemPrompt length: ${cleanSystemPrompt.length}`);
+    console.log(`[Token Est] contextPrompt length: ${contextPrompt.length}`);
+    console.log(`[Token Est] chatHistoryForTokens length: ${chatHistoryForTokens.length}`);
+    console.log(`[Token Est] userPrompt length: ${userPrompt.length}`);
+
+    const estSystem = estimateTokens(cleanSystemPrompt);
+    const estRag = estimateTokens(contextPrompt);
+    const estHistory = estimateTokens(chatHistoryForTokens);
+    const estUser = estimateTokens(userPrompt);
+    const estTotal = estSystem + estRag + estHistory + estUser;
 
     const chatHistory = history.slice(0, -1).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'model',
@@ -328,6 +548,32 @@ You're valuable because you DON'T need to prove it every message.`;
             history: chatHistory,
             userPrompt,
             systemInstruction
+        });
+
+        // Get the real tokens_in from the server response metadata
+        const updatedMeta = getLastAIMeta();
+        const realTotal = updatedMeta?.tokens_in ?? 0;
+
+        let systemPromptTokens = estSystem;
+        let ragContextTokens = estRag;
+        let historyTokens = estHistory;
+        let userMessageTokens = estUser;
+
+        if (realTotal > 0 && estTotal > 0) {
+            const scale = realTotal / estTotal;
+            systemPromptTokens = Math.round(estSystem * scale);
+            ragContextTokens = Math.round(estRag * scale);
+            historyTokens = Math.round(estHistory * scale);
+            userMessageTokens = realTotal - systemPromptTokens - ragContextTokens - historyTokens;
+        }
+
+        // Enrich meta with token counts after API call resolves (so they aren't overwritten)
+        enrichLastAIMeta({
+            system_prompt_tokens: systemPromptTokens,
+            rag_context_tokens: ragContextTokens,
+            history_tokens: historyTokens,
+            user_message_tokens: userMessageTokens,
+            userMessage: userPrompt,
         });
     } catch (e: any) {
         console.error("[AI] Chat failed:", e);
@@ -353,19 +599,17 @@ You're valuable because you DON'T need to prove it every message.`;
         }
     }
 
-    // TRUE RAG LOGGING (The User requested "The Truth")
-    // We enrich the metadata of the call we just made (or attempted) with the ACTUAL search results used.
-    // KEY CHANGE: We always pass the array, even if empty, so GlassBox knows we TRIED but found nothing.
-    if (context.searchResults) {
-        const { enrichLastAIMeta } = await import('./geminiClient');
+    // TRUE RAG LOGGING — always enrich so GlassBox knows if we tried and found nothing
+    if (context.searchResults !== undefined) {
         enrichLastAIMeta({ rag_matches: context.searchResults });
     }
 
     // Return an async generator that yields the response at once
     // This maintains compatibility with existing streaming code
+    const unwrappedText = unwrapResponse(result.response || '');
     return {
         [Symbol.asyncIterator]: async function* () {
-            yield { text: result.response || '' };
+            yield { text: unwrappedText };
         }
     };
 }

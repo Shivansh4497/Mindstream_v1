@@ -5,7 +5,7 @@ import { LogoutIcon } from './icons/LogoutIcon';
 import { TrashIcon } from './icons/TrashIcon';
 // MindstreamLogo is now a static SVG file in public/
 import * as db from '../services/dbService';
-import { Settings, Info } from 'lucide-react';
+import { Settings, Info, ChevronDown } from 'lucide-react';
 
 interface HeaderProps {
   onSearchClick?: () => void;
@@ -58,47 +58,70 @@ export const Header: React.FC<HeaderProps> = ({
           <SearchIcon className="w-6 h-6 text-white" />
         </button>
         {profile && (
-          <div className="relative">
-            <button onClick={() => setMenuOpen(!menuOpen)} className="w-8 h-8 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-indigo focus:ring-brand-teal">
-              <img src={profile.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${profile.email}`} alt="User avatar" />
+          <>
+            <button
+              onClick={onSettingsClick}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="w-6 h-6 text-white" />
             </button>
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-dark-surface rounded-md shadow-lg py-1 z-30 animate-fade-in ring-1 ring-black ring-opacity-5">
-                <div className="px-4 py-2 text-sm text-gray-400 border-b border-white/10">
-                  {profile.email}
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="flex items-center gap-1 group focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-indigo focus:ring-brand-teal rounded-lg p-0.5"
+                aria-label="User menu"
+              >
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10">
+                  <img src={profile.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${profile.email}`} alt="User avatar" className="w-full h-full object-cover" />
                 </div>
-                <button
-                  onClick={() => { setMenuOpen(false); onInfoClick?.(); }}
-                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                <ChevronDown className="w-3 h-3 text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+              </button>
+              {menuOpen && (
+                <div
+                  className="absolute right-0 mt-2 w-56 bg-dark-surface rounded-md shadow-lg py-1 z-30 animate-fade-in ring-1 ring-black ring-opacity-5"
+                  role="menu"
                 >
-                  <Info className="w-4 h-4" />
-                  How It Works
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onSettingsClick?.(); }}
-                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
-                >
-                  <Settings className="w-4 h-4" />
-                  Settings
-                </button>
-                <button
-                  onClick={logout}
-                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
-                >
-                  <LogoutIcon className="w-4 h-4" />
-                  Logout
-                </button>
-                <div className="border-t border-white/10 my-1"></div>
-                <button
-                  onClick={handleDeleteAccount}
-                  className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <TrashIcon className="w-4 h-4" />
-                  Delete Account
-                </button>
-              </div>
-            )}
-          </div>
+                  <div className="px-4 py-2 text-sm text-gray-400 border-b border-white/10">
+                    {profile.email}
+                  </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); onInfoClick?.(); }}
+                    className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                    role="menuitem"
+                  >
+                    <Info className="w-4 h-4" />
+                    How It Works
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); onSettingsClick?.(); }}
+                    className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                    role="menuitem"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Settings
+                  </button>
+                  <button
+                    onClick={logout}
+                    className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                    role="menuitem"
+                  >
+                    <LogoutIcon className="w-4 h-4" />
+                    Logout
+                  </button>
+                  <div className="border-t border-white/10 my-1"></div>
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                    role="menuitem"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                    Delete Account
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </header >

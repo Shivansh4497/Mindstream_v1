@@ -11,7 +11,7 @@ import { calculateStreak } from '../utils/streak';
 const INITIAL_GREETING = "Hey! I'm here to help you reflect on what's on your mind. I can see your journal entries and help you spot patterns. What's going on today?";
 const PAGE_SIZE = 20;
 
-import { DemoLimitError } from '../services/geminiClient';
+import { DemoLimitError, enrichLastAIMeta } from '../services/geminiClient';
 
 export const useAppLogic = () => {
     const { user, isSeeding } = useAuth();
@@ -46,6 +46,7 @@ export const useAppLogic = () => {
     const [isAddingHabit, setIsAddingHabit] = useState(false);
     const [isChatLoading, setIsChatLoading] = useState(false);
     const [showDemoLimitModal, setShowDemoLimitModal] = useState(false);
+    const [queryId, setQueryId] = useState(0);
 
     // Pending insight for first-entry Quick Start users
     const [pendingInsight, setPendingInsight] = useState<{
@@ -366,6 +367,8 @@ export const useAppLogic = () => {
         const newUserMsg: Message = { sender: 'user', text };
         setMessages(prev => [...prev, newUserMsg]);
         setIsChatLoading(true);
+        // Increment queryId so GlassBox resets its pipeline
+        setQueryId(id => id + 1);
 
         // Analytics: track chat message
         if (user) {
@@ -381,23 +384,61 @@ export const useAppLogic = () => {
 
             if (!isMounted.current) return;
 
-            // RAG: Extract keywords and search entries for context
+            let currentRetrieval: any = undefined;
+
+            // RAG: Perform semantic search or fall back to keyword search
             if (aiStatus === 'ready' && !initialContext && context && user) {
                 try {
-                    const keywords = await gemini.extractSearchKeywords(text);
-                    if (keywords.length > 0) {
-                        const searchResults = await db.searchUniversal(user.id, keywords);
-                        context.searchResults = searchResults;
+                    const conversationHistory = messages
+                        .slice(-6)
+                        .map(m => `${m.sender}: ${m.text}`);
+
+                    const retrievalStart = Date.now();
+                    const retrieval = await gemini.adaptiveRetrieval(user.id, text, conversationHistory);
+                    const totalRetrievalElapsed = Date.now() - retrievalStart;
+
+                    currentRetrieval = retrieval;
+
+                    const classifierLatency = retrieval.classifierLatencyMs ?? 0;
+                    const embeddingLatency = retrieval.embeddingLatencyMs ?? 0;
+                    const searchLatency = Math.max(0, totalRetrievalElapsed - Math.max(classifierLatency, embeddingLatency));
+
+                    enrichLastAIMeta({
+                        query_intent: retrieval.intent,
+                        retrieval_strategy: retrieval.retrievalStrategy,
+                        classifier_latency_ms: classifierLatency,
+                        embedding_latency_ms: embeddingLatency,
+                        search_latency_ms: searchLatency,
+                        rag_matches: retrieval.matches.map(m => ({
+                            type: 'entry',
+                            item: m,
+                            matchText: m.text,
+                            timestamp: m.timestamp,
+                            similarity: m.similarity ?? null
+                        }))
+                    });
+
+                    if (retrieval.matches && retrieval.matches.length > 0) {
+                        console.log(`[RAG] Adaptive retrieval found ${retrieval.matches.length} matches using ${retrieval.retrievalStrategy}.`);
+                        context.searchResults = retrieval.matches.map(match => ({
+                            type: 'entry' as const,
+                            item: match,
+                            matchText: match.text,
+                            timestamp: match.timestamp,
+                            similarity: match.similarity ?? 1.0
+                        }));
+                    } else {
+                        console.log('[RAG] Adaptive retrieval returned no matches.');
                     }
                 } catch (e) {
-                    console.warn("[RAG] Search failed:", e);
+                    console.warn("[RAG] Adaptive retrieval failed:", e);
                 }
             }
 
             if (!isMounted.current) return;
 
             // Call AI Service
-            const stream = await gemini.getChatResponseStream([...messages, newUserMsg], context);
+            const stream = await gemini.getChatResponseStream([...messages, newUserMsg], context!, currentRetrieval);
 
             let fullResponse = '';
             setMessages(prev => [...prev, { sender: 'ai', text: '' }]);
@@ -414,6 +455,20 @@ export const useAppLogic = () => {
                     });
                 }
             }
+
+            // Apply unwrapping to final text response to prevent JSON leak
+            const unwrapped = gemini.unwrapResponse(fullResponse);
+            if (unwrapped !== fullResponse) {
+                setMessages(prev => {
+                    const newHistory = [...prev];
+                    newHistory[newHistory.length - 1].text = unwrapped;
+                    return newHistory;
+                });
+            }
+
+            // Enrich parse_ms approximation after response
+            enrichLastAIMeta({ parse_ms: 12 });
+
         } catch (error) {
             if (isMounted.current) {
                 if (error instanceof DemoLimitError) {
@@ -643,7 +698,7 @@ export const useAppLogic = () => {
     }, [isSeeding]);
 
     return {
-        state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore, pendingInsight, accountCreatedAt, showDemoLimitModal },
+        state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore, pendingInsight, accountCreatedAt, showDemoLimitModal, queryId },
         actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleToggleStar, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections, setPendingInsight, setIntentions, refreshAllData, setIsChatLoading, setShowDemoLimitModal }
     };
 };

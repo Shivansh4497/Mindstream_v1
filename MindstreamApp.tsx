@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCw } from 'lucide-react';
 import { differenceInDays, isSameDay, parseISO } from 'date-fns';
@@ -44,7 +44,7 @@ import * as reflections from './services/reflectionService';
 import * as db from './services/dbService';
 import type { Entry, Habit, HabitFrequency, Intention, Reflection } from './types';
 import { DemoLimitModal } from './components/DemoLimitModal';
-import { GlassBox, GlassBoxMeta } from './components/GlassBox';
+import { GlassBox, GlassBoxMeta, MobilePipelineButton } from './components/GlassBox';
 import { getLastAIMeta } from './services/geminiClient';
 import { useDemoMode } from './hooks/useDemoMode';
 import { Brain } from 'lucide-react';
@@ -57,7 +57,8 @@ const ONBOARDING_GUIDED_COMPLETE = 5;
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
 
 export const MindstreamApp: React.FC = () => {
-    const { user, isSeeding } = useAuth();
+    const { user, isSeeding, isDemo } = useAuth();
+    const isDemoUser = isDemo || user?.is_anonymous === true;
 
     // Demo Mode — GlassBox toggle only visible for demo users
     const { isDemoMode, isEngineerViewOpen, toggleEngineerView } = useDemoMode();
@@ -65,8 +66,25 @@ export const MindstreamApp: React.FC = () => {
     // App Logic — same pipeline for regular and demo users
     const { state, actions } = useAppLogic();
 
+    // Track current user query message text for GlassBox loading states
+    const [currentUserMessage, setCurrentUserMessage] = useState('');
+
+    const handleSendMessageWithTracking = useCallback((text: string, initialContext?: any) => {
+        setCurrentUserMessage(text);
+        actions.handleSendMessage(text, initialContext);
+    }, [actions.handleSendMessage]);
+
     // Glass Box metadata state
     const [glassBoxMeta, setGlassBoxMeta] = useState<GlassBoxMeta | null>(null);
+
+    // Reactive viewport width for responsive panel
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    useEffect(() => {
+        const handler = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+    }, []);
+    const isDesktopViewport = windowWidth >= 768;
 
 
     const [view, setView] = useState<View>('stream');
@@ -119,7 +137,7 @@ export const MindstreamApp: React.FC = () => {
                 setGlassBoxMeta({
                     ...meta,
                     action: 'chat',
-                    userMessage: state.messages.filter(m => m.sender === 'user').pop()?.text,
+                    userMessage: meta.userMessage ?? state.messages.filter(m => m.sender === 'user').pop()?.text,
                     fallback_chain: meta.attempted,
                 });
             }
@@ -196,9 +214,18 @@ export const MindstreamApp: React.FC = () => {
         }
     }, [view, state.messages, state.aiStatus]);
 
+    // For demo users, suppress and mark all unlock keys as seen on session init
+    useEffect(() => {
+        if (isDemoUser && state.isDataLoaded) {
+            if (!seenDailyUnlock) setSeenDailyUnlock(true);
+            if (!seenWeeklyUnlock) setSeenWeeklyUnlock(true);
+            if (!seenMonthlyUnlock) setSeenMonthlyUnlock(true);
+        }
+    }, [isDemoUser, state.isDataLoaded, seenDailyUnlock, seenWeeklyUnlock, seenMonthlyUnlock, setSeenDailyUnlock, setSeenWeeklyUnlock, setSeenMonthlyUnlock]);
+
     // Reflection unlock notifications
     useEffect(() => {
-        if (!user || !state.isDataLoaded) return;
+        if (!user || !state.isDataLoaded || isDemoUser) return;
         if (pendingUnlockType !== null) return;
 
         if (unlockStatus.dailyUnlocked && !seenDailyUnlock) {
@@ -213,7 +240,7 @@ export const MindstreamApp: React.FC = () => {
             setPendingUnlockType('monthly');
             return;
         }
-    }, [unlockStatus, seenDailyUnlock, seenWeeklyUnlock, seenMonthlyUnlock, state.isDataLoaded, user, pendingUnlockType]);
+    }, [unlockStatus, seenDailyUnlock, seenWeeklyUnlock, seenMonthlyUnlock, state.isDataLoaded, user, pendingUnlockType, isDemoUser]);
 
     // Handle reflection unlock actions
     const handleReflectionUnlockNavigate = () => {
@@ -260,7 +287,7 @@ export const MindstreamApp: React.FC = () => {
             db.logEvent(user.id, 'onboarding_completed', { path: 'guided' });
             if (dest === 'chat' && context) {
                 setView('chat');
-                actions.handleSendMessage(context);
+                handleSendMessageWithTracking(context);
             } else {
                 setView('stream');
             }
@@ -294,10 +321,13 @@ export const MindstreamApp: React.FC = () => {
     }
 
 
-    // Responsive Docking Logic
-    const isDesktop = window.matchMedia('(min-width: 1024px)').matches; // Simple check, ideally use a hook for reactivity but this works for render
-    const showDocked = isEngineerViewOpen && isDesktop;
-    const showModal = isEngineerViewOpen && !isDesktop;
+    // Responsive Docking Logic — use reactive windowWidth
+    const showDocked = isEngineerViewOpen && isDesktopViewport;
+    const showModal = isEngineerViewOpen && !isDesktopViewport;
+
+    // Derive last AI response for quality evaluation
+    const lastAIMessage = [...state.messages].reverse().find(m => m.sender === 'ai');
+    const lastAIResponse = lastAIMessage?.text ?? '';
 
     return (
         <ErrorBoundary>
@@ -315,7 +345,7 @@ export const MindstreamApp: React.FC = () => {
                 <div className="flex-grow flex overflow-hidden relative">
 
                     {/* App Views */}
-                    <main className={`flex-grow overflow-hidden relative transition-all duration-500 ${showDocked ? 'w-2/3' : 'w-full'}`}>
+                    <main className="flex-1 min-w-0 overflow-hidden relative transition-all duration-300">
                         <AnimatePresence mode="wait">
                             {/* Stream View */}
                             {view === 'stream' && (
@@ -402,7 +432,7 @@ export const MindstreamApp: React.FC = () => {
                                             </div>
                                         )}
                                         <ChatInputBar
-                                            onSendMessage={actions.handleSendMessage}
+                                            onSendMessage={handleSendMessageWithTracking}
                                             isLoading={state.isChatLoading}
                                         />
                                     </div>
@@ -570,7 +600,7 @@ export const MindstreamApp: React.FC = () => {
 
                                         onExploreInChat={(summary) => {
                                             setView('chat');
-                                            actions.handleSendMessage(`I'd like to explore this reflection: "${summary}"`);
+                                            handleSendMessageWithTracking(`I'd like to explore this reflection: "${summary}"`);
                                         }}
                                         isGenerating={state.isGeneratingReflection}
                                         onAddSuggestion={(s) => actions.handleAddIntention(s.text, null, false)}
@@ -612,19 +642,32 @@ export const MindstreamApp: React.FC = () => {
                         </AnimatePresence>
                     </main>
 
-                    {/* DOCKED GLASS BOX (Desktop Only) */}
-                    {showDocked && (
-                        <div className="w-1/3 min-w-[320px] max-w-md hidden lg:block h-full relative z-20 shadow-2xl">
-                            <GlassBox
-                                isOpen={true}
-                                onClose={toggleEngineerView}
-                                meta={glassBoxMeta}
-                                isProcessing={state.isChatLoading}
-                                entries={state.entries}
-                                mode="docked"
-                            />
-                        </div>
-                    )}
+                    {/* DOCKED GLASS BOX (Desktop Only — 460px animated panel) */}
+                    <AnimatePresence>
+                        {showDocked && (
+                            <motion.div
+                                key="glassbox-docked"
+                                initial={{ width: 0, opacity: 0 }}
+                                animate={{ width: 460, opacity: 1 }}
+                                exit={{ width: 0, opacity: 0 }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                                className="flex-shrink-0 h-full overflow-hidden relative z-20"
+                                style={{ minWidth: 0 }}
+                            >
+                                <GlassBox
+                                    isOpen={true}
+                                    onClose={toggleEngineerView}
+                                    meta={glassBoxMeta}
+                                    isProcessing={state.isChatLoading}
+                                    entries={state.entries}
+                                    mode="docked"
+                                    queryId={state.queryId}
+                                    lastAIResponse={lastAIResponse}
+                                    currentUserMessage={currentUserMessage}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 {/* NavBar */}
@@ -758,6 +801,21 @@ export const MindstreamApp: React.FC = () => {
                     onClose={() => actions.setShowDemoLimitModal(false)}
                 />
 
+                {/* MOBILE GLASS BOX — floating pill + bottom sheet */}
+                {isDemoMode && !isDesktopViewport && isEngineerViewOpen && (
+                    <MobilePipelineButton
+                        meta={glassBoxMeta}
+                        isProcessing={state.isChatLoading}
+                        evalScores={null}
+                        onOpen={toggleEngineerView}
+                        isOpen={showModal}
+                        onClose={toggleEngineerView}
+                        queryId={state.queryId}
+                        lastAIResponse={lastAIResponse}
+                        currentUserMessage={currentUserMessage}
+                    />
+                )}
+
                 {/* MOBILE/TABLET GLASS BOX MODAL (Overlay) */}
                 {showModal && (
                     <GlassBox
@@ -767,6 +825,9 @@ export const MindstreamApp: React.FC = () => {
                         isProcessing={state.isChatLoading}
                         entries={state.entries}
                         mode="modal"
+                        queryId={state.queryId}
+                        lastAIResponse={lastAIResponse}
+                        currentUserMessage={currentUserMessage}
                     />
                 )}
             </div>

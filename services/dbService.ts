@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js';
 import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext, SearchResult } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
 import { calculateStreak } from '../utils/streak';
+import { parseTemporalIntent } from './temporalParser';
 
 // Profile Functions
 export const getProfile = async (userId: string): Promise<Profile | null> => {
@@ -267,6 +268,20 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
         console.error('Error adding entry:', error);
         throw error;
     }
+    
+    // Non-blocking background embedding call
+    supabase.functions.invoke('ai-proxy', {
+        body: {
+            action: 'generate-and-store-embedding',
+            payload: {
+                entryId: data.id,
+                entryText: entryData.text
+            }
+        }
+    }).catch(err => 
+        console.error('Embedding generation failed:', err)
+    );
+
     return data;
 };
 
@@ -522,6 +537,260 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
     // Sort by timestamp descending (most recent first) as a proxy for relevance in this simple implementation
     return results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
 };
+
+export async function generateEmbedding(text: string): Promise<number[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-proxy', {
+      body: {
+        action: 'generate-embedding',
+        payload: { text }
+      }
+    });
+    if (error) throw error;
+    return data?.data?.embedding || data?.embedding || [];
+  } catch (error) {
+    console.error('Failed to generate embedding:', error);
+    return [];
+  }
+}
+
+export async function semanticSearchEntries(
+  userId: string,
+  queryText: string,
+  matchCount: number = 3,
+  matchThreshold: number = 0.82,
+  startDate: Date | null = null,
+  endDate: Date | null = null,
+  preGeneratedEmbedding?: number[]
+): Promise<Array<Entry & { similarity: number }>> {
+  if (!queryText || queryText.trim().length < 3) {
+    console.log('[RAG] Query too short — skipping semantic search');
+    return [];
+  }
+  if (!supabase) return [];
+  
+  // Parse temporal intent unless explicit bounds are provided
+  let activeStartDate = startDate?.toISOString() ?? null;
+  let activeEndDate = endDate?.toISOString() ?? null;
+  let activeThreshold = matchThreshold;
+
+  if (!startDate || !endDate) {
+    const temporal = parseTemporalIntent(queryText);
+    if (temporal.hasTemporalIntent) {
+      activeThreshold = 0.3;
+      activeStartDate = temporal.startDate ? temporal.startDate.toISOString() : null;
+      activeEndDate = temporal.endDate ? temporal.endDate.toISOString() : null;
+    }
+  } else {
+    activeThreshold = 0.70; // lower threshold for explicit bounds
+  }
+  
+  const payload: any = {
+    userId,
+    queryText,
+    matchCount,
+    matchThreshold: activeThreshold,
+    startDate: activeStartDate,
+    endDate: activeEndDate,
+  };
+
+  if (preGeneratedEmbedding) {
+    payload.embedding = preGeneratedEmbedding;
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      'ai-proxy',
+      { body: { action: 'semantic-search', payload } }
+    );
+    if (error) throw error;
+    return data?.data?.matches || data?.matches || [];
+  } catch (error) {
+    console.error('Semantic search failed:', error);
+    return [];
+  }
+}
+
+// 1. TEMPORAL_SUMMARY retrieval
+// Fetches ALL entries in date window
+export async function getEntriesByDateRange(
+  userId: string,
+  startDate: Date,
+  endDate: Date,
+  limit: number = 10
+): Promise<Array<Entry & { similarity: number }>> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .gte('timestamp', startDate.toISOString())
+    .lte('timestamp', endDate.toISOString())
+    .order('timestamp', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  // Assign similarity 1.0 (exact date match)
+  return (data || []).map(e => ({
+    ...e,
+    similarity: 1.0
+  }));
+}
+
+// 1b. TEMPORAL_SUMMARY fallback retrieval
+export async function getRecentEntries(
+  userId: string,
+  limit: number = 10
+): Promise<Array<Entry & { similarity: number }>> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('timestamp', { ascending: false })
+    .limit(limit);
+  return (data || []).map(e => ({
+    ...e,
+    similarity: 1.0
+  }));
+}
+
+// 3. TEMPORAL_TOPIC retrieval
+// Semantic search within date bounds
+export async function semanticSearchWithBounds(
+  userId: string,
+  queryText: string,
+  startDate: Date,
+  endDate: Date,
+  matchCount: number = 5,
+  matchThreshold: number = 0.70,
+  preGeneratedEmbedding?: number[]
+): Promise<Array<Entry & { similarity: number }>> {
+  return semanticSearchEntries(
+    userId,
+    queryText,
+    matchCount,
+    matchThreshold,
+    startDate,
+    endDate,
+    preGeneratedEmbedding
+  );
+}
+
+// 4. BEHAVIORAL retrieval
+// Queries habits and goals tables directly
+export async function getBehavioralContext(
+  userId: string
+): Promise<{
+  habits: Habit[];
+  goals: Intention[];
+  habitLogs: any[];
+}> {
+  if (!supabase) return {
+    habits: [], goals: [], habitLogs: []
+  };
+
+  const [habitsRes, goalsRes, logsRes] =
+    await Promise.all([
+      supabase
+        .from('habits')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('intentions')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('habit_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('completed_at', new Date(
+          Date.now() - 30 * 24 * 60 * 60 * 1000
+        ).toISOString())
+    ]);
+
+  return {
+    habits: habitsRes.data || [],
+    goals: goalsRes.data || [],
+    habitLogs: logsRes.data || []
+  };
+}
+
+// 5. ANALYTICAL retrieval
+// Aggregates tags, sentiments across all entries
+export async function getAnalyticalContext(
+  userId: string,
+  limit: number = 30
+): Promise<{
+  entries: Entry[];
+  topTags: string[];
+  sentimentDistribution: Record<string, number>;
+}> {
+  if (!supabase) return {
+    entries: [], topTags: [],
+    sentimentDistribution: {}
+  };
+
+  const { data } = await supabase
+    .from('entries')
+    .select('text, tags, primary_sentiment, timestamp')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('timestamp', { ascending: false })
+    .limit(limit);
+
+  const entries = (data || []) as Entry[];
+
+  // Aggregate tags
+  const tagCounts: Record<string, number> = {};
+  entries.forEach(e => {
+    (e.tags || []).forEach((tag: string) => {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+  });
+  const topTags = Object.entries(tagCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 10)
+    .map(([tag]) => tag);
+
+  // Aggregate sentiments
+  const sentimentDistribution: Record<string, number> = {};
+  entries.forEach(e => {
+    if (e.primary_sentiment) {
+      sentimentDistribution[e.primary_sentiment] =
+        (sentimentDistribution[e.primary_sentiment] || 0) + 1;
+    }
+  });
+
+  return { entries, topTags, sentimentDistribution };
+}
+
+// 6. CONVERSATIONAL retrieval
+// Minimal retrieval — conversation history
+export async function getConversationContext(
+  userId: string
+): Promise<Array<Entry & { similarity: number }>> {
+  if (!supabase) return [];
+  // Just return 3 most recent entries
+  const { data } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('timestamp', { ascending: false })
+    .limit(3);
+  return (data || []).map(e => ({
+    ...e, similarity: 1.0
+  }));
+}
+
 
 /**
  * PHASE 1: TEMPORAL MEMORY

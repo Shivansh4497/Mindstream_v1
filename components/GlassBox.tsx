@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-    X, ChevronDown, ChevronUp,
-    Cpu, Search, FileText, Layers, Zap, Clock,
-    ArrowRight, CheckCircle2, Activity, Database, Brain
-} from 'lucide-react';
+import { X, Brain, Shield, ChevronUp } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { parseTemporalIntent } from '../services/temporalParser';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -15,13 +13,43 @@ export interface GlassBoxMeta {
     latency_ms?: number;
     tokens_in?: number;
     tokens_out?: number;
-    rag_chunks?: number;
     rag_matches?: any[];
     prompt_length?: number;
     fallback_chain?: string[];
     action?: string;
     userMessage?: string;
     contextSnippet?: string;
+    attempted?: string[];
+    query_intent?: {
+        intent: string;
+        hasTemporalIntent: boolean;
+        temporalExpression: string | null;
+        topicKeywords: string[];
+        detectedTopic?: string | null;
+        confidence: number;
+        reasoning: string;
+        startDate: string | null;
+        endDate: string | null;
+    };
+    retrieval_strategy?: string;
+    classifier_latency_ms?: number;
+    // Granular timing (captured client-side)
+    embedding_latency_ms?: number;
+    search_latency_ms?: number;
+    inference_ms?: number;
+    parse_ms?: number;
+    // Per-layer token counts (instrumented)
+    system_prompt_tokens?: number;
+    rag_context_tokens?: number;
+    history_tokens?: number;
+    user_message_tokens?: number;
+    context_inventory?: {
+        recentEntriesCount: number;
+        semanticMatchCount: number;
+        habits: Array<{ name: string; category: string; streak: number }>;
+        goals: Array<{ text: string; category: string }>;
+        hasReflection: boolean;
+    };
 }
 
 interface GlassBoxProps {
@@ -29,647 +57,1150 @@ interface GlassBoxProps {
     onClose: () => void;
     meta: GlassBoxMeta | null;
     isProcessing: boolean;
-    entries?: any[]; // For RAG simulation
+    entries?: any[];
+    queryId?: number;
+    lastAIResponse?: string;
+    mode?: 'modal' | 'docked';
+    currentUserMessage?: string;
+}
+
+type StepState = 'pending' | 'active' | 'complete' | 'failed';
+type EvalState = 'idle' | 'active' | 'complete' | 'failed';
+
+type StepId = 'input' | 'intent' | 'embedding' | 'retrieval' | 'context' | 'generation' | 'evaluation' | 'complete';
+
+interface EvalScores {
+    faithfulness: number;
+    answerRelevancy: number;
+    contextPrecision: number;
+    contextRecall: number;
+    fScore: number;
+    summary: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PIPELINE STAGES
+// HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PIPELINE_STAGES = [
-    { id: 'input', label: 'User Input', icon: FileText, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/30' },
-    { id: 'context', label: 'Context Builder', icon: Layers, color: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/30' },
-    { id: 'rag', label: 'RAG Search', icon: Search, color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/30' },
-    { id: 'prompt', label: 'Prompt Assembly', icon: Brain, color: 'text-pink-400', bg: 'bg-pink-400/10', border: 'border-pink-400/30' },
-    { id: 'provider', label: 'AI Provider', icon: Cpu, color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/30' },
-    { id: 'response', label: 'Response', icon: Zap, color: 'text-brand-teal', bg: 'bg-brand-teal/10', border: 'border-brand-teal/30' },
-];
+const HIGH_CONFIDENCE = 0.85;
 
 const PROVIDER_CHAIN = [
-    { name: 'Groq 70B', model: 'llama-3.3-70b-versatile', speed: 'Fast', tier: 'primary' },
-    { name: 'Groq 8B', model: 'llama-3.1-8b-instant', speed: 'Very Fast', tier: 'backup' },
-    { name: 'Gemini Flash', model: 'gemini-2.0-flash-lite', speed: 'Fast', tier: 'fallback' },
-    { name: 'Gemini Lite', model: 'gemini-2.0-flash-lite-001', speed: 'Fast', tier: 'fallback' },
+    { name: 'Groq 70B', model: 'llama-3.3-70b-versatile' },
+    { name: 'Groq 8B', model: 'llama-3.1-8b-instant' },
+    { name: 'Gemini Flash', model: 'gemini-2.0-flash' },
+    { name: 'Gemini Lite', model: 'gemini-2.5-flash-lite' },
 ];
 
+function detectTemporalLabel(msg: string): string | null {
+    if (!msg) return null;
+    const lower = msg.toLowerCase();
+    const nDaysMatch = lower.match(/last\s+(\d+)\s+days?|past\s+(\d+)\s+days?/);
+    if (nDaysMatch) {
+        const days = nDaysMatch[1] || nDaysMatch[2];
+        return `Last ${days} days`;
+    }
+    if (/\btoday\b/.test(lower)) return 'Today';
+    if (/\byesterday\b/.test(lower)) return 'Yesterday';
+    if (/last\s*7\s*days?|past\s*7\s*days?|this\s+week|last\s+week/.test(lower)) return 'Last 7 days';
+    if (/last\s*30\s*days?|past\s*30\s*days?|last\s+month|this\s+month/.test(lower)) return 'Last 30 days';
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    for (const m of months) {
+        if (new RegExp(`${m}\\s+\\d{1,2}`, 'i').test(lower)) return `Specific date`;
+    }
+    return null;
+}
+
+function getPrecisionColor(pct: number) {
+    if (pct >= 85) return { text: 'text-teal-400', bg: 'bg-teal-400/15 border-teal-400/30' };
+    if (pct >= 70) return { text: 'text-amber-400', bg: 'bg-amber-400/15 border-amber-400/30' };
+    return { text: 'text-red-400', bg: 'bg-red-400/15 border-red-400/30' };
+}
+
+function getFScoreLabel(score: number) {
+    if (score >= 85) return { label: 'Excellent', color: 'text-teal-400', bar: 'bg-teal-400' };
+    if (score >= 70) return { label: 'Good', color: 'text-amber-400', bar: 'bg-amber-400' };
+    return { label: 'Needs attention', color: 'text-red-400', bar: 'bg-red-400' };
+}
+
+function getCategoryClass(category: string): string {
+    if (!category) return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+    const norm = category.trim().toLowerCase();
+    switch (norm) {
+        case 'health':
+            return 'bg-rose-500/10 text-rose-300 border-rose-500/20';
+        case 'growth':
+            return 'bg-amber-500/10 text-amber-300 border-amber-500/20';
+        case 'career':
+            return 'bg-sky-500/10 text-sky-300 border-sky-500/20';
+        case 'finance':
+            return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20';
+        case 'connection':
+            return 'bg-purple-500/10 text-purple-300 border-purple-500/20';
+        default:
+            return 'bg-slate-500/10 text-slate-300 border-slate-500/20';
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUBCOMPONENTS
+// STEP NODE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const SectionHeader: React.FC<{ icon: React.ElementType; title: string; color: string; defaultOpen?: boolean; children: React.ReactNode }> = ({
-    icon: Icon, title, color, defaultOpen = true, children
-}) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+const StepNode: React.FC<{ state: StepState }> = ({ state }) => {
     return (
-        <div className="mb-3">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 w-full text-left group"
-            >
-                <Icon className={`w-4 h-4 ${color}`} />
-                <span className="text-sm font-semibold text-white flex-1">{title}</span>
-                {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-500" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-500" />}
-            </button>
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                    >
-                        <div className="mt-2">{children}</div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PIPELINE VISUALIZER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const PipelineVisualizer: React.FC<{ activeStage: number; isProcessing: boolean }> = ({ activeStage, isProcessing }) => {
-    return (
-        <div className="flex items-center gap-1 overflow-x-auto pb-1">
-            {PIPELINE_STAGES.map((stage, i) => {
-                const Icon = stage.icon;
-                const isActive = i === activeStage && isProcessing;
-                const isComplete = i < activeStage || (!isProcessing && activeStage >= PIPELINE_STAGES.length - 1);
-                const isPending = i > activeStage;
-
-                return (
-                    <React.Fragment key={stage.id}>
-                        <motion.div
-                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium border transition-all min-w-fit ${isActive
-                                ? `${stage.bg} ${stage.color} ${stage.border} shadow-lg`
-                                : isComplete
-                                    ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
-                                    : 'bg-white/3 text-gray-500 border-white/5'
-                                }`}
-                            animate={isActive ? { scale: [1, 1.05, 1] } : {}}
-                            transition={{ repeat: Infinity, duration: 1.2 }}
-                        >
-                            {isComplete ? (
-                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            ) : isActive ? (
-                                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}>
-                                    <Icon className="w-3 h-3" />
-                                </motion.div>
-                            ) : (
-                                <Icon className="w-3 h-3" />
-                            )}
-                            <span className="hidden sm:inline">{stage.label}</span>
-                        </motion.div>
-                        {i < PIPELINE_STAGES.length - 1 && (
-                            <ArrowRight className={`w-3 h-3 flex-shrink-0 ${isComplete ? 'text-emerald-400/50' : 'text-gray-600'}`} />
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PROVIDER CHAIN
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const ProviderChain: React.FC<{ activeProvider?: string }> = ({ activeProvider }) => {
-    return (
-        <div className="grid grid-cols-2 gap-2">
-            {PROVIDER_CHAIN.map((p, i) => {
-                const isUsed = activeProvider === p.name || (!activeProvider && i === 0);
-                return (
-                    <div
-                        key={p.name}
-                        className={`px-3 py-2 rounded-lg border text-xs transition-all ${isUsed
-                            ? 'bg-emerald-400/10 border-emerald-400/30 ring-1 ring-emerald-400/20'
-                            : 'bg-white/3 border-white/5 opacity-50'
-                            }`}
-                    >
-                        <div className="flex items-center justify-between mb-1">
-                            <span className={`font-semibold ${isUsed ? 'text-emerald-400' : 'text-gray-400'}`}>
-                                {p.name}
-                            </span>
-                            {isUsed && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 font-bold">
-                                    USED
-                                </span>
-                            )}
-                        </div>
-                        <div className="text-gray-500 font-mono text-[10px]">{p.model}</div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// LATENCY WATERFALL
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const LatencyWaterfall: React.FC<{ totalMs: number }> = ({ totalMs }) => {
-    // Derive approximate breakdowns from total latency
-    const stages = useMemo(() => {
-        const edgeBoot = Math.round(totalMs * 0.04);
-        const providerSelect = Math.round(totalMs * 0.01);
-        const aiCall = Math.round(totalMs * 0.75);
-        const streaming = totalMs - edgeBoot - providerSelect - aiCall;
-        return [
-            { label: 'Edge Function boot', ms: edgeBoot, color: 'bg-blue-400' },
-            { label: 'Provider selection', ms: providerSelect, color: 'bg-purple-400' },
-            { label: 'AI inference', ms: aiCall, color: 'bg-emerald-400' },
-            { label: 'Parse + respond', ms: streaming, color: 'bg-brand-teal' },
-        ];
-    }, [totalMs]);
-
-    const maxMs = totalMs;
-
-    return (
-        <div className="space-y-2">
-            {stages.map((s, i) => (
-                <div key={i} className="flex items-center gap-3 text-xs">
-                    <span className="text-gray-400 w-28 text-right flex-shrink-0 truncate">{s.label}</span>
-                    <span className="text-gray-500 w-12 text-right font-mono flex-shrink-0">{s.ms}ms</span>
-                    <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden">
-                        <motion.div
-                            className={`h-full ${s.color} rounded-full`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${Math.max(4, (s.ms / maxMs) * 100)}%` }}
-                            transition={{ duration: 0.5, delay: i * 0.1 }}
-                        />
-                    </div>
-                </div>
-            ))}
-            <div className="flex items-center gap-3 text-xs border-t border-white/5 pt-2 mt-1">
-                <span className="text-white w-28 text-right flex-shrink-0 font-semibold">Total</span>
-                <span className="text-white w-12 text-right font-mono font-bold flex-shrink-0">{totalMs}ms</span>
-                <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden">
-                    <motion.div
-                        className="h-full bg-gradient-to-r from-blue-400 via-emerald-400 to-brand-teal rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: '100%' }}
-                        transition={{ duration: 0.8, delay: 0.3 }}
-                    />
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PROMPT INSPECTOR
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const PromptInspector: React.FC<{ action?: string; userMessage?: string; contextSnippet?: string; tokensIn?: number; tokensOut?: number }> = ({
-    action, userMessage, contextSnippet, tokensIn, tokensOut
-}) => {
-    const promptStructure = useMemo(() => [
-        {
-            label: 'System Prompt',
-            color: 'text-purple-400',
-            bg: 'bg-purple-400/5',
-            border: 'border-purple-400/20',
-            content: `Personality instruction + behavioral rules\n(~800 tokens • Chat mode detection, question rules, off-topic handling)`,
-        },
-        {
-            label: 'User Context (RAG)',
-            color: 'text-amber-400',
-            bg: 'bg-amber-400/5',
-            border: 'border-amber-400/20',
-            content: contextSnippet || `Recent entries, habits, goals, habit logs\n(Injected from your Supabase data)`,
-        },
-        {
-            label: 'Conversation History',
-            color: 'text-blue-400',
-            bg: 'bg-blue-400/5',
-            border: 'border-blue-400/20',
-            content: `Previous messages in this chat session\n(Provides conversational continuity)`,
-        },
-        {
-            label: 'User Message',
-            color: 'text-emerald-400',
-            bg: 'bg-emerald-400/5',
-            border: 'border-emerald-400/20',
-            content: userMessage || '(Your latest message)',
-        },
-    ], [contextSnippet, userMessage]);
-
-    return (
-        <div className="space-y-2">
-            {/* Action badge */}
-            {action && (
-                <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-gray-400 border border-white/10">
-                        action: {action}
-                    </span>
+        <div className="relative flex-shrink-0">
+            {state === 'complete' && (
+                <div className="w-5 h-5 rounded-full bg-teal-400 flex items-center justify-center shadow-[0_0_8px_rgba(45,212,191,0.5)]">
+                    <svg className="w-2.5 h-2.5 text-[#0d1117]" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
                 </div>
             )}
-
-            {/* Prompt layers */}
-            {promptStructure.map((layer, i) => (
-                <div key={i} className={`${layer.bg} border ${layer.border} rounded-lg px-3 py-2 text-xs`}>
-                    <div className={`font-semibold ${layer.color} mb-0.5 flex items-center gap-1`}>
-                        <span className="text-[10px] text-gray-600 font-mono">#{i + 1}</span>
-                        {layer.label}
-                    </div>
-                    <div className="text-gray-400 whitespace-pre-line font-mono text-[11px] leading-relaxed">
-                        {layer.content}
+            {state === 'active' && (
+                <div className="relative w-5 h-5">
+                    <motion.div
+                        className="absolute inset-0 rounded-full border-2 border-teal-400 opacity-30"
+                        animate={{ scale: [1, 1.8], opacity: [0.3, 0] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeOut' }}
+                    />
+                    <div className="w-5 h-5 rounded-full border-2 border-teal-400 bg-teal-400/10 flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-teal-400" />
                     </div>
                 </div>
-            ))}
-
-            {/* Token count */}
-            <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-white/5">
-                <span className="font-mono">
-                    {tokensIn ? `${tokensIn.toLocaleString()} tokens in` : '~1,200 tokens in'} / {tokensOut ? `${tokensOut.toLocaleString()} tokens out` : '~300 tokens out'}
-                </span>
-                <span className="text-gray-600">Prompt v3.2</span>
-            </div>
+            )}
+            {state === 'pending' && (
+                <div className="w-5 h-5 rounded-full border-2 border-dashed border-white/20 bg-transparent" />
+            )}
+            {state === 'failed' && (
+                <div className="w-5 h-5 rounded-full border-2 border-orange-500 bg-orange-500/10 flex items-center justify-center">
+                    <span className="text-orange-400 text-[9px] font-bold leading-none">✗</span>
+                </div>
+            )}
         </div>
     );
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// RAG PANEL
+// CONNECTOR LINE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const RAGPanel: React.FC<{ ragChunks?: number; userMessage?: string; meta?: GlassBoxMeta | null; entries?: any[] }> = ({ ragChunks, userMessage, meta, entries }) => {
-    // Real RAG results from metadata
-    const ragResults = useMemo(() => {
-        // 1. TRUE RAG (High Priority): Use the actual matches if available
-        if (meta && 'rag_matches' in meta) {
-            if (meta.rag_matches && meta.rag_matches.length > 0) {
-                return meta.rag_matches.map((m: any) => ({
-                    // Handle both old (Entry only) and new (SearchResult) formats
-                    snippet: `"${(m.matchText || m.text || m.content || "").substring(0, 80)}..."`,
-                    fullText: m.matchText || m.text || m.content,
-                    type: m.type || 'entry', // 'entry' | 'habit' | 'intention'
-                    score: m.similarity, // Undefined for keyword match
-                    isKeyword: !m.similarity,
-                    date: m.timestamp ? new Date(m.timestamp).toLocaleDateString() : 'Relevant Match'
-                }));
-            }
-            return [];
-        }
-
-        // 2. Legacy Fallback
-        if (meta?.contextSnippet) {
-            return [{
-                snippet: `"${meta.contextSnippet.substring(0, 80)}..."`,
-                type: 'entry',
-                score: 0.95,
-                isKeyword: true,
-                date: 'Relevant Match'
-            }];
-        }
-
-        return [];
-    }, [meta, entries]);
-
-    const numChunks = ragChunks ?? ragResults.length;
-
-    const getIconForType = (type: string) => {
-        switch (type) {
-            case 'habit': return <Zap className="w-3 h-3 text-amber-400" />;
-            case 'intention': return <CheckCircle2 className="w-3 h-3 text-emerald-400" />;
-            default: return <FileText className="w-3 h-3 text-blue-400" />;
-        }
-    };
-
-    const getLabelForType = (type: string) => {
-        switch (type) {
-            case 'habit': return 'Habit';
-            case 'intention': return 'Goal';
-            default: return 'Entry';
-        }
-    };
-
-    return (
-        <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs">
-                <Database className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-gray-300">
-                    Retrieved <span className="text-amber-400 font-semibold">{numChunks} items</span> matching{' '}
-                    {userMessage ? `"${userMessage.slice(0, 30)}..."` : 'your query'}
-                </span>
-            </div>
-
-            <div className="space-y-1.5">
-                {ragResults.slice(0, numChunks).map((r, i) => (
-                    <div key={i} className="flex items-start gap-2 bg-white/3 rounded-lg px-3 py-2 border border-white/5">
-                        <div className="mt-0.5 opacity-80">
-                            {getIconForType(r.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className={`text-[9px] uppercase tracking-wider font-bold ${r.type === 'habit' ? 'text-amber-400' : r.type === 'intention' ? 'text-emerald-400' : 'text-blue-400'
-                                    }`}>
-                                    {getLabelForType(r.type)}
-                                </span>
-                                <span className="text-[10px] text-gray-500">• {r.date}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-300 font-mono truncate">{r.snippet}</p>
-                        </div>
-                        <div className="flex-shrink-0 text-right">
-                            <div className={`text-[10px] font-mono font-bold ${r.score && r.score > 0.9 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {r.isKeyword ? 'MATCH' : `${(r.score * 100).toFixed(0)}%`}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <p className="text-[10px] text-gray-500 italic">
-                Searching Entries, Habits, and Goals via keyword extraction.
-            </p>
-        </div>
-    );
-};
+const Connector: React.FC<{ filled: boolean }> = ({ filled }) => (
+    <div className="ml-[9px] w-0.5 h-7" style={{
+        background: filled
+            ? 'linear-gradient(to bottom, rgba(45,212,191,0.8), rgba(45,212,191,0.3))'
+            : 'repeating-linear-gradient(to bottom, rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 4px, transparent 4px, transparent 8px)'
+    }} />
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
+// SHIMMER PLACEHOLDER
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const Shimmer: React.FC<{ lines?: number }> = ({ lines = 2 }) => (
+    <div className="space-y-1.5">
+        {Array.from({ length: lines }).map((_, i) => (
+            <motion.div
+                key={i}
+                className="h-2.5 rounded-full bg-gradient-to-r from-white/5 via-white/10 to-white/5"
+                style={{ width: i === 0 ? '70%' : '50%' }}
+                animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+            />
+        ))}
+    </div>
+);
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// STORY PANEL (Narrative Mode)
+// LATENCY BADGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const StoryPanel: React.FC<{ meta: GlassBoxMeta | null; entries?: any[] }> = ({ meta, entries }) => {
-    // 1. ANALYSIS STEP
-    const analysisText = useMemo(() => {
-        if (!meta?.userMessage) return "I'm waiting for your input...";
-        const msg = meta.userMessage.toLowerCase();
-        if (msg.includes('goal') || msg.includes('intention')) return "I analyzed your request to set a new goal.";
-        if (msg.includes('habit')) return "I noticed you want to discuss your habits.";
-        if (msg.includes('reflect') || msg.includes('review')) return "I'm helping you reflect on your progress.";
-        return "I analyzed the intent behind your message.";
-    }, [meta]);
+const LatencyBadge: React.FC<{ ms: number }> = ({ ms }) => (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-white/5 text-white/40 border border-white/8">
+        {ms}ms
+    </span>
+);
 
-    // 2. SEARCH STEP
-    const searchText = useMemo(() => {
-        const count = entries?.length || 0;
-        if (count === 0) return "I checked your profile settings.";
-        return `I scanned your ${count} journal entries and 5 recent habits to find relevant context.`;
-    }, [entries]);
+// ═══════════════════════════════════════════════════════════════════════════════
+// METRIC PILL
+// ═══════════════════════════════════════════════════════════════════════════════
 
-    // 3. MATCH STEP
-    const matchText = useMemo(() => {
-        if (meta?.rag_matches && meta.rag_matches.length > 0) {
-            return `I found ${meta.rag_matches.length} relevant memories, such as: "${(meta.rag_matches[0].text || meta.rag_matches[0].content || "").substring(0, 40)}..."`;
-        }
-        if (meta?.contextSnippet) {
-            return `I found a relevant memory: "${meta.contextSnippet.substring(0, 40)}..."`;
-        }
-        return "I didn't find any specific past memories that matched this topic.";
-    }, [meta]);
+const Pill: React.FC<{ label: string; value: string; colorClass: string }> = ({ label, value, colorClass }) => (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${colorClass}`}>
+        <span className="opacity-60">{label}</span>
+        <span>{value}</span>
+    </span>
+);
 
-    // 4. SYNTHESIS STEP
-    const synthesisText = useMemo(() => {
-        const provider = meta?.provider || 'Groq 70B';
-        const latency = meta?.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : 'fast';
-        return `Using the ${provider} model, I synthesized this answer in ${latency}.`;
-    }, [meta]);
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEP CONTENT COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════════
 
-    return (
-        <div className="space-y-6 py-2">
-            <div className="relative border-l-2 border-dashed border-white/10 ml-3 space-y-8 pb-2">
+const StepContent: React.FC<{
+    id: StepId;
+    state: StepState;
+    meta: GlassBoxMeta | null;
+    evalState: EvalState;
+    evalScores: EvalScores | null;
+    currentUserMessage?: string;
+}> = ({ id, state, meta, evalState, evalScores, currentUserMessage }) => {
+    if (state === 'pending') return null;
+    if (state === 'active' && id !== 'evaluation') return <Shimmer lines={id === 'generation' ? 3 : 2} />;
 
-                {/* Step 1: Input Analysis */}
-                <div className="relative pl-8">
-                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-500/20 border border-blue-500 ring-4 ring-[#0d1117] flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    </div>
-                    <h3 className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-1">1. Processing</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">{analysisText}</p>
+    // ── STEP 1: USER INPUT ──────────────────────────────────────────────────
+    if (id === 'input') {
+        const msg = meta?.userMessage || currentUserMessage || '';
+        const truncated = msg.length > 80 ? msg.slice(0, 80) + '…' : msg;
+        const temporalLabel = detectTemporalLabel(msg);
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1.5">
+                <p className="text-[13px] text-white/90 font-mono leading-relaxed">"{truncated}"</p>
+                {temporalLabel && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                        ⏱ Temporal: {temporalLabel}
+                    </span>
+                )}
+            </motion.div>
+        );
+    }
+
+    // ── STEP 1.5: INTENT CLASSIFICATION ─────────────────────────────────────
+    if (id === 'intent') {
+        const ms = meta?.classifier_latency_ms ?? 0;
+        const queryIntent = meta?.query_intent;
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-white/80 font-mono">Classifier (Groq 8B)</span>
+                    {ms > 0 && <LatencyBadge ms={ms} />}
                 </div>
-
-                {/* Step 2: Context Retrieval */}
-                <div className="relative pl-8">
-                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-amber-500/20 border border-amber-500 ring-4 ring-[#0d1117] flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                {queryIntent ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                        <Pill label="Intent" value={queryIntent.intent} colorClass="bg-teal-400/15 text-teal-400 border-teal-400/30" />
+                        <Pill label="Confidence" value={`${Math.round(queryIntent.confidence * 100)}%`} colorClass="bg-blue-400/15 text-blue-400 border-blue-400/30" />
+                        {queryIntent.detectedTopic ? (
+                            <span className="text-[10px] text-white/40 italic">
+                                Topic: {queryIntent.detectedTopic}
+                            </span>
+                        ) : queryIntent.topicKeywords.length > 0 ? (
+                            <span className="text-[10px] text-white/40 italic">
+                                Topics: {queryIntent.topicKeywords.join(', ')}
+                            </span>
+                        ) : null}
                     </div>
-                    <h3 className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">2. Retrieval</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">{searchText}</p>
+                ) : (
+                    <span className="text-[10px] text-white/40 italic">Determining user intent...</span>
+                )}
+            </motion.div>
+        );
+    }
+
+    // ── STEP 2: EMBEDDING ───────────────────────────────────────────────────
+    if (id === 'embedding') {
+        const ms = meta?.embedding_latency_ms ?? 0;
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                        <p className="text-[12px] text-white/80 font-mono">Supabase gte-small</p>
+                        <p className="text-[10px] text-white/40">384-dim vector</p>
+                    </div>
+                    {ms > 0 && <LatencyBadge ms={ms} />}
                 </div>
+            </motion.div>
+        );
+    }
 
-                {/* Step 3: Finding Proof */}
-                <div className="relative pl-8">
-                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-purple-500/20 border border-purple-500 ring-4 ring-[#0d1117] flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+    // ── STEP 3: RETRIEVAL ───────────────────────────────────────────────────
+    if (id === 'retrieval') {
+        const matches = meta?.rag_matches ?? [];
+        const searchMs = meta?.search_latency_ms ?? 0;
+        const n = matches.length;
+        const userMsg = meta?.userMessage || currentUserMessage || '';
+
+        // Compute average similarity: sum of similarities divided by matches length, scaled by 100
+        const avgSimilarity = n > 0
+            ? Math.round(
+                matches.reduce((sum: number, m: any) => sum + (m.similarity ?? 0), 0) / n * 100
+              )
+            : 0;
+
+        // Compute recall/fill rate: matches out of requested count (3 default)
+        const recall = Math.round(Math.min(100, (n / 3) * 100));
+
+        const isKeywordFallback = meta?.retrieval_strategy?.includes('KEYWORD') || meta?.retrieval_strategy?.includes('fallback');
+        const matchLabel = isKeywordFallback
+            ? 'Keyword Match'
+            : meta?.query_intent?.intent === 'TEMPORAL_SUMMARY'
+            ? 'Date Match'
+            : 'Semantic Match';
+
+        const simColor = isKeywordFallback
+            ? { text: 'text-white/50', bg: 'bg-white/10 border-white/20' }
+            : getPrecisionColor(avgSimilarity);
+        const recColor = getPrecisionColor(recall);
+
+        const temporal = parseTemporalIntent(userMsg);
+        const { startDate, endDate, hasTemporalIntent } = temporal;
+
+        const allWithinBounds = hasTemporalIntent && matches.every((m: any) => {
+            if (!startDate || !endDate) return true;
+            const entryDate = new Date(m.timestamp);
+            return entryDate >= startDate && entryDate <= endDate;
+        });
+
+        const inventory = meta?.context_inventory;
+
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-4">
+                {/* 1. Vector Search */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
+                            {meta?.retrieval_strategy || 'Vector Search'}
+                        </span>
+                        {searchMs > 0 && <LatencyBadge ms={searchMs} />}
                     </div>
-                    <h3 className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-1">3. Connection</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">
-                        {matchText}
-                    </p>
-                    {meta?.contextSnippet && (
-                        <div className="mt-2 text-xs text-gray-500 italic bg-white/5 p-2 rounded border border-white/5">
-                            "...{meta.contextSnippet.substring(0, 120)}..."
-                        </div>
+                    {n > 0 ? (
+                        <>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <Pill label={matchLabel} value={`${avgSimilarity}%`} colorClass={simColor.bg + ' ' + simColor.text} />
+                                <Pill label="Fill Rate" value={`${recall}%`} colorClass={recColor.bg + ' ' + recColor.text} />
+                                {hasTemporalIntent && (
+                                    allWithinBounds ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                                            Temporal ✓ 100%
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400/15 text-amber-400 border border-amber-400/30">
+                                            Temporal ⚠ Partial
+                                        </span>
+                                    )
+                                )}
+                            </div>
+                            <div className="space-y-1 mt-1">
+                                {matches.slice(0, 3).map((m: any, i: number) => {
+                                    const txt = (m.matchText || m.text || '').slice(0, 50);
+                                    const sim = m.similarity != null ? Math.round(m.similarity * 100) : null;
+                                    const date = m.timestamp
+                                        ? new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                        : '';
+                                    return (
+                                        <div key={i} className="flex items-center justify-between gap-2 bg-white/3 rounded px-2 py-1.5 border border-white/6">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-white/30 text-[10px] font-mono flex-shrink-0">▸</span>
+                                                {date && <span className="text-[10px] text-white/40 font-mono flex-shrink-0">[{date}]</span>}
+                                                <span className="text-[10px] text-white/60 font-mono truncate font-semibold">"{txt}…"</span>
+                                            </div>
+                                            {sim != null && (
+                                                <span className="flex-shrink-0 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                                                    {sim}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <span className="text-[11px] text-white/40 italic">No semantic matches found</span>
                     )}
                 </div>
 
-                {/* Step 4: Generation */}
-                <div className="relative pl-8">
-                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500 ring-4 ring-[#0d1117] flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    </div>
-                    <h3 className="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">4. Synthesis</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">{synthesisText}</p>
+                {/* 2. Recent Context */}
+                <div className="space-y-1.5 border-t border-white/5 pt-3">
+                    <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider block">Recent Context</span>
+                    <p className="text-[11px] text-white/60 font-mono">
+                        {inventory 
+                            ? `${inventory.recentEntriesCount} recent entries included in context` 
+                            : meta?.userMessage
+                                ? `${n > 0 ? 'Recent' : '0'} entries included in context`
+                                : `Connecting...`}
+                    </p>
                 </div>
-            </div>
 
-            <div className="text-center pt-4">
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">AI Orchestration Complete</p>
-            </div>
-        </div>
-    );
+                {/* 3. Habits & Goals */}
+                <div className="space-y-2 border-t border-white/5 pt-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">Habits & Goals</span>
+                        {inventory?.hasReflection && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                Reflection Badge
+                            </span>
+                        )}
+                    </div>
+                    
+                    {inventory ? (
+                        <div className="space-y-2">
+                            {/* Habits */}
+                            {inventory.habits.length > 0 ? (
+                                <div className="space-y-1">
+                                    {inventory.habits.slice(0, 5).map((h, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-white/3 rounded px-2 py-1 border border-white/6 text-[10px] font-mono">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-white/40">⟳</span>
+                                                <span className="text-white/80 truncate font-semibold">{h.name}</span>
+                                                <span className={`text-[8px] px-1 py-0.2 rounded border ${getCategoryClass(h.category)}`}>
+                                                    {h.category.toUpperCase()}
+                                                </span>
+                                            </div>
+                                            {h.streak > 0 && (
+                                                <span className="text-orange-400 font-bold flex-shrink-0">
+                                                    🔥{h.streak}d
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {inventory.habits.length > 5 && (
+                                        <span className="text-[9px] text-teal-400 font-semibold block pl-1">
+                                            +{inventory.habits.length - 5} more habits
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-[10px] text-white/30 italic pl-1">No active habits in context</p>
+                            )}
+
+                            {/* Goals */}
+                            {inventory.goals.length > 0 ? (
+                                <div className="space-y-1 mt-1.5">
+                                    {inventory.goals.slice(0, 3).map((g, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-white/3 rounded px-2 py-1 border border-white/6 text-[10px] font-mono">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-white/40">◎</span>
+                                                <span className="text-white/70 truncate">{g.text}</span>
+                                            </div>
+                                            <span className={`text-[8px] px-1 py-0.2 rounded border flex-shrink-0 ${getCategoryClass(g.category)}`}>
+                                                {(g.category || 'Growth').toUpperCase()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {inventory.goals.length > 3 && (
+                                        <span className="text-[9px] text-teal-400 font-semibold block pl-1">
+                                            +{inventory.goals.length - 3} more goals
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-[10px] text-white/30 italic pl-1">No pending goals in context</p>
+                            )}
+                        </div>
+                    ) : (
+                        <p className="text-[10px] text-white/30 italic">No habit/goal context available</p>
+                    )}
+                </div>
+            </motion.div>
+        );
+    }
+
+    // ── STEP 4: CONTEXT ASSEMBLY ────────────────────────────────────────────
+    if (id === 'context') {
+        const sys = meta?.system_prompt_tokens ?? 0;
+        const rag = meta?.rag_context_tokens ?? 0;
+        const hist = meta?.history_tokens ?? 0;
+        const usr = meta?.user_message_tokens ?? 0;
+        const total = sys + rag + hist + usr;
+        const tokensIn = meta?.tokens_in ?? total;
+        const tokensOut = meta?.tokens_out ?? 0;
+
+        const pct = (n: number) => total > 0 ? Math.max(1, Math.round((n / total) * 100)) : 25;
+
+        const segments = [
+            { label: 'System', tokens: sys, pct: pct(sys), color: '#64748b', lightColor: 'rgba(100,116,139,0.7)' },
+            { label: 'Context', tokens: rag, pct: pct(rag), color: '#2dd4bf', lightColor: 'rgba(45,212,191,0.7)' },
+            { label: 'History', tokens: hist, pct: pct(hist), color: '#3b82f6', lightColor: 'rgba(59,130,246,0.7)' },
+            { label: 'Message', tokens: usr, pct: pct(usr), color: '#a855f7', lightColor: 'rgba(168,85,247,0.7)' },
+        ];
+
+        const efficiency = tokensIn > 0 && tokensOut > 0 ? Math.round((tokensOut / tokensIn) * 100) : null;
+
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
+                {/* Stacked bar */}
+                <div className="relative">
+                    <div className="h-4 rounded-full overflow-hidden flex" title="Token distribution by layer">
+                        {segments.map((seg, i) => (
+                            <motion.div
+                                key={seg.label}
+                                className="h-full flex-shrink-0"
+                                style={{ width: `${seg.pct}%`, backgroundColor: seg.color }}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${seg.pct}%` }}
+                                transition={{ duration: 0.5, delay: i * 0.08 }}
+                                title={`${seg.label}: ~${seg.tokens} tokens (${seg.pct}%)`}
+                            />
+                        ))}
+                    </div>
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                        {segments.map(seg => (
+                            <span key={seg.label} className="flex items-center gap-1 text-[10px] text-white/40">
+                                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: seg.color }} />
+                                {seg.label}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Token breakdown line */}
+                {total > 0 && (
+                    <p className="text-[10px] text-white/30 font-mono">
+                        ~{sys} sys · ~{rag} ctx · ~{hist} hist · ~{usr} msg
+                    </p>
+                )}
+
+                {/* Token economics */}
+                <div className="flex items-center justify-between text-[10px] font-mono border-t border-white/5 pt-1.5">
+                    <span className="text-white/40">~{tokensIn} in → ~{tokensOut} out</span>
+                    {efficiency != null && (
+                        <span className="text-white/30">~{efficiency}% efficiency</span>
+                    )}
+                </div>
+            </motion.div>
+        );
+    }
+
+    // ── STEP 5: AI GENERATION ───────────────────────────────────────────────
+    if (id === 'generation') {
+        const provider = meta?.provider ?? 'Groq 70B';
+        const totalMs = meta?.latency_ms ?? 0;
+        const inferenceMs = meta?.inference_ms ?? totalMs;
+        const parseMs = meta?.parse_ms ?? 12;
+        const edgeBootMs = Math.round(totalMs * 0.04);
+        const selectionMs = Math.round(totalMs * 0.01);
+        const computedInferenceMs = Math.max(0, totalMs - edgeBootMs - selectionMs - parseMs);
+
+        const phases = [
+            { label: 'Edge boot', ms: edgeBootMs, color: '#3b82f6' },
+            { label: 'Selection', ms: selectionMs, color: '#a855f7' },
+            { label: 'Inference', ms: computedInferenceMs, color: '#10b981' },
+            { label: 'Parse', ms: parseMs, color: '#2dd4bf' },
+        ];
+        const maxMs = Math.max(...phases.map(p => p.ms), 1);
+
+        // Get the model ID for the used provider
+        const usedProviderInfo = PROVIDER_CHAIN.find(p => p.name === provider) ?? PROVIDER_CHAIN[0];
+
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
+                {/* Provider name */}
+                <div>
+                    <p className="text-[13px] font-semibold text-teal-400">{provider}</p>
+                    <p className="text-[10px] text-white/30 font-mono">{usedProviderInfo.model}</p>
+                </div>
+
+                {/* Provider chain */}
+                <div className="flex items-center gap-1 flex-wrap">
+                    {PROVIDER_CHAIN.map(p => {
+                        const used = p.name === provider;
+                        return (
+                            <span key={p.name} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all ${
+                                used
+                                    ? 'bg-teal-400/15 text-teal-400 border-teal-400/30'
+                                    : 'bg-white/3 text-white/20 border-white/6'
+                            }`}>
+                                {p.name} {used ? '[USED]' : ''}
+                            </span>
+                        );
+                    })}
+                </div>
+
+                {/* Latency bar chart */}
+                {totalMs > 0 && (
+                    <div className="space-y-1.5">
+                        {phases.map(phase => (
+                            <div key={phase.label} className="flex items-center gap-2 text-[10px]">
+                                <span className="text-white/30 w-16 flex-shrink-0 text-right font-mono">{phase.label}</span>
+                                <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                                    <motion.div
+                                        className="h-full rounded-full"
+                                        style={{ backgroundColor: phase.color }}
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${Math.max(2, (phase.ms / maxMs) * 100)}%` }}
+                                        transition={{ duration: 0.4, delay: 0.1 }}
+                                    />
+                                </div>
+                                <span className="text-white/30 font-mono w-10 flex-shrink-0">{phase.ms}ms</span>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-2 text-[10px] border-t border-white/5 pt-1">
+                            <span className="text-white/50 w-16 flex-shrink-0 text-right font-mono font-bold">Total</span>
+                            <div className="flex-1 h-2 bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400 rounded-full" />
+                            <span className="text-white/60 font-mono w-10 flex-shrink-0 font-bold">{totalMs}ms</span>
+                        </div>
+                    </div>
+                )}
+            </motion.div>
+        );
+    }
+
+    // ── STEP 6: QUALITY EVALUATION ──────────────────────────────────────────
+    if (id === 'evaluation') {
+        if (evalState === 'idle' || evalState === 'active') {
+            return (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <motion.div
+                            className="w-2 h-2 rounded-full bg-teal-400"
+                            animate={{ opacity: [1, 0.3, 1] }}
+                            transition={{ duration: 1, repeat: Infinity }}
+                        />
+                        <span className="text-[11px] text-white/40">Evaluating response quality...</span>
+                    </div>
+                    <Shimmer lines={3} />
+                </div>
+            );
+        }
+        if (evalState === 'failed') {
+            return (
+                <p className="text-[11px] text-orange-400/70 italic">Quality evaluation unavailable</p>
+            );
+        }
+        if (evalState === 'complete' && evalScores) {
+            const scores = [
+                { label: 'Faithfulness', value: evalScores.faithfulness },
+                { label: 'Ans Relevancy', value: evalScores.answerRelevancy },
+                { label: 'Ctx Precision', value: evalScores.contextPrecision },
+                { label: 'Ctx Recall', value: evalScores.contextRecall },
+            ];
+            const fscore = getFScoreLabel(evalScores.fScore);
+            return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
+                    {/* Score rows */}
+                    <div className="space-y-2">
+                        {scores.map(s => (
+                            <div key={s.label} className="space-y-0.5">
+                                <div className="flex items-center justify-between text-[10px]">
+                                    <span className="text-white/40">{s.label}</span>
+                                    <span className="font-mono text-white/60">{s.value}/100</span>
+                                </div>
+                                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-teal-400 rounded-full"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${s.value}%` }}
+                                        transition={{ duration: 0.5 }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* F-Score composite */}
+                    <div className="space-y-1 pt-1 border-t border-white/5">
+                        <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-white/40">F-Score</span>
+                            <span className={`font-mono font-bold ${fscore.color}`}>{evalScores.fScore}%</span>
+                        </div>
+                        <div className="h-2.5 bg-white/5 rounded-full overflow-hidden">
+                            <motion.div
+                                className={`h-full rounded-full ${fscore.bar}`}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${evalScores.fScore}%` }}
+                                transition={{ duration: 0.6 }}
+                            />
+                        </div>
+                        <p className={`text-[10px] font-semibold ${fscore.color}`}>{fscore.label}</p>
+                    </div>
+
+                    {/* Summary */}
+                    {evalScores.summary && (
+                        <p className="text-[10px] text-white/30 italic leading-relaxed">"{evalScores.summary}"</p>
+                    )}
+                </motion.div>
+            );
+        }
+        return null;
+    }
+
+    // ── STEP 7: COMPLETE ────────────────────────────────────────────────────
+    if (id === 'complete') {
+        const totalMs = meta?.latency_ms ?? 0;
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1">
+                <p className="text-[12px] text-white/80 font-semibold">AI Orchestration Complete</p>
+                {totalMs > 0 && (
+                    <p className="text-[11px] text-teal-400 font-mono">{totalMs}ms end-to-end</p>
+                )}
+                <div className="flex items-center gap-1.5 mt-1">
+                    <Shield className="w-3 h-3 text-white/20" />
+                    <span className="text-[10px] text-white/20">All AI calls secured via Edge Fns</span>
+                </div>
+            </motion.div>
+        );
+    }
+
+    return null;
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEP LABELS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const STEP_LABELS: Record<StepId, string> = {
+    input: 'User Input',
+    intent: 'Intent Classification',
+    embedding: 'Embedding',
+    retrieval: 'Retrieval',
+    context: 'Context Assembly',
+    generation: 'AI Generation',
+    evaluation: 'Quality Evaluation',
+    complete: 'Complete',
+};
+
+const STEP_ORDER: StepId[] = ['input', 'intent', 'embedding', 'retrieval', 'context', 'generation', 'evaluation', 'complete'];
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const GlassBox: React.FC<GlassBoxProps & { mode?: 'modal' | 'docked' }> = ({
+export const GlassBox: React.FC<GlassBoxProps> = ({
     isOpen,
     onClose,
     meta,
     isProcessing,
     entries,
-    mode = 'modal'
+    queryId = 0,
+    lastAIResponse = '',
+    mode = 'modal',
+    currentUserMessage = '',
 }) => {
-    const [viewMode, setViewMode] = useState<'story' | 'technical'>('story');
-    const [activeStage, setActiveStage] = useState(0);
+    // Pipeline step states
+    const [stepStates, setStepStates] = useState<Record<StepId, StepState>>({
+        input: 'pending', intent: 'pending', embedding: 'pending', retrieval: 'pending',
+        context: 'pending', generation: 'pending', evaluation: 'pending', complete: 'pending',
+    });
 
-    // Animate pipeline stages when processing
+    // Quality evaluation state
+    const [evalState, setEvalState] = useState<EvalState>('idle');
+    const [evalScores, setEvalScores] = useState<EvalScores | null>(null);
+
+    // Session stats
+    const [sessionQueryCount, setSessionQueryCount] = useState(0);
+    const [sessionPrecisionSum, setSessionPrecisionSum] = useState(0);
+
+    // Mobile bottom sheet
+    const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+    const [isMobileFullOpen, setIsMobileFullOpen] = useState(false);
+
+    // Refs to avoid stale closures
+    const isProcessingRef = useRef(isProcessing);
+    useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+
+    const completeStep = useCallback((id: StepId) => {
+        setStepStates(prev => ({ ...prev, [id]: 'complete' }));
+    }, []);
+
+    // ── RESET on new query ────────────────────────────────────────────────
     useEffect(() => {
-        if (!isProcessing) {
-            // Complete — show all stages done
-            setActiveStage(PIPELINE_STAGES.length);
-            return;
-        }
-
-        setActiveStage(0);
-        const stageTimings = [300, 500, 800, 400, 600, 200]; // ms per stage
-        let accumulated = 0;
-        const timers: NodeJS.Timeout[] = [];
-
-        stageTimings.forEach((ms, i) => {
-            accumulated += ms;
-            timers.push(setTimeout(() => setActiveStage(i + 1), accumulated));
+        if (queryId === 0) return;
+        setStepStates({
+            input: 'pending', intent: 'pending', embedding: 'pending', retrieval: 'pending',
+            context: 'pending', generation: 'pending', evaluation: 'pending', complete: 'pending',
         });
+        setEvalState('idle');
+        setEvalScores(null);
+    }, [queryId]);
 
-        return () => timers.forEach(clearTimeout);
+    // ── PROCESSING: show input complete + others active ──────────────────
+    useEffect(() => {
+        if (!isProcessing) return;
+        setStepStates(prev => ({
+            ...prev,
+            input: 'complete',
+            intent: 'active',
+            embedding: 'active',
+            retrieval: 'active',
+            context: 'active',
+            generation: 'active',
+            evaluation: 'pending',
+            complete: 'pending',
+        }));
     }, [isProcessing]);
 
-    // Derive latency (use meta if available, otherwise simulate)
-    const latencyMs = meta?.latency_ms ?? (isProcessing ? 0 : Math.round(800 + Math.random() * 600));
+    // ── CASCADE COMPLETE: proportional 800ms animation after meta arrives ─
+    useEffect(() => {
+        if (isProcessing || !meta) return;
 
-    // If closed and in modal mode, don't render.
-    // In docked mode, we might want to render differently or let parent handle visibility.
-    // For now, let's assume parent controls rendering or we return null.
+        const t = {
+            s2: meta.embedding_latency_ms ?? 120,
+            s3: meta.search_latency_ms ?? 45,
+            s4: 30,
+            s5: meta.inference_ms ?? meta.latency_ms ?? 800,
+        };
+        const total = t.s2 + t.s3 + t.s4 + t.s5;
+        const scale = (ms: number) => (ms / total) * 800;
+
+        let acc = 0;
+        const timers = [
+            setTimeout(() => completeStep('intent'), acc),
+            setTimeout(() => completeStep('embedding'), (acc += 100)),
+            setTimeout(() => completeStep('retrieval'), (acc += scale(t.s2))),
+            setTimeout(() => completeStep('context'),   (acc += scale(t.s3))),
+            setTimeout(() => completeStep('generation'), (acc += scale(t.s4))),
+        ];
+
+        // Update session stats
+        const matches = meta.rag_matches ?? [];
+        const n = matches.length;
+        const avgSimilarity = n > 0
+            ? Math.round(
+                matches.reduce((sum: number, m: any) => sum + (m.similarity ?? 0), 0) / n * 100
+              )
+            : 0;
+        setSessionQueryCount(c => c + 1);
+        setSessionPrecisionSum(s => s + avgSimilarity);
+
+        return () => timers.forEach(clearTimeout);
+    }, [isProcessing, meta, completeStep]);
+
+    // ── QUALITY EVALUATION: fires 850ms after meta arrives ───────────────
+    useEffect(() => {
+        if (isProcessing || !meta?.userMessage) return;
+
+        const t = setTimeout(async () => {
+            setEvalState('active');
+            setStepStates(prev => ({ ...prev, evaluation: 'active' }));
+
+            try {
+                const ragContext = (meta.rag_matches ?? [])
+                    .slice(0, 3)
+                    .map((m: any) => (m.matchText || m.text || '').slice(0, 120))
+                    .join('\n');
+
+                const habitsSummary = (meta.context_inventory?.habits ?? [])
+                    .slice(0, 5)
+                    .map(h => `${h.name} (${h.category}, ${h.streak} day streak)`)
+                    .join(', ');
+
+                const goalsSummary = (meta.context_inventory?.goals ?? [])
+                    .slice(0, 3)
+                    .map(g => g.text)
+                    .join(', ');
+
+                const fullContext = [
+                    ragContext ? `Journal entries:\n${ragContext}` : '',
+                    habitsSummary ? `Active habits: ${habitsSummary}` : '',
+                    goalsSummary ? `Active goals: ${goalsSummary}` : '',
+                ].filter(Boolean).join('\n\n');
+
+                const { data, error } = await supabase!.functions.invoke('ai-proxy', {
+                    body: {
+                        action: 'evaluate-response',
+                        payload: {
+                            userMessage: meta.userMessage,
+                            retrievedContext: fullContext,
+                            aiResponse: lastAIResponse ?? '',
+                        }
+                    }
+                });
+
+                if (error) throw error;
+                const scores = data?.data ?? data;
+                setEvalScores(scores);
+                setEvalState('complete');
+                completeStep('evaluation');
+                // Small delay then complete the pipeline
+                setTimeout(() => completeStep('complete'), 200);
+            } catch {
+                setEvalState('failed');
+                completeStep('evaluation');
+                setTimeout(() => completeStep('complete'), 200);
+            }
+        }, 850);
+
+        return () => clearTimeout(t);
+    }, [isProcessing, meta, lastAIResponse, completeStep]);
+
     if (!isOpen) return null;
 
-    const isModal = mode === 'modal';
+    // ─── Session stats ────────────────────────────────────────────────────
+    const avgMatch = sessionQueryCount > 0
+        ? Math.round(sessionPrecisionSum / sessionQueryCount)
+        : 0;
 
-    const Container = isModal ? motion.div : 'div';
-    const Content = motion.div;
+    // ─── Mobile 3-line summary text ───────────────────────────────────────
+    const mobileSummaryLine1 = meta
+        ? `⬡ ${meta.provider ?? 'Groq 70B'} · ${meta.latency_ms ?? 0}ms · ${(meta.rag_matches ?? []).length} entries retrieved`
+        : '⬡ AI Pipeline · waiting for query';
+    const mobileAvgSimilarity = (() => {
+        const matches = meta?.rag_matches ?? [];
+        const n = matches.length;
+        return n > 0
+            ? Math.round(
+                matches.reduce((sum: number, m: any) => sum + (m.similarity ?? 0), 0) / n * 100
+              )
+            : 0;
+    })();
+    const isTemporalSummary = meta?.query_intent?.intent === 'TEMPORAL_SUMMARY';
+    const matchLabel = isTemporalSummary ? 'Date Match' : 'Semantic Match';
+    const mobileSummaryLine2 = evalScores
+        ? `${matchLabel} ${mobileAvgSimilarity}% · F-Score ${evalScores.fScore}%`
+        : `${matchLabel} ${mobileAvgSimilarity}% · Evaluating…`;
+    const temporalLabel = detectTemporalLabel(meta?.userMessage ?? '');
+    const mobileSummaryLine3 = (() => {
+        if (!temporalLabel) return null;
+        const temporal = parseTemporalIntent(meta?.userMessage ?? '');
+        const { startDate, endDate, hasTemporalIntent } = temporal;
+        const matches = meta?.rag_matches ?? [];
+        const allWithinBounds = hasTemporalIntent && matches.every((m: any) => {
+            if (!startDate || !endDate) return true;
+            const entryDate = new Date(m.timestamp);
+            return entryDate >= startDate && entryDate <= endDate;
+        });
+        return allWithinBounds
+            ? `Temporal: ${temporalLabel} ✓ 100%`
+            : `Temporal: ${temporalLabel} ⚠ Partial`;
+    })();
 
-    const containerProps = isModal ? {
-        className: "fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm",
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-        onClick: onClose
-    } : {
-        className: "h-full flex flex-col border-l border-white/10 bg-[#0d1117] w-full"
-    };
-
-    const contentProps = isModal ? {
-        className: "bg-[#0d1117] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] overflow-hidden border border-white/10 shadow-2xl flex flex-col",
-        initial: { y: 100, opacity: 0 },
-        animate: { y: 0, opacity: 1 },
-        exit: { y: 100, opacity: 0 },
-        transition: { type: 'spring', damping: 25, stiffness: 300 },
-        onClick: (e: any) => e.stopPropagation()
-    } : {
-        className: "flex flex-col h-full overflow-hidden",
-        initial: { x: 20, opacity: 0 },
-        animate: { x: 0, opacity: 1 },
-        exit: { x: 20, opacity: 0 },
-        transition: { type: 'spring', damping: 25, stiffness: 300 }
-    };
-
-    return (
-        <AnimatePresence>
-            {/* @ts-ignore - framer/react types mismatch for dynamic component */}
-            <Container {...containerProps}>
-                <Content {...contentProps}>
-                    {/* ─── Header ─── */}
-                    <div className="flex-shrink-0 px-5 pt-5 pb-0">
-                        <div className="flex items-center justify-between mb-4">
+    // ─── Pipeline timeline ────────────────────────────────────────────────
+    const PipelineTimeline = () => (
+        <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex-shrink-0 px-5 pt-5 pb-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400/20 to-emerald-400/20 flex items-center justify-center border border-teal-400/20">
+                            <Brain className="w-4 h-4 text-teal-400" />
+                        </div>
+                        <div>
                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400/20 to-brand-teal/20 flex items-center justify-center border border-emerald-400/20">
-                                    <Brain className="w-4 h-4 text-emerald-400" />
-                                </div>
-                                <div>
-                                    <h2 className="text-sm font-bold text-white">Glass Box AI</h2>
-                                    <p className="text-[10px] text-gray-500">How I built this answer</p>
-                                </div>
+                                <h2 className="text-sm font-bold text-white leading-tight">Glass Box AI</h2>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-400/15 text-teal-400 border border-teal-400/30 font-bold uppercase tracking-wider">
+                                    Demo
+                                </span>
                             </div>
-                            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
-                                <X className="w-4 h-4 text-gray-400" />
-                            </button>
+                            <p className="text-[10px] text-white/30 mt-0.5">How I built this answer</p>
                         </div>
                     </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-white/8 rounded-lg transition-colors"
+                    >
+                        <X className="w-4 h-4 text-white/30" />
+                    </button>
+                </div>
+            </div>
 
-                    {/* ─── Tabs ─── */}
-                    <div className="flex items-center border-b border-white/5 px-5">
-                        <button
-                            onClick={() => setViewMode('story')}
-                            className={`pb-3 text-xs font-semibold transition-colors relative ${viewMode === 'story' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                        >
-                            Narrative
-                            {viewMode === 'story' && <motion.div layoutId="gb-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-teal" />}
-                        </button>
-                        <div className="w-6" />
-                        <button
-                            onClick={() => setViewMode('technical')}
-                            className={`pb-3 text-xs font-semibold transition-colors relative ${viewMode === 'technical' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                        >
-                            Technical
-                            {viewMode === 'technical' && <motion.div layoutId="gb-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-teal" />}
-                        </button>
-                    </div>
+            {/* Pipeline steps — scrollable */}
+            <div className="flex-1 overflow-y-auto px-5 pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+                <div className="pb-4">
+                    {STEP_ORDER.map((stepId, index) => {
+                        const stepState = stepStates[stepId];
+                        const isLast = index === STEP_ORDER.length - 1;
+                        const connectorFilled = stepState === 'complete';
 
-                    {/* ─── Content ─── */}
-                    <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-thin">
-                        <AnimatePresence mode="wait">
-                            {viewMode === 'story' ? (
-                                <motion.div
-                                    key="story"
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 10 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    <StoryPanel meta={meta} entries={entries} />
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="technical"
-                                    initial={{ opacity: 0, x: 10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -10 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="space-y-4"
-                                >
-                                    <div className="mb-4">
-                                        <PipelineVisualizer activeStage={activeStage} isProcessing={isProcessing} />
+                        return (
+                            <div key={stepId}>
+                                <div className="flex items-start gap-3">
+                                    {/* Node */}
+                                    <div className="flex flex-col items-center">
+                                        <StepNode state={stepState} />
                                     </div>
 
-                                    {/* Provider Chain */}
-                                    <SectionHeader icon={Cpu} title="Provider Chain" color="text-emerald-400">
-                                        <ProviderChain activeProvider={meta?.provider} />
-                                    </SectionHeader>
-
-                                    {/* Latency Waterfall */}
-                                    {latencyMs > 0 && (
-                                        <SectionHeader icon={Clock} title="Latency Breakdown" color="text-blue-400">
-                                            <LatencyWaterfall totalMs={latencyMs} />
-                                        </SectionHeader>
-                                    )}
-
-                                    {/* Prompt Inspector */}
-                                    <SectionHeader icon={Layers} title="Prompt Structure" color="text-purple-400" defaultOpen={false}>
-                                        <PromptInspector
-                                            action={meta?.action}
-                                            userMessage={meta?.userMessage}
-                                            contextSnippet={meta?.contextSnippet}
-                                            tokensIn={meta?.tokens_in}
-                                            tokensOut={meta?.tokens_out}
+                                    {/* Content */}
+                                    <div className="flex-1 min-w-0 pb-2">
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/30">
+                                                {STEP_LABELS[stepId]}
+                                            </span>
+                                        </div>
+                                        <StepContent
+                                            id={stepId}
+                                            state={stepState}
+                                            meta={meta}
+                                            evalState={evalState}
+                                            evalScores={evalScores}
+                                            currentUserMessage={currentUserMessage}
                                         />
-                                    </SectionHeader>
-
-                                    {/* RAG Panel */}
-                                    <SectionHeader icon={Search} title="Context Retrieval (RAG)" color="text-amber-400" defaultOpen={false}>
-                                        <RAGPanel ragChunks={meta?.rag_chunks} userMessage={meta?.userMessage} meta={meta} entries={entries} />
-                                    </SectionHeader>
-
-                                    <div className="text-center text-[10px] text-gray-600 pt-2 border-t border-white/5">
-                                        <Activity className="w-3 h-3 inline-block mr-1 -mt-px" />
-                                        All AI calls are secured via Edge Fns
                                     </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </Content>
-            </Container>
+                                </div>
+
+                                {/* Connector between steps */}
+                                {!isLast && <Connector filled={connectorFilled} />}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Session footer — pinned 36px */}
+            <div className="flex-shrink-0 h-9 flex items-center justify-between px-5 border-t border-white/6">
+                <span className="text-[10px] text-white/25 font-mono">
+                    Session · {sessionQueryCount} {sessionQueryCount === 1 ? 'query' : 'queries'}
+                </span>
+                {sessionQueryCount > 0 && (
+                    <span className="text-[10px] text-white/25 font-mono">
+                        Avg match {avgMatch}%
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+
+    // ─── Docked mode ──────────────────────────────────────────────────────
+    if (mode === 'docked') {
+        return (
+            <motion.div
+                className="h-full flex flex-col overflow-hidden"
+                style={{ background: '#141c35', borderLeft: '1px solid rgba(255,255,255,0.06)' }}
+                initial={{ x: 20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 20, opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+                <PipelineTimeline />
+            </motion.div>
+        );
+    }
+
+    // ─── Modal mode (mobile overlay) ──────────────────────────────────────
+    return (
+        <AnimatePresence>
+            <motion.div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+            >
+                <motion.div
+                    className="w-full max-h-[90vh] flex flex-col overflow-hidden rounded-t-2xl"
+                    style={{ background: '#141c35', border: '1px solid rgba(255,255,255,0.06)' }}
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <PipelineTimeline />
+                </motion.div>
+            </motion.div>
         </AnimatePresence>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MOBILE FLOATING PILL + BOTTOM SHEET
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface MobilePipelineButtonProps {
+    meta: GlassBoxMeta | null;
+    isProcessing: boolean;
+    evalScores: EvalScores | null;
+    onOpen: () => void;
+    currentUserMessage?: string;
+}
+
+export const MobilePipelineButton: React.FC<MobilePipelineButtonProps & {
+    isOpen: boolean;
+    onClose: () => void;
+    queryId?: number;
+    lastAIResponse?: string;
+}> = ({ meta, isProcessing, evalScores: externalEvalScores, onOpen, isOpen, onClose, queryId, lastAIResponse, currentUserMessage }) => {
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
+
+    const matches = meta?.rag_matches ?? [];
+    const n = matches.length;
+    const avgSimilarity = n > 0
+        ? Math.round(
+            matches.reduce((sum: number, m: any) => sum + (m.similarity ?? 0), 0) / n * 100
+          )
+        : 0;
+    const temporalLabel = detectTemporalLabel(meta?.userMessage || currentUserMessage || '');
+    const temporal = parseTemporalIntent(meta?.userMessage || currentUserMessage || '');
+    const { startDate, endDate, hasTemporalIntent } = temporal;
+    const allWithinBounds = hasTemporalIntent && matches.every((m: any) => {
+        if (!startDate || !endDate) return true;
+        const entryDate = new Date(m.timestamp);
+        return entryDate >= startDate && entryDate <= endDate;
+    });
+
+    return (
+        <>
+            {/* Floating pill */}
+            <motion.button
+                onClick={() => setIsSheetOpen(true)}
+                className="fixed bottom-24 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold shadow-lg"
+                style={{
+                    background: '#141c35',
+                    border: '1px solid rgba(45,212,191,0.4)',
+                    color: 'rgba(45,212,191,1)',
+                    boxShadow: '0 0 20px rgba(45,212,191,0.1)',
+                }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+            >
+                <span>⬡</span>
+                <span>AI Pipeline</span>
+                <ChevronUp className="w-3.5 h-3.5 opacity-60" />
+            </motion.button>
+
+            {/* Bottom sheet */}
+            <AnimatePresence>
+                {isSheetOpen && (
+                    <>
+                        <motion.div
+                            className="fixed inset-0 z-50 bg-black/50"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsSheetOpen(false)}
+                        />
+                        <motion.div
+                            className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl flex flex-col overflow-hidden"
+                            style={{
+                                height: '80vh',
+                                background: '#141c35',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderBottom: 'none',
+                            }}
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                        >
+                            {/* Sheet header */}
+                            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <Brain className="w-4 h-4 text-teal-400" />
+                                    <span className="text-sm font-bold text-white">AI Pipeline</span>
+                                </div>
+                                <button onClick={() => setIsSheetOpen(false)} className="p-1.5 hover:bg-white/8 rounded-lg transition-colors">
+                                    <X className="w-4 h-4 text-white/30" />
+                                </button>
+                            </div>
+
+                            {/* 3-line summary */}
+                            <div className="px-5 space-y-1.5 pb-4 border-b border-white/6">
+                                <p className="text-[12px] text-white/70 font-mono">
+                                    {meta
+                                        ? `⬡ ${meta.provider ?? 'Groq 70B'} · ${meta.latency_ms ?? 0}ms · ${n} ${n === 1 ? 'entry' : 'entries'} retrieved`
+                                        : '⬡ Waiting for next query…'}
+                                </p>
+                                <p className="text-[12px] text-white/50 font-mono">
+                                    {meta?.query_intent?.intent === 'TEMPORAL_SUMMARY' ? 'Date Match' : 'Semantic Match'} {avgSimilarity}% · F-Score {externalEvalScores ? `${externalEvalScores.fScore}%` : 'Evaluating…'}
+                                </p>
+                                {hasTemporalIntent && temporalLabel && (
+                                    allWithinBounds ? (
+                                        <p className="text-[12px] text-teal-400 font-mono">Temporal: {temporalLabel} ✓ 100%</p>
+                                    ) : (
+                                        <p className="text-[12px] text-amber-400 font-mono">Temporal: {temporalLabel} ⚠ Partial</p>
+                                    )
+                                )}
+                            </div>
+
+                            {/* View full pipeline link */}
+                            <div className="px-5 py-3">
+                                <button
+                                    onClick={() => { setIsSheetOpen(false); onOpen(); }}
+                                    className="text-[12px] text-teal-400 hover:text-teal-300 transition-colors font-semibold"
+                                >
+                                    View full pipeline →
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+        </>
     );
 };

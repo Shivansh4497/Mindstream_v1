@@ -9,7 +9,9 @@ vi.mock('../services/geminiClient', () => ({
     callAIProxy: vi.fn(),
     verifyApiKey: vi.fn(),
     GEMINI_API_KEY_AVAILABLE: true,
-    getAiClient: vi.fn()
+    getAiClient: vi.fn(),
+    enrichLastAIMeta: vi.fn(),
+    getLastAIMeta: vi.fn().mockReturnValue({ tokens_in: 100 })
 }));
 
 describe('Intelligence Layer Verification', () => {

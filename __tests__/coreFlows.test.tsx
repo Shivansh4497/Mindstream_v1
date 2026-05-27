@@ -50,6 +50,9 @@ describe('Core User Flows', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         (supabase.from as any) = mockFrom;
+        (supabase as any).functions = {
+            invoke: vi.fn().mockResolvedValue({ data: {}, error: null })
+        };
     });
 
     // --- 1. Journaling Flow ---

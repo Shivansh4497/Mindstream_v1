@@ -14,7 +14,9 @@ export type AIProxyAction =
     | 'daily-reflection'
     | 'weekly-reflection'
     | 'monthly-reflection'
-    | 'chat-summary';
+    | 'chat-summary'
+    | 'evaluate-response'
+    | 'classify-intent';
 
 export interface AIProxyMeta {
     provider?: string;
@@ -23,6 +25,38 @@ export interface AIProxyMeta {
     tokens_in?: number;
     tokens_out?: number;
     rag_matches?: any[];
+    query_intent?: {
+        intent: string;
+        hasTemporalIntent: boolean;
+        temporalExpression: string | null;
+        topicKeywords: string[];
+        confidence: number;
+        reasoning: string;
+        startDate: string | null;
+        endDate: string | null;
+    };
+    retrieval_strategy?: string;
+    classifier_latency_ms?: number;
+    // Granular timing captured client-side
+    embedding_latency_ms?: number;
+    search_latency_ms?: number;
+    inference_ms?: number;
+    parse_ms?: number;
+    // Per-layer token counts (instrumented via estimateTokens)
+    system_prompt_tokens?: number;
+    rag_context_tokens?: number;
+    history_tokens?: number;
+    user_message_tokens?: number;
+    // For quality evaluation
+    userMessage?: string;
+    // Context Inventory for RAG component
+    context_inventory?: {
+        recentEntriesCount: number;
+        semanticMatchCount: number;
+        habits: Array<{ name: string; category: string; streak: number }>;
+        goals: Array<{ text: string; category: string }>;
+        hasReflection: boolean;
+    };
 }
 
 interface AIProxyResponse<T> {
@@ -89,7 +123,7 @@ export async function callAIProxy<T>(
 
     // Capture metadata for GlassBox
     if (data._meta) {
-        _lastAIMeta = data._meta;
+        _lastAIMeta = _lastAIMeta ? { ..._lastAIMeta, ...data._meta } : data._meta;
     }
 
     return data.data as T;

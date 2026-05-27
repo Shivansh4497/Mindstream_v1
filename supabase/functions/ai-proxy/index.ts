@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { generateEmbedding } from './embeddingService.ts';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -18,7 +19,7 @@ const geminiKey = Deno.env.get('GEMINI_API_KEY');
 
 // Groq models (primary - most capacity)
 const GROQ_API_BASE = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL_PRIMARY = 'llama-3.1-70b-versatile';
+const GROQ_MODEL_PRIMARY = 'llama-3.3-70b-versatile';
 const GROQ_MODEL_BACKUP = 'llama-3.1-8b-instant';
 
 // Gemini models (fallback)
@@ -33,7 +34,7 @@ console.log('[AI Proxy] GEMINI_API_KEY present:', !!geminiKey);
 console.log('[AI Proxy] Provider chain: Groq 70B -> Groq 8B -> Gemini Flash -> Gemini Lite -> Cached');
 
 interface AIRequest {
-    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models';
+    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response';
     payload: Record<string, any>;
 }
 
@@ -206,6 +207,13 @@ async function callAI(prompt: string, action: string): Promise<AICallResult> {
             const result = await provider.fn();
             const latency_ms = Date.now() - start;
             console.log(`[AI Proxy] ✓ ${provider.name} succeeded in ${latency_ms}ms`);
+            
+            // Check if response text starts with '{' and contains '"response":' (rate limit fallback response leaked from Groq/proxy)
+            if (result && result.trim().startsWith('{') && result.includes('"response":')) {
+                console.warn(`[AI Proxy] ✗ ${provider.name} returned a JSON fallback response. Treating as failure to trigger next provider.`);
+                throw new Error("Returned rate limit JSON fallback response instead of plain text");
+            }
+            
             return { text: result, provider: provider.name, latency_ms, attempted };
         } catch (error: any) {
             console.warn(`[AI Proxy] ✗ ${provider.name} failed: ${error.message}`);
@@ -302,45 +310,69 @@ serve(async (req) => {
             });
         }
 
+        // Parse request body safely using clone() to preserve req for standard body parsing
+        const reqClone = req.clone();
+        let body: any = {};
+        try {
+            body = await reqClone.json();
+        } catch (e) {
+            console.error('[AI Proxy] Error cloning request body:', e);
+        }
+        const action = body.action;
+        const payload = body.payload || {};
+
+        // A) WARMUP — pre-warms the model on cold start (bypasses auth entirely)
+        if (action === 'warmup') {
+            console.log('[AI Proxy] Pre-warming embedding model...');
+            await generateEmbedding('warmup');
+            return new Response(
+                JSON.stringify({ status: 'warm' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // Authenticate user
-        const authHeader = req.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ success: false, error: 'Missing authorization' }), {
-                status: 401,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
+        let user: any = null;
+        if (action !== 'generate-and-store-embedding') {
+            const authHeader = req.headers.get('Authorization');
+            if (!authHeader) {
+                return new Response(JSON.stringify({ success: false, error: 'Missing authorization' }), {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            const supabase = createClient(supabaseUrl, supabaseKey);
+            const { data: { user: authedUser }, error: userError } = await supabase.auth.getUser(
+                authHeader.replace('Bearer ', '')
+            );
+
+            if (userError || !authedUser) {
+                console.error('[AI Proxy] Auth error:', userError);
+                return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            user = authedUser;
+            console.log(`[AI Proxy] Authenticated user: ${user.id}`);
+
+            // Rate limiting
+            if (!checkRateLimit(user.id)) {
+                return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded' }), {
+                    status: 429,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
         }
-
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        const { data: { user }, error: userError } = await supabase.auth.getUser(
-            authHeader.replace('Bearer ', '')
-        );
-
-        if (userError || !user) {
-            console.error('[AI Proxy] Auth error:', userError);
-            return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-                status: 401,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-        }
-
-        console.log(`[AI Proxy] Authenticated user: ${user.id}`);
-
-        // Rate limiting
-        if (!checkRateLimit(user.id)) {
-            return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded' }), {
-                status: 429,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-        }
-
-        // Parse request
-        const { action, payload }: AIRequest = await req.json();
-        console.log(`[AI Proxy] Action: ${action}`);
 
         // Demo AI call limit check
         let isDemoUser = false;
-        if (action !== 'list-models') {
+        if (action !== 'list-models' && 
+            action !== 'generate-embedding' && 
+            action !== 'generate-and-store-embedding' && 
+            action !== 'semantic-search') {
             const adminClient = createClient(supabaseUrl, supabaseKey);
             const { data: profile } = await adminClient
                 .from('profiles')
@@ -354,15 +386,6 @@ serve(async (req) => {
 
                 if (profile.demo_ai_calls_remaining <= 0) {
                     console.log('[AI Proxy] Demo limit reached for user:', user.id);
-                    // TEMPORARY OVERRIDE FOR TESTING: Allow calls even if limit reached
-                    // return new Response(JSON.stringify({
-                    //     success: false,
-                    //     error: 'DEMO_LIMIT_REACHED',
-                    //     message: 'You\'ve used all your demo AI calls. Create a free account to continue exploring!'
-                    // }), {
-                    //     status: 403,
-                    //     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                    // });
                 }
 
                 // Decrement counter
@@ -386,6 +409,116 @@ serve(async (req) => {
                             cached: { available: true, models: ['fallback-templates'] }
                         }
                     };
+                    break;
+                }
+
+                case 'test-gemini': {
+                    try {
+                        const resPrimary = await callGeminiWithModel(GEMINI_MODEL_PRIMARY, 'hello');
+                        result = { success: true, model: GEMINI_MODEL_PRIMARY, response: resPrimary };
+                    } catch (ePrimary: any) {
+                        try {
+                            const resBackup = await callGeminiWithModel(GEMINI_MODEL_BACKUP, 'hello');
+                            result = { success: false, primaryError: ePrimary.message, backupSuccess: true, model: GEMINI_MODEL_BACKUP, response: resBackup };
+                        } catch (eBackup: any) {
+                            result = { success: false, primaryError: ePrimary.message, backupError: eBackup.message };
+                        }
+                    }
+                    break;
+                }
+
+                case 'generate-embedding': {
+                    const { text } = payload;
+                    result = { embedding: await generateEmbedding(text) };
+                    break;
+                }
+
+                case 'generate-and-store-embedding': {
+                    const { entryId, entryText } = payload;
+                    const embedding = await generateEmbedding(entryText);
+                    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+                    await supabaseAdmin
+                        .from('entries')
+                        .update({ embedding })
+                        .eq('id', entryId);
+                    return new Response(
+                        JSON.stringify({ success: true }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                case 'semantic-search': {
+                    const {
+                        userId,
+                        queryText,
+                        matchCount = 3,
+                        matchThreshold = 0.82,
+                        startDate = null,
+                        endDate = null,
+                        embedding: preGeneratedEmbedding = null
+                    } = payload;
+                    console.log('[Temporal Edge]', {
+                        startDate,
+                        endDate
+                    });
+                    if (!queryText || queryText.trim().length < 3) {
+                        return new Response(
+                            JSON.stringify({ matches: [] }),
+                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
+                    }
+                    const queryEmbedding = preGeneratedEmbedding ?? await generateEmbedding(queryText);
+                    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+                    const { data, error } = await supabaseAdmin.rpc(
+                        'match_entries',
+                        {
+                            query_embedding: queryEmbedding,
+                            match_threshold: matchThreshold,
+                            match_count: matchCount,
+                            p_user_id: userId,
+                            start_date: startDate,
+                            end_date: endDate
+                        }
+                    );
+                    if (error) throw error;
+                    return new Response(
+                        JSON.stringify({ matches: data || [] }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                case 'classify-intent': {
+                    const { prompt, userMessage } = payload;
+                    
+                    const classifierProviders = [
+                        { name: 'Groq 70B', fn: () => callGroqWithModel(GROQ_MODEL_PRIMARY, prompt), available: !!groqKey },
+                        { name: 'Groq 8B', fn: () => callGroqWithModel(GROQ_MODEL_BACKUP, prompt), available: !!groqKey },
+                        { name: 'Gemini Flash', fn: () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
+                        { name: 'Gemini Lite', fn: () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey }
+                    ];
+
+                    let classifyResult: any;
+                    const providerErrors: string[] = [];
+                    for (const provider of classifierProviders) {
+                        if (!provider.available) continue;
+                        try {
+                            const res = await provider.fn();
+                            classifyResult = { text: res, provider: provider.name, latency_ms: 0, attempted: [provider.name] };
+                            break;
+                        } catch (e: any) {
+                            console.warn(`[AI Proxy] Classifier ${provider.name} failed:`, e.message);
+                            providerErrors.push(`${provider.name}: ${e.message}`);
+                            continue;
+                        }
+                    }
+
+                    if (!classifyResult) {
+                        const err = new Error("All intent classifiers failed");
+                        (err as any).providerErrors = providerErrors;
+                        throw err;
+                    }
+                    aiMeta = classifyResult;
+                    result = { text: classifyResult.text };
                     break;
                 }
 
@@ -745,6 +878,58 @@ Rules:
                     break;
                 }
 
+
+                case 'evaluate-response': {
+                    const clamp = (n: number, min: number, max: number) => Math.round(Math.min(max, Math.max(min, n || 0)));
+                    
+                    const { userMessage, retrievedContext, aiResponse, queryIntent } = payload;
+                    const prompt = `You are evaluating a RAG system response using RAGAS metrics.
+
+QUERY INTENT: ${queryIntent || 'UNKNOWN'}
+USER QUERY: "${userMessage}"
+RETRIEVED CONTEXT: ${retrievedContext || 'None'}
+AI RESPONSE: "${aiResponse}"
+
+Score these 4 RAGAS metrics (0-100 each):
+
+FAITHFULNESS: Is every claim in the response grounded in the retrieved context?
+Score 100 if fully grounded, 0 if hallucinated.
+
+ANSWER_RELEVANCY: Does the response directly address what the user asked?
+Score 100 if fully addresses query, 0 if off-topic.
+
+CONTEXT_PRECISION: Of the retrieved context, how much was actually useful for the answer?
+Score 100 if all context was useful, 0 if irrelevant.
+
+CONTEXT_RECALL: Did the retrieved context contain all information needed to answer?
+Score 100 if complete, 0 if major gaps.
+
+Return ONLY valid JSON:
+{
+  "faithfulness": 85,
+  "answerRelevancy": 90,
+  "contextPrecision": 75,
+  "contextRecall": 80,
+  "fScore": 82,
+  "summary": "One sentence assessment"
+}`;
+
+                    const evalResult = await callAI(prompt, action);
+                    aiMeta = evalResult;
+                    const scores = parseJSON<any>(evalResult.text);
+
+                    result = {
+                        faithfulness: clamp(scores.faithfulness, 0, 100),
+                        answerRelevancy: clamp(scores.answerRelevancy, 0, 100),
+                        contextPrecision: clamp(scores.contextPrecision, 0, 100),
+                        contextRecall: clamp(scores.contextRecall, 0, 100),
+                        fScore: clamp(scores.fScore, 0, 100),
+                        summary: scores.summary || ''
+                    };
+                    break;
+                }
+
+
                 default:
                     return new Response(JSON.stringify({ success: false, error: `Unknown action: ${action}` }), {
                         status: 400,
@@ -754,6 +939,9 @@ Rules:
         } catch (parseError: any) {
             // JSON parsing failed even after all providers - use cached fallback
             console.error(`[AI Proxy] Parse error for ${action}:`, parseError.message);
+            if (action === 'classify-intent') {
+                throw parseError;
+            }
             result = getCachedResponse(action);
         }
 
@@ -780,6 +968,16 @@ Rules:
         // Parse action from request if possible
         try {
             const { action } = await req.clone().json();
+            if (action === 'classify-intent') {
+                return new Response(JSON.stringify({ 
+                    success: false, 
+                    error: error.message, 
+                    providerErrors: error.providerErrors || [] 
+                }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
             const fallback = getCachedResponse(action);
             return new Response(JSON.stringify({ success: true, data: fallback }), {
                 status: 200,
