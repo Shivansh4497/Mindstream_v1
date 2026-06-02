@@ -3,6 +3,8 @@ import * as gemini from '../services/geminiService';
 import * as reflection from '../services/reflectionService';
 import { callAIProxy } from '../services/geminiClient';
 import type { UserContext, Entry, Intention, Habit } from '../types';
+import { supabase } from '../services/supabaseClient';
+import * as db from '../services/dbService';
 
 // Mock the network layer
 vi.mock('../services/geminiClient', () => ({
@@ -12,6 +14,20 @@ vi.mock('../services/geminiClient', () => ({
     getAiClient: vi.fn(),
     enrichLastAIMeta: vi.fn(),
     getLastAIMeta: vi.fn().mockReturnValue({ tokens_in: 100 })
+}));
+
+vi.mock('../services/queryClassifier', () => ({
+    classifyQueryIntent: vi.fn().mockResolvedValue({
+        intent: 'SEMANTIC_TOPIC',
+        hasTemporalIntent: false,
+        temporalExpression: null,
+        topicKeywords: [],
+        detectedTopic: null,
+        startDate: null,
+        endDate: null,
+        confidence: 0.9,
+        reasoning: 'mock classification'
+    })
 }));
 
 describe('Intelligence Layer Verification', () => {
@@ -87,6 +103,92 @@ describe('Intelligence Layer Verification', () => {
             expect(prompt).toContain('[EMOTIONAL MATCH]');
             expect(prompt).toContain('Old anxiety');
         });
+
+        it('should append TEMPORAL_SUMMARY instructions when intent is TEMPORAL_SUMMARY', () => {
+            const context: UserContext = {
+                recentEntries: [],
+                pendingIntentions: [],
+                activeHabits: [],
+                searchResults: [],
+                latestReflection: null
+            };
+            const mockRetrieval = {
+                intent: {
+                    intent: 'TEMPORAL_SUMMARY' as const,
+                    hasTemporalIntent: true,
+                    temporalExpression: 'last 7 days',
+                    topicKeywords: [],
+                    detectedTopic: null,
+                    startDate: new Date(),
+                    endDate: new Date(),
+                    confidence: 0.9,
+                    reasoning: ''
+                },
+                queryIntent: {
+                    intent: 'TEMPORAL_SUMMARY' as const,
+                    hasTemporalIntent: true,
+                    temporalExpression: 'last 7 days',
+                    topicKeywords: [],
+                    detectedTopic: null,
+                    startDate: new Date(),
+                    endDate: new Date(),
+                    confidence: 0.9,
+                    reasoning: ''
+                },
+                matches: [],
+                entries: [],
+                retrievalStrategy: '',
+                strategy: ''
+            };
+
+            const prompt = gemini.buildSystemContext(context, mockRetrieval);
+
+            expect(prompt).toContain("Base your summary only on the journal entries provided in the context below");
+            expect(prompt).toContain("Do not reference specific events, activities, or dates that are not present in these entries");
+        });
+
+        it('should append BEHAVIORAL instructions when intent is BEHAVIORAL', () => {
+            const context: UserContext = {
+                recentEntries: [],
+                pendingIntentions: [],
+                activeHabits: [],
+                searchResults: [],
+                latestReflection: null
+            };
+            const mockRetrieval = {
+                intent: {
+                    intent: 'BEHAVIORAL' as const,
+                    hasTemporalIntent: false,
+                    temporalExpression: null,
+                    topicKeywords: [],
+                    detectedTopic: null,
+                    startDate: null,
+                    endDate: null,
+                    confidence: 0.9,
+                    reasoning: ''
+                },
+                queryIntent: {
+                    intent: 'BEHAVIORAL' as const,
+                    hasTemporalIntent: false,
+                    temporalExpression: null,
+                    topicKeywords: [],
+                    detectedTopic: null,
+                    startDate: null,
+                    endDate: null,
+                    confidence: 0.9,
+                    reasoning: ''
+                },
+                matches: [],
+                entries: [],
+                retrievalStrategy: '',
+                strategy: ''
+            };
+
+            const prompt = gemini.buildSystemContext(context, mockRetrieval);
+
+            expect(prompt).toContain('CRITICAL INSTRUCTION FOR BEHAVIORAL INTENT');
+            expect(prompt).toContain('Only state completion rates and consistency percentages that are explicitly calculated and provided in the habits data below. Do not estimate or calculate your own percentages.');
+        });
     });
 
     // --- 2. Reflection Service ---
@@ -143,6 +245,83 @@ describe('Intelligence Layer Verification', () => {
             }));
 
             expect(result).toBe('Hi there!');
+        });
+    });
+
+    // --- 4. Adaptive Retrieval ---
+    describe('Adaptive Retrieval Fallback', () => {
+        it('should call semanticSearchEntries with 0.82, and fallback to 0.70 when embedding is undefined and 0 matches found', async () => {
+            const semanticSearchSpy = vi.spyOn(db, 'semanticSearchEntries')
+                .mockImplementation(async (userId, queryText, matchCount, matchThreshold) => {
+                    if (matchThreshold === 0.82) {
+                        return [];
+                    }
+                    return [{ id: '1' } as any];
+                });
+            vi.spyOn(db, 'searchUniversal').mockResolvedValue([]);
+            
+            const result = await gemini.adaptiveRetrieval('user-123', 'My test query', []);
+            
+            // Check that first call was made with threshold 0.82
+            expect(semanticSearchSpy).toHaveBeenNthCalledWith(
+                1,
+                'user-123',
+                'My test query',
+                5,
+                0.82,
+                undefined,
+                undefined,
+                undefined
+            );
+            
+            // Check that second (fallback) call was made with threshold 0.70
+            expect(semanticSearchSpy).toHaveBeenNthCalledWith(
+                2,
+                'user-123',
+                'My test query',
+                5,
+                0.70,
+                undefined,
+                undefined,
+                undefined
+            );
+            
+            expect(result.retrievalStrategy).toBe('Vector search · threshold 0.70 (fallback)');
+        });
+
+        it('should NOT fallback to 0.70 in SEMANTIC_TOPIC if embedding is defined', async () => {
+            const originalFunctions = supabase ? (supabase as any).functions : null;
+            if (supabase) {
+                (supabase as any).functions = {
+                    invoke: vi.fn().mockResolvedValue({
+                        data: { embedding: [0.1, 0.2, 0.3] },
+                        error: null
+                    })
+                };
+            }
+            
+            const semanticSearchSpy = vi.spyOn(db, 'semanticSearchEntries').mockResolvedValue([]);
+            vi.spyOn(db, 'searchUniversal').mockResolvedValue([]);
+            
+            const result = await gemini.adaptiveRetrieval('user-123', 'My test query', []);
+            
+            // Restore original functions
+            if (supabase && originalFunctions) {
+                (supabase as any).functions = originalFunctions;
+            }
+            
+            expect(semanticSearchSpy).toHaveBeenCalledTimes(1);
+            expect(semanticSearchSpy).toHaveBeenNthCalledWith(
+                1,
+                'user-123',
+                'My test query',
+                5,
+                0.82,
+                undefined,
+                undefined,
+                [0.1, 0.2, 0.3]
+            );
+            expect(result.retrievalStrategy).toBe('KEYWORD_FALLBACK');
         });
     });
 

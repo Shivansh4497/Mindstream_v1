@@ -22,10 +22,45 @@ export interface ClassifiedQuery {
   reasoning: string;
 }
 
+function applyPreChecks(query: string): string | null {
+  const q = query.toLowerCase();
+  if (/^(summarize?|summarise?|recap|overview|review)\s+(my\s+)?(last|past|recent|this)\s+\d+\s+(day|week|month)/.test(q)) return 'TEMPORAL_SUMMARY';
+  
+  const hasTemporalWindow = /(last|past|recent|this)\s+(\d+\s+)?(day(s)?|week(s)?|month(s)?|year(s)?)/.test(q);
+  
+  if (!hasTemporalWindow) {
+    if (/when did i|when was i|when have i/.test(q)) return 'SEMANTIC_TOPIC';
+    if (/\bstreak\b/.test(q) || /\bhabit(s)?\b/.test(q) || /\bconsisten(t|cy)\b/.test(q) || /completion rate/.test(q)) return 'BEHAVIORAL';
+    if (/\bpattern(s)?\b/.test(q)) return 'ANALYTICAL';
+    if (/(most common|what topics|trend(s)?|frequent(ly)?)/.test(q)) return 'ANALYTICAL';
+  }
+  
+  const wordCount = q.trim().split(/\s+/).length;
+  if (wordCount <= 5 && /^(tell me more|why|how|what about|and|so)/.test(q)) return 'CONVERSATIONAL';
+  
+  return null;
+}
+
 export async function classifyQueryIntent(
   userMessage: string,
   conversationHistory: string[]
 ): Promise<ClassifiedQuery> {
+  const preCheckIntent = applyPreChecks(userMessage);
+  if (preCheckIntent) {
+    const temporal = parseTemporalIntent(userMessage);
+    const isTemporal = preCheckIntent === 'TEMPORAL_TOPIC' || preCheckIntent === 'TEMPORAL_SUMMARY';
+    return {
+      intent: preCheckIntent as QueryIntent,
+      hasTemporalIntent: isTemporal,
+      temporalExpression: isTemporal ? userMessage : null,
+      topicKeywords: [],
+      detectedTopic: null,
+      startDate: isTemporal ? temporal.startDate : null,
+      endDate: isTemporal ? temporal.endDate : null,
+      confidence: 1.0,
+      reasoning: 'Deterministic pre-check'
+    };
+  }
 
   // Build conversation context (last 2 messages maximum)
   const recentHistory = conversationHistory
@@ -91,7 +126,7 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
     const response = await supabase.functions.invoke('ai-proxy', {
       body: {
         action: 'classify-intent',
-        payload: { prompt, userMessage }
+        payload: { prompt, userMessage, temperature: 0 }
       }
     });
 
@@ -110,15 +145,24 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
     }
     const classified = textToParse ? JSON.parse(textToParse) : data;
 
+    let finalIntent = classified.intent;
+    let finalHasTemporalIntent = classified.hasTemporalIntent;
+    let finalTemporalExpression = classified.temporalExpression;
+
+    // Post-check to enforce strict rule for TEMPORAL_TOPIC
+    if (finalIntent === 'TEMPORAL_TOPIC' && !finalHasTemporalIntent) {
+      finalIntent = 'SEMANTIC_TOPIC';
+    }
+
     // Parse temporal dates if present
     let startDate = null;
     let endDate = null;
     if (
-      classified.hasTemporalIntent &&
-      classified.temporalExpression
+      finalHasTemporalIntent &&
+      finalTemporalExpression
     ) {
       const temporal = parseTemporalIntent(
-        classified.temporalExpression
+        finalTemporalExpression
       );
       startDate = temporal.startDate;
       endDate = temporal.endDate;
@@ -128,6 +172,9 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
 
     return {
       ...classified,
+      intent: finalIntent,
+      hasTemporalIntent: finalHasTemporalIntent,
+      temporalExpression: finalTemporalExpression,
       detectedTopic,
       startDate,
       endDate

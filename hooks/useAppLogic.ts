@@ -363,7 +363,7 @@ export const useAppLogic = () => {
         }
     };
 
-    const handleSendMessage = async (text: string, initialContext?: UserContext) => {
+        const handleSendMessage = async (text: string, initialContext?: UserContext) => {
         const newUserMsg: Message = { sender: 'user', text };
         setMessages(prev => [...prev, newUserMsg]);
         setIsChatLoading(true);
@@ -376,69 +376,16 @@ export const useAppLogic = () => {
         }
 
         try {
-            // Get Context
-            let context = initialContext;
-            if (!context && user) {
-                context = await db.getUserContext(user.id);
-            }
-
             if (!isMounted.current) return;
 
-            let currentRetrieval: any = undefined;
-
-            // RAG: Perform semantic search or fall back to keyword search
-            if (aiStatus === 'ready' && !initialContext && context && user) {
-                try {
-                    const conversationHistory = messages
-                        .slice(-6)
-                        .map(m => `${m.sender}: ${m.text}`);
-
-                    const retrievalStart = Date.now();
-                    const retrieval = await gemini.adaptiveRetrieval(user.id, text, conversationHistory);
-                    const totalRetrievalElapsed = Date.now() - retrievalStart;
-
-                    currentRetrieval = retrieval;
-
-                    const classifierLatency = retrieval.classifierLatencyMs ?? 0;
-                    const embeddingLatency = retrieval.embeddingLatencyMs ?? 0;
-                    const searchLatency = Math.max(0, totalRetrievalElapsed - Math.max(classifierLatency, embeddingLatency));
-
-                    enrichLastAIMeta({
-                        query_intent: retrieval.intent,
-                        retrieval_strategy: retrieval.retrievalStrategy,
-                        classifier_latency_ms: classifierLatency,
-                        embedding_latency_ms: embeddingLatency,
-                        search_latency_ms: searchLatency,
-                        rag_matches: retrieval.matches.map(m => ({
-                            type: 'entry',
-                            item: m,
-                            matchText: m.text,
-                            timestamp: m.timestamp,
-                            similarity: m.similarity ?? null
-                        }))
-                    });
-
-                    if (retrieval.matches && retrieval.matches.length > 0) {
-                        console.log(`[RAG] Adaptive retrieval found ${retrieval.matches.length} matches using ${retrieval.retrievalStrategy}.`);
-                        context.searchResults = retrieval.matches.map(match => ({
-                            type: 'entry' as const,
-                            item: match,
-                            matchText: match.text,
-                            timestamp: match.timestamp,
-                            similarity: match.similarity ?? 1.0
-                        }));
-                    } else {
-                        console.log('[RAG] Adaptive retrieval returned no matches.');
-                    }
-                } catch (e) {
-                    console.warn("[RAG] Adaptive retrieval failed:", e);
-                }
+            let isDemoUser = false;
+            if (user) {
+                const { data: profile } = await supabase.from('profiles').select('is_demo').eq('id', user.id).single();
+                isDemoUser = profile?.is_demo || false;
             }
-
-            if (!isMounted.current) return;
 
             // Call AI Service
-            const stream = await gemini.getChatResponseStream([...messages, newUserMsg], context!, currentRetrieval);
+            const stream = await gemini.getChatResponseStream(user!.id, [...messages, newUserMsg], isDemoUser);
 
             let fullResponse = '';
             setMessages(prev => [...prev, { sender: 'ai', text: '' }]);

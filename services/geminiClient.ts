@@ -43,8 +43,9 @@ export interface AIProxyMeta {
     inference_ms?: number;
     parse_ms?: number;
     // Per-layer token counts (instrumented via estimateTokens)
-    system_prompt_tokens?: number;
-    rag_context_tokens?: number;
+    profile_tokens?: number;
+    recent_tokens?: number;
+    retrieved_tokens?: number;
     history_tokens?: number;
     user_message_tokens?: number;
     // For quality evaluation
@@ -123,6 +124,11 @@ export async function callAIProxy<T>(
 
     // Capture metadata for GlassBox
     if (data._meta) {
+        if ((data._meta as any).fallback_events) {
+            for (const event of (data._meta as any).fallback_events) {
+                console.warn('[PROVIDER_FALLBACK]', event.from, '->', event.to, event.reason);
+            }
+        }
         _lastAIMeta = _lastAIMeta ? { ..._lastAIMeta, ...data._meta } : data._meta;
     }
 

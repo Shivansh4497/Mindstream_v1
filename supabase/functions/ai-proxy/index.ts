@@ -142,7 +142,7 @@ const CACHED_FALLBACKS: CachedResponses = {
         keywords: []
     },
     'chat': {
-        response: "I'm taking a brief pause to collect my thoughts. Your reflections are valuable—please try again in just a moment, and I'll be here to help."
+        response: "I'm having trouble connecting right now — please try again in a moment. Your data is safe."
     },
     'daily-reflection': {
         summary: "Today brought its own unique lessons. Take a moment to acknowledge your efforts and appreciate how far you've come. Tomorrow offers a fresh start.",
@@ -186,13 +186,19 @@ function estimateTokens(text: string): number {
 
 async function callAI(prompt: string, action: string): Promise<AICallResult> {
     const providers = [
-        { name: 'Groq 70B', fn: () => callGroqWithModel(GROQ_MODEL_PRIMARY, prompt), available: !!groqKey },
-        { name: 'Groq 8B', fn: () => callGroqWithModel(GROQ_MODEL_BACKUP, prompt), available: !!groqKey },
-        { name: 'Gemini Flash', fn: () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
-        { name: 'Gemini Lite', fn: () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey },
+        { name: 'Groq 70B', fn: async () => callGroqWithModel(GROQ_MODEL_PRIMARY, prompt), available: !!groqKey },
+        { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_BACKUP, prompt), available: !!groqKey },
+        { name: 'Gemini Flash', fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
     ];
 
+    if (action === 'evaluate-response' || action === 'extract-keywords') {
+        providers.push({ name: 'Gemini Lite', fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey });
+    }
+
     const attempted: string[] = [];
+    const fallback_events: any[] = [];
+    const providerErrors: Record<string, string> = {};
+    let lastProvider = '';
 
     for (const provider of providers) {
         if (!provider.available) {
@@ -200,35 +206,59 @@ async function callAI(prompt: string, action: string): Promise<AICallResult> {
             continue;
         }
 
+        if (lastProvider) {
+            fallback_events.push({ from: lastProvider, to: provider.name, reason: 'Previous provider failed' });
+        }
+        lastProvider = provider.name;
         attempted.push(provider.name);
         const start = Date.now();
 
         try {
-            const result = await provider.fn();
+            let result: string;
+            try {
+                result = await provider.fn();
+            } catch (e: any) {
+                // Check for 429 or JSON fallback in error
+                if (provider.name === 'Groq 70B' && (e.message.includes('429') || e.message.includes('rate limit'))) {
+                    console.warn('[AI Proxy] Rate limited on Groq 70B, retrying in 1s...');
+                    await new Promise(r => setTimeout(r, 1000));
+                    result = await provider.fn();
+                } else {
+                    throw e;
+                }
+            }
+
             const latency_ms = Date.now() - start;
             console.log(`[AI Proxy] ✓ ${provider.name} succeeded in ${latency_ms}ms`);
             
-            // Check if response text starts with '{' and contains '"response":' (rate limit fallback response leaked from Groq/proxy)
             if (result && result.trim().startsWith('{') && result.includes('"response":')) {
-                console.warn(`[AI Proxy] ✗ ${provider.name} returned a JSON fallback response. Treating as failure to trigger next provider.`);
-                throw new Error("Returned rate limit JSON fallback response instead of plain text");
+                if (provider.name === 'Groq 70B') {
+                    console.warn(`[AI Proxy] ✗ Groq 70B returned JSON fallback response, retrying in 1s...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                    result = await provider.fn();
+                    if (result && result.trim().startsWith('{') && result.includes('"response":')) {
+                        throw new Error("Returned rate limit JSON fallback response after retry");
+                    }
+                } else {
+                    throw new Error("Returned rate limit JSON fallback response instead of plain text");
+                }
             }
             
-            return { text: result, provider: provider.name, latency_ms, attempted };
+            return { text: result, provider: provider.name, latency_ms, attempted, fallback_events };
         } catch (error: any) {
             console.warn(`[AI Proxy] ✗ ${provider.name} failed: ${error.message}`);
-            // Continue to next provider
+            providerErrors[provider.name] = error.message;
+            if (fallback_events.length > 0) {
+                fallback_events[fallback_events.length - 1].reason = error.message;
+            } else if (lastProvider) {
+                (provider as any).lastError = error.message;
+            }
         }
     }
 
-    // All providers failed - return cached as JSON string
-    console.error('[AI Proxy] All providers failed! Using cached response.');
-    return {
-        text: JSON.stringify(getCachedResponse(action)),
-        provider: 'Cached',
-        latency_ms: 0,
-        attempted
-    };
+    // All providers failed
+    console.error('[GENERATION_FAILED] All providers exhausted:', providerErrors);
+    throw new Error('All AI providers failed');
 }
 
 function parseJSON<T>(text: string): T {
@@ -882,26 +912,29 @@ Rules:
                 case 'evaluate-response': {
                     const clamp = (n: number, min: number, max: number) => Math.round(Math.min(max, Math.max(min, n || 0)));
                     
-                    const { userMessage, retrievedContext, aiResponse, queryIntent } = payload;
+                    const { userMessage, retrievedContext, profileContext, recentContext, historyContext, aiResponse, queryIntent } = payload;
                     const prompt = `You are evaluating a RAG system response using RAGAS metrics.
 
 QUERY INTENT: ${queryIntent || 'UNKNOWN'}
 USER QUERY: "${userMessage}"
+PROFILE CONTEXT: ${profileContext || 'None'}
+RECENT CONTEXT: ${recentContext || 'None'}
 RETRIEVED CONTEXT: ${retrievedContext || 'None'}
+HISTORY CONTEXT: ${historyContext || 'None'}
 AI RESPONSE: "${aiResponse}"
 
 Score these 4 RAGAS metrics (0-100 each):
 
-FAITHFULNESS: Is every claim in the response grounded in the retrieved context?
+FAITHFULNESS: Is every claim in the response grounded in the provided contexts?
 Score 100 if fully grounded, 0 if hallucinated.
 
 ANSWER_RELEVANCY: Does the response directly address what the user asked?
 Score 100 if fully addresses query, 0 if off-topic.
 
-CONTEXT_PRECISION: Of the retrieved context, how much was actually useful for the answer?
+CONTEXT_PRECISION: Of the provided contexts, how much was actually useful for the answer?
 Score 100 if all context was useful, 0 if irrelevant.
 
-CONTEXT_RECALL: Did the retrieved context contain all information needed to answer?
+CONTEXT_RECALL: Did the provided contexts contain all information needed to answer?
 Score 100 if complete, 0 if major gaps.
 
 Return ONLY valid JSON:
@@ -952,6 +985,7 @@ Return ONLY valid JSON:
             provider: aiMeta.provider,
             latency_ms: aiMeta.latency_ms,
             attempted: aiMeta.attempted,
+            fallback_events: (aiMeta as any).fallback_events,
             tokens_in: estimateTokens(JSON.stringify(payload)),
             tokens_out: estimateTokens(JSON.stringify(result)),
         } : undefined;

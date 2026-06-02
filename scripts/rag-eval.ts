@@ -36,11 +36,11 @@ const TEST_CASES: TestCase[] = [
   },
   {
     id: 3,
-    query: "when did I last feel proud?",
-    expectedIntent: "SEMANTIC_TOPIC",
+    query: "what are my most common emotions",
+    expectedIntent: "ANALYTICAL",
     expectedHasTemporal: false,
-    expectedTopic: "proud",
-    notes: "'when did I' is NOT a time expression"
+    expectedTopic: null,
+    notes: "Aggregated analytics request"
   },
 
   // TEMPORAL_SUMMARY (time window, no specific topic)
@@ -132,8 +132,8 @@ const TEST_CASES: TestCase[] = [
   },
   {
     id: 15,
-    query: "what do you mean?",
-    expectedIntent: "CONVERSATIONAL",
+    query: "what topics do I write about the most",
+    expectedIntent: "ANALYTICAL",
     expectedHasTemporal: false,
     expectedTopic: null
   },

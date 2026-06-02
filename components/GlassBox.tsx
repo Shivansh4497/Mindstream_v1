@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Brain, Shield, ChevronUp } from 'lucide-react';
+import { X, Brain, Shield, ChevronUp, ArrowRight, ArrowDown, ArrowLeft } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { parseTemporalIntent } from '../services/temporalParser';
 
@@ -62,6 +62,8 @@ interface GlassBoxProps {
     lastAIResponse?: string;
     mode?: 'modal' | 'docked';
     currentUserMessage?: string;
+    messages?: any[];
+    onSelectSuggestion?: (text: string) => void;
 }
 
 type StepState = 'pending' | 'active' | 'complete' | 'failed';
@@ -88,7 +90,6 @@ const PROVIDER_CHAIN = [
     { name: 'Groq 70B', model: 'llama-3.3-70b-versatile' },
     { name: 'Groq 8B', model: 'llama-3.1-8b-instant' },
     { name: 'Gemini Flash', model: 'gemini-2.0-flash' },
-    { name: 'Gemini Lite', model: 'gemini-2.5-flash-lite' },
 ];
 
 function detectTemporalLabel(msg: string): string | null {
@@ -117,9 +118,9 @@ function getPrecisionColor(pct: number) {
 }
 
 function getFScoreLabel(score: number) {
-    if (score >= 85) return { label: 'Excellent', color: 'text-teal-400', bar: 'bg-teal-400' };
-    if (score >= 70) return { label: 'Good', color: 'text-amber-400', bar: 'bg-amber-400' };
-    return { label: 'Needs attention', color: 'text-red-400', bar: 'bg-red-400' };
+    if (score >= 85) return { label: 'GROUNDED', color: 'text-teal-400', bar: 'bg-teal-400' };
+    if (score >= 70) return { label: 'PARTIAL', color: 'text-amber-400', bar: 'bg-amber-400' };
+    return { label: 'UNGROUNDED', color: 'text-red-400', bar: 'bg-red-400' };
 }
 
 function getCategoryClass(category: string): string {
@@ -251,10 +252,10 @@ const StepContent: React.FC<{
         const truncated = msg.length > 80 ? msg.slice(0, 80) + '…' : msg;
         const temporalLabel = detectTemporalLabel(msg);
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1.5">
-                <p className="text-[13px] text-white/90 font-mono leading-relaxed">"{truncated}"</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2">
+                <p className="text-sm text-white/90 leading-relaxed font-medium italic">"{truncated}"</p>
                 {temporalLabel && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
                         ⏱ Temporal: {temporalLabel}
                     </span>
                 )}
@@ -267,9 +268,9 @@ const StepContent: React.FC<{
         const ms = meta?.classifier_latency_ms ?? 0;
         const queryIntent = meta?.query_intent;
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1.5">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-white/80 font-mono">Classifier (Groq 8B)</span>
+                    <span className="text-xs text-white/80 font-semibold">Classifier (Groq 8B)</span>
                     {ms > 0 && <LatencyBadge ms={ms} />}
                 </div>
                 {queryIntent ? (
@@ -277,17 +278,17 @@ const StepContent: React.FC<{
                         <Pill label="Intent" value={queryIntent.intent} colorClass="bg-teal-400/15 text-teal-400 border-teal-400/30" />
                         <Pill label="Confidence" value={`${Math.round(queryIntent.confidence * 100)}%`} colorClass="bg-blue-400/15 text-blue-400 border-blue-400/30" />
                         {queryIntent.detectedTopic ? (
-                            <span className="text-[10px] text-white/40 italic">
+                            <span className="text-xs text-white/60 italic">
                                 Topic: {queryIntent.detectedTopic}
                             </span>
                         ) : queryIntent.topicKeywords.length > 0 ? (
-                            <span className="text-[10px] text-white/40 italic">
+                            <span className="text-xs text-white/60 italic">
                                 Topics: {queryIntent.topicKeywords.join(', ')}
                             </span>
                         ) : null}
                     </div>
                 ) : (
-                    <span className="text-[10px] text-white/40 italic">Determining user intent...</span>
+                    <span className="text-xs text-white/50 italic">Determining user intent...</span>
                 )}
             </motion.div>
         );
@@ -297,11 +298,11 @@ const StepContent: React.FC<{
     if (id === 'embedding') {
         const ms = meta?.embedding_latency_ms ?? 0;
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2">
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                        <p className="text-[12px] text-white/80 font-mono">Supabase gte-small</p>
-                        <p className="text-[10px] text-white/40">384-dim vector</p>
+                        <p className="text-xs text-white/80 font-semibold">Supabase gte-small</p>
+                        <p className="text-[11px] text-white/50">384-dim vector</p>
                     </div>
                     {ms > 0 && <LatencyBadge ms={ms} />}
                 </div>
@@ -315,6 +316,27 @@ const StepContent: React.FC<{
         const searchMs = meta?.search_latency_ms ?? 0;
         const n = matches.length;
         const userMsg = meta?.userMessage || currentUserMessage || '';
+        const inventory = meta?.context_inventory;
+
+        const noDeepRetrieval = meta?.query_intent?.intent === 'BEHAVIORAL' || meta?.query_intent?.intent === 'CONVERSATIONAL';
+
+        if (noDeepRetrieval) {
+            return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-4">
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">
+                                PROFILE + RECENT CONTEXT
+                            </span>
+                            {searchMs > 0 && <LatencyBadge ms={searchMs} />}
+                        </div>
+                        <p className="text-[11px] text-white/50 leading-relaxed">
+                            No deep retrieval needed — answered from user profile, live habits data, and recent journal entries.
+                        </p>
+                    </div>
+                </motion.div>
+            );
+        }
 
         // Compute average similarity: sum of similarities divided by matches length, scaled by 100
         const avgSimilarity = n > 0
@@ -347,14 +369,12 @@ const StepContent: React.FC<{
             return entryDate >= startDate && entryDate <= endDate;
         });
 
-        const inventory = meta?.context_inventory;
-
         return (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-4">
                 {/* 1. Vector Search */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
+                        <span className="text-xs font-bold text-white/60 uppercase tracking-wider">
                             {meta?.retrieval_strategy || 'Vector Search'}
                         </span>
                         {searchMs > 0 && <LatencyBadge ms={searchMs} />}
@@ -366,17 +386,17 @@ const StepContent: React.FC<{
                                 <Pill label="Fill Rate" value={`${recall}%`} colorClass={recColor.bg + ' ' + recColor.text} />
                                 {hasTemporalIntent && (
                                     allWithinBounds ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-400/15 text-teal-400 border border-teal-400/30">
                                             Temporal ✓ 100%
                                         </span>
                                     ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400/15 text-amber-400 border border-amber-400/30">
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-400/15 text-amber-400 border border-amber-400/30">
                                             Temporal ⚠ Partial
                                         </span>
                                     )
                                 )}
                             </div>
-                            <div className="space-y-1 mt-1">
+                            <div className="space-y-1.5 mt-2">
                                 {matches.slice(0, 3).map((m: any, i: number) => {
                                     const txt = (m.matchText || m.text || '').slice(0, 50);
                                     const sim = m.similarity != null ? Math.round(m.similarity * 100) : null;
@@ -384,14 +404,14 @@ const StepContent: React.FC<{
                                         ? new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                                         : '';
                                     return (
-                                        <div key={i} className="flex items-center justify-between gap-2 bg-white/3 rounded px-2 py-1.5 border border-white/6">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="text-white/30 text-[10px] font-mono flex-shrink-0">▸</span>
-                                                {date && <span className="text-[10px] text-white/40 font-mono flex-shrink-0">[{date}]</span>}
-                                                <span className="text-[10px] text-white/60 font-mono truncate font-semibold">"{txt}…"</span>
+                                        <div key={i} className="flex items-center justify-between gap-3 bg-white/3 rounded px-2.5 py-1.5 border border-white/6">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="text-white/30 text-xs flex-shrink-0">▸</span>
+                                                {date && <span className="text-xs text-white/50 font-mono flex-shrink-0">[{date}]</span>}
+                                                <span className="text-xs text-white/80 truncate font-sans font-medium">"{txt}…"</span>
                                             </div>
                                             {sim != null && (
-                                                <span className="flex-shrink-0 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                                                <span className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-400/15 text-teal-400 border border-teal-400/30">
                                                     {sim}%
                                                 </span>
                                             )}
@@ -401,90 +421,7 @@ const StepContent: React.FC<{
                             </div>
                         </>
                     ) : (
-                        <span className="text-[11px] text-white/40 italic">No semantic matches found</span>
-                    )}
-                </div>
-
-                {/* 2. Recent Context */}
-                <div className="space-y-1.5 border-t border-white/5 pt-3">
-                    <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider block">Recent Context</span>
-                    <p className="text-[11px] text-white/60 font-mono">
-                        {inventory 
-                            ? `${inventory.recentEntriesCount} recent entries included in context` 
-                            : meta?.userMessage
-                                ? `${n > 0 ? 'Recent' : '0'} entries included in context`
-                                : `Connecting...`}
-                    </p>
-                </div>
-
-                {/* 3. Habits & Goals */}
-                <div className="space-y-2 border-t border-white/5 pt-3">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">Habits & Goals</span>
-                        {inventory?.hasReflection && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                Reflection Badge
-                            </span>
-                        )}
-                    </div>
-                    
-                    {inventory ? (
-                        <div className="space-y-2">
-                            {/* Habits */}
-                            {inventory.habits.length > 0 ? (
-                                <div className="space-y-1">
-                                    {inventory.habits.slice(0, 5).map((h, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-white/3 rounded px-2 py-1 border border-white/6 text-[10px] font-mono">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="text-white/40">⟳</span>
-                                                <span className="text-white/80 truncate font-semibold">{h.name}</span>
-                                                <span className={`text-[8px] px-1 py-0.2 rounded border ${getCategoryClass(h.category)}`}>
-                                                    {h.category.toUpperCase()}
-                                                </span>
-                                            </div>
-                                            {h.streak > 0 && (
-                                                <span className="text-orange-400 font-bold flex-shrink-0">
-                                                    🔥{h.streak}d
-                                                </span>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {inventory.habits.length > 5 && (
-                                        <span className="text-[9px] text-teal-400 font-semibold block pl-1">
-                                            +{inventory.habits.length - 5} more habits
-                                        </span>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-[10px] text-white/30 italic pl-1">No active habits in context</p>
-                            )}
-
-                            {/* Goals */}
-                            {inventory.goals.length > 0 ? (
-                                <div className="space-y-1 mt-1.5">
-                                    {inventory.goals.slice(0, 3).map((g, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-white/3 rounded px-2 py-1 border border-white/6 text-[10px] font-mono">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="text-white/40">◎</span>
-                                                <span className="text-white/70 truncate">{g.text}</span>
-                                            </div>
-                                            <span className={`text-[8px] px-1 py-0.2 rounded border flex-shrink-0 ${getCategoryClass(g.category)}`}>
-                                                {(g.category || 'Growth').toUpperCase()}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    {inventory.goals.length > 3 && (
-                                        <span className="text-[9px] text-teal-400 font-semibold block pl-1">
-                                            +{inventory.goals.length - 3} more goals
-                                        </span>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-[10px] text-white/30 italic pl-1">No pending goals in context</p>
-                            )}
-                        </div>
-                    ) : (
-                        <p className="text-[10px] text-white/30 italic">No habit/goal context available</p>
+                        <span className="text-xs text-white/40 italic">No semantic matches found</span>
                     )}
                 </div>
             </motion.div>
@@ -497,61 +434,60 @@ const StepContent: React.FC<{
         const rag = meta?.rag_context_tokens ?? 0;
         const hist = meta?.history_tokens ?? 0;
         const usr = meta?.user_message_tokens ?? 0;
-        const total = sys + rag + hist + usr;
+        
+        const noDeepRetrieval = meta?.query_intent?.intent === 'BEHAVIORAL' || meta?.query_intent?.intent === 'CONVERSATIONAL';
+        
+        // Use precise layer counts if available, otherwise approximate for backward compatibility
+        const profileTokens = meta?.profile_tokens ?? sys;
+        const retrievedTokens = meta?.retrieved_tokens ?? (noDeepRetrieval ? 0 : Math.round(rag * 0.6));
+        const recentTokens = meta?.recent_tokens ?? (rag - retrievedTokens);
+        
+        const total = profileTokens + recentTokens + retrievedTokens + hist + usr;
         const tokensIn = meta?.tokens_in ?? total;
         const tokensOut = meta?.tokens_out ?? 0;
 
-        const pct = (n: number) => total > 0 ? Math.max(1, Math.round((n / total) * 100)) : 25;
-
-        const segments = [
-            { label: 'System', tokens: sys, pct: pct(sys), color: '#64748b', lightColor: 'rgba(100,116,139,0.7)' },
-            { label: 'Context', tokens: rag, pct: pct(rag), color: '#2dd4bf', lightColor: 'rgba(45,212,191,0.7)' },
-            { label: 'History', tokens: hist, pct: pct(hist), color: '#3b82f6', lightColor: 'rgba(59,130,246,0.7)' },
-            { label: 'Message', tokens: usr, pct: pct(usr), color: '#a855f7', lightColor: 'rgba(168,85,247,0.7)' },
-        ];
-
         const efficiency = tokensIn > 0 && tokensOut > 0 ? Math.round((tokensOut / tokensIn) * 100) : null;
 
+        const bars = [
+            { label: 'Profile (Layer 1+2)', tokens: profileTokens, color: '#64748b' },
+            { label: 'Recent (Layer 3)', tokens: recentTokens, color: '#2dd4bf' },
+            { label: 'Retrieved (Layer 4)', tokens: retrievedTokens, color: '#f59e0b' },
+            { label: 'History', tokens: hist, color: '#3b82f6' },
+            { label: 'Message', tokens: usr, color: '#a855f7' },
+        ];
+        
+        const maxTokens = Math.max(...bars.map(b => b.tokens), 1);
+
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
-                {/* Stacked bar */}
-                <div className="relative">
-                    <div className="h-4 rounded-full overflow-hidden flex" title="Token distribution by layer">
-                        {segments.map((seg, i) => (
-                            <motion.div
-                                key={seg.label}
-                                className="h-full flex-shrink-0"
-                                style={{ width: `${seg.pct}%`, backgroundColor: seg.color }}
-                                initial={{ width: 0 }}
-                                animate={{ width: `${seg.pct}%` }}
-                                transition={{ duration: 0.5, delay: i * 0.08 }}
-                                title={`${seg.label}: ~${seg.tokens} tokens (${seg.pct}%)`}
-                            />
-                        ))}
-                    </div>
-                    {/* Legend */}
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-                        {segments.map(seg => (
-                            <span key={seg.label} className="flex items-center gap-1 text-[10px] text-white/40">
-                                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: seg.color }} />
-                                {seg.label}
-                            </span>
-                        ))}
-                    </div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-3">
+                <div className="space-y-2 bg-white/3 p-2.5 rounded border border-white/5">
+                    {bars.map(bar => (
+                        <div key={bar.label} className="flex items-center gap-2 text-xs">
+                            <span className="text-white/60 w-32 flex-shrink-0 truncate">{bar.label}</span>
+                            <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                                <motion.div
+                                    className="h-full rounded-full"
+                                    style={{ backgroundColor: bar.color }}
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${Math.max(1, (bar.tokens / maxTokens) * 100)}%` }}
+                                    transition={{ duration: 0.4 }}
+                                />
+                            </div>
+                            <span className="text-white/50 font-mono w-10 flex-shrink-0 text-right">{bar.tokens}</span>
+                        </div>
+                    ))}
                 </div>
 
-                {/* Token breakdown line */}
-                {total > 0 && (
-                    <p className="text-[10px] text-white/30 font-mono">
-                        ~{sys} sys · ~{rag} ctx · ~{hist} hist · ~{usr} msg
-                    </p>
-                )}
-
                 {/* Token economics */}
-                <div className="flex items-center justify-between text-[10px] font-mono border-t border-white/5 pt-1.5">
-                    <span className="text-white/40">~{tokensIn} in → ~{tokensOut} out</span>
+                <div className="flex items-center justify-between text-xs font-mono pt-1">
+                    <span className="text-white/60">~{tokensIn} in → ~{tokensOut} out</span>
                     {efficiency != null && (
-                        <span className="text-white/30">~{efficiency}% efficiency</span>
+                        <span 
+                            className="text-teal-400 font-semibold cursor-help"
+                            title="Ratio of output tokens to total input tokens. RAG pipelines are input-heavy by design."
+                        >
+                            Output ratio: ~{efficiency}%
+                        </span>
                     )}
                 </div>
             </motion.div>
@@ -580,22 +516,22 @@ const StepContent: React.FC<{
         const usedProviderInfo = PROVIDER_CHAIN.find(p => p.name === provider) ?? PROVIDER_CHAIN[0];
 
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-3.5">
                 {/* Provider name */}
                 <div>
-                    <p className="text-[13px] font-semibold text-teal-400">{provider}</p>
-                    <p className="text-[10px] text-white/30 font-mono">{usedProviderInfo.model}</p>
+                    <p className="text-sm font-bold text-teal-400">{provider}</p>
+                    <p className="text-xs text-white/50 font-mono mt-0.5">{usedProviderInfo.model}</p>
                 </div>
 
                 {/* Provider chain */}
-                <div className="flex items-center gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                     {PROVIDER_CHAIN.map(p => {
                         const used = p.name === provider;
                         return (
-                            <span key={p.name} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all ${
+                            <span key={p.name} className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all ${
                                 used
                                     ? 'bg-teal-400/15 text-teal-400 border-teal-400/30'
-                                    : 'bg-white/3 text-white/20 border-white/6'
+                                    : 'bg-white/3 text-white/30 border-white/6'
                             }`}>
                                 {p.name} {used ? '[USED]' : ''}
                             </span>
@@ -605,10 +541,10 @@ const StepContent: React.FC<{
 
                 {/* Latency bar chart */}
                 {totalMs > 0 && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2 bg-white/3 p-2.5 rounded border border-white/5 mt-1">
                         {phases.map(phase => (
-                            <div key={phase.label} className="flex items-center gap-2 text-[10px]">
-                                <span className="text-white/30 w-16 flex-shrink-0 text-right font-mono">{phase.label}</span>
+                            <div key={phase.label} className="flex items-center gap-2 text-xs">
+                                <span className="text-white/50 w-16 flex-shrink-0 text-right font-mono">{phase.label}</span>
                                 <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
                                     <motion.div
                                         className="h-full rounded-full"
@@ -618,13 +554,13 @@ const StepContent: React.FC<{
                                         transition={{ duration: 0.4, delay: 0.1 }}
                                     />
                                 </div>
-                                <span className="text-white/30 font-mono w-10 flex-shrink-0">{phase.ms}ms</span>
+                                <span className="text-white/50 font-mono w-12 flex-shrink-0 text-right">{phase.ms}ms</span>
                             </div>
                         ))}
-                        <div className="flex items-center gap-2 text-[10px] border-t border-white/5 pt-1">
-                            <span className="text-white/50 w-16 flex-shrink-0 text-right font-mono font-bold">Total</span>
+                        <div className="flex items-center gap-2 text-xs border-t border-white/5 pt-2">
+                            <span className="text-white/70 w-16 flex-shrink-0 text-right font-mono font-bold">Total</span>
                             <div className="flex-1 h-2 bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400 rounded-full" />
-                            <span className="text-white/60 font-mono w-10 flex-shrink-0 font-bold">{totalMs}ms</span>
+                            <span className="text-white/80 font-mono w-12 flex-shrink-0 text-right font-bold">{totalMs}ms</span>
                         </div>
                     </div>
                 )}
@@ -639,11 +575,11 @@ const StepContent: React.FC<{
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
                         <motion.div
-                            className="w-2 h-2 rounded-full bg-teal-400"
+                            className="w-2.5 h-2.5 rounded-full bg-teal-400"
                             animate={{ opacity: [1, 0.3, 1] }}
                             transition={{ duration: 1, repeat: Infinity }}
                         />
-                        <span className="text-[11px] text-white/40">Evaluating response quality...</span>
+                        <span className="text-xs text-white/60">Evaluating response quality...</span>
                     </div>
                     <Shimmer lines={3} />
                 </div>
@@ -651,7 +587,7 @@ const StepContent: React.FC<{
         }
         if (evalState === 'failed') {
             return (
-                <p className="text-[11px] text-orange-400/70 italic">Quality evaluation unavailable</p>
+                <p className="text-xs text-orange-400/80 italic">Quality evaluation unavailable</p>
             );
         }
         if (evalState === 'complete' && evalScores) {
@@ -663,14 +599,14 @@ const StepContent: React.FC<{
             ];
             const fscore = getFScoreLabel(evalScores.fScore);
             return (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2.5">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-3">
                     {/* Score rows */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 bg-white/3 p-2.5 rounded border border-white/5">
                         {scores.map(s => (
-                            <div key={s.label} className="space-y-0.5">
-                                <div className="flex items-center justify-between text-[10px]">
-                                    <span className="text-white/40">{s.label}</span>
-                                    <span className="font-mono text-white/60">{s.value}/100</span>
+                            <div key={s.label} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-white/50">{s.label}</span>
+                                    <span className="font-mono text-white/85">{s.value}/100</span>
                                 </div>
                                 <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
                                     <motion.div
@@ -684,11 +620,11 @@ const StepContent: React.FC<{
                         ))}
                     </div>
 
-                    {/* F-Score composite */}
-                    <div className="space-y-1 pt-1 border-t border-white/5">
-                        <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-white/40">F-Score</span>
-                            <span className={`font-mono font-bold ${fscore.color}`}>{evalScores.fScore}%</span>
+                    {/* Grounding Tier composite */}
+                    <div className="space-y-1.5 pt-2 border-t border-white/5">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="text-white/50 font-medium">Grounding Tier</span>
+                            <span className={`font-bold text-sm uppercase tracking-wider ${fscore.color}`}>{fscore.label}</span>
                         </div>
                         <div className="h-2.5 bg-white/5 rounded-full overflow-hidden">
                             <motion.div
@@ -698,12 +634,18 @@ const StepContent: React.FC<{
                                 transition={{ duration: 0.6 }}
                             />
                         </div>
-                        <p className={`text-[10px] font-semibold ${fscore.color}`}>{fscore.label}</p>
+                        <p className={`text-xs font-mono font-bold text-white/50`}>F-Score: {evalScores.fScore}%</p>
+                        
+                        {meta?.query_intent?.intent === 'CONVERSATIONAL' && (
+                            <div className="text-[10px] text-white/40 bg-white/3 border border-white/5 rounded-lg p-2 mt-1.5 leading-relaxed font-sans select-none">
+                                ℹ Conversational turns score low by design. RAGAS measures faithfulness against retrieved chunks, not conversation history. This is expected behaviour.
+                            </div>
+                        )}
                     </div>
 
                     {/* Summary */}
                     {evalScores.summary && (
-                        <p className="text-[10px] text-white/30 italic leading-relaxed">"{evalScores.summary}"</p>
+                        <p className="text-xs text-white/60 italic leading-relaxed bg-[#2dd4bf]/5 border border-[#2dd4bf]/10 p-2.5 rounded">"{evalScores.summary}"</p>
                     )}
                 </motion.div>
             );
@@ -715,14 +657,14 @@ const StepContent: React.FC<{
     if (id === 'complete') {
         const totalMs = meta?.latency_ms ?? 0;
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-1">
-                <p className="text-[12px] text-white/80 font-semibold">AI Orchestration Complete</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2">
+                <p className="text-xs text-white/90 font-bold">AI Orchestration Complete</p>
                 {totalMs > 0 && (
-                    <p className="text-[11px] text-teal-400 font-mono">{totalMs}ms end-to-end</p>
+                    <p className="text-xs text-teal-400 font-mono font-semibold">{totalMs}ms end-to-end</p>
                 )}
-                <div className="flex items-center gap-1.5 mt-1">
-                    <Shield className="w-3 h-3 text-white/20" />
-                    <span className="text-[10px] text-white/20">All AI calls secured via Edge Fns</span>
+                <div className="flex items-center gap-2 mt-1.5">
+                    <Shield className="w-3.5 h-3.5 text-white/45" />
+                    <span className="text-[11px] text-white/50">All AI calls secured via Edge Fns</span>
                 </div>
             </motion.div>
         );
@@ -762,7 +704,11 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
     lastAIResponse = '',
     mode = 'modal',
     currentUserMessage = '',
+    messages,
+    onSelectSuggestion,
 }) => {
+    const hasSentMessage = messages && messages.some((m: any) => m.sender === 'user');
+
     // Pipeline step states
     const [stepStates, setStepStates] = useState<Record<StepId, StepState>>({
         input: 'pending', intent: 'pending', embedding: 'pending', retrieval: 'pending',
@@ -861,26 +807,7 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
             setStepStates(prev => ({ ...prev, evaluation: 'active' }));
 
             try {
-                const ragContext = (meta.rag_matches ?? [])
-                    .slice(0, 3)
-                    .map((m: any) => (m.matchText || m.text || '').slice(0, 120))
-                    .join('\n');
-
-                const habitsSummary = (meta.context_inventory?.habits ?? [])
-                    .slice(0, 5)
-                    .map(h => `${h.name} (${h.category}, ${h.streak} day streak)`)
-                    .join(', ');
-
-                const goalsSummary = (meta.context_inventory?.goals ?? [])
-                    .slice(0, 3)
-                    .map(g => g.text)
-                    .join(', ');
-
-                const fullContext = [
-                    ragContext ? `Journal entries:\n${ragContext}` : '',
-                    habitsSummary ? `Active habits: ${habitsSummary}` : '',
-                    goalsSummary ? `Active goals: ${goalsSummary}` : '',
-                ].filter(Boolean).join('\n\n');
+                const fullContext = meta.contextSnippet || "No context provided";
 
                 const { data, error } = await supabase!.functions.invoke('ai-proxy', {
                     body: {
@@ -951,11 +878,168 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
             : `Temporal: ${temporalLabel} ⚠ Partial`;
     })();
 
+    // ─── Onboarding Guide ────────────────────────────────────────────────
+    const OnboardingGuide = () => (
+        <div className="flex flex-col h-full bg-[#141c35]">
+            {/* Header */}
+            <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/5 bg-[#141c35]">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400/20 to-emerald-400/20 flex items-center justify-center border border-teal-400/20">
+                            <Brain className="w-4 h-4 text-teal-400" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-bold text-white leading-tight">Glass Box Onboarding</h2>
+                                <span className="text-[10px] font-bold opacity-80 ml-1 bg-teal-400/15 text-teal-400 border border-teal-400/30 px-1.5 py-0.5 rounded uppercase tracking-wider text-[9px]">
+                                    Demo
+                                </span>
+                            </div>
+                            <p className="text-xs text-white/50 mt-1">Explore RAG Architecture</p>
+                        </div>
+                    </div>
+                    {mode !== 'docked' && (
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 hover:bg-white/8 rounded-lg transition-colors"
+                        >
+                            <X className="w-4 h-4 text-white/30" />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Scrollable Guide Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 bg-[#141c35]" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+                {/* Intro Card */}
+                <div className="bg-white/3 border border-white/5 rounded-xl p-4.5 space-y-2.5">
+                    <h3 className="text-sm font-bold text-teal-300 uppercase tracking-wider">Interactive RAG Engine</h3>
+                    <p className="text-sm text-white/80 leading-relaxed">
+                        Rather than replying with generic AI training data, Mindstream uses <strong>Retrieval-Augmented Generation (RAG)</strong> to construct context-aware responses securely grounded in your personal journal entries, habits, and goals.
+                    </p>
+                </div>
+
+                {/* Architecture Steps (2x2 Grid) */}
+                <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-white/60 uppercase tracking-wider">RAG Pipeline Lifecycle</h4>
+                    
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-6 relative">
+                        {/* Step 1: Intent Analysis */}
+                        <div className="col-start-1 row-start-1 bg-white/[0.02] border border-white/[0.06] hover:border-teal-400/25 hover:bg-white/[0.04] rounded-xl p-4 flex flex-col justify-between min-h-[140px] relative transition-all duration-300 group">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-5 h-5 rounded-md bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center text-[10px] font-bold font-mono">
+                                        1
+                                    </span>
+                                    <h5 className="text-[11px] font-bold text-white tracking-wider uppercase">Intent Analysis</h5>
+                                </div>
+                                <p className="text-[11px] text-white/60 leading-relaxed font-normal">
+                                    Analyzes your query to check if you are asking about specific dates, habits, or overall trends, defining the retrieval strategy.
+                                </p>
+                            </div>
+                            {/* Directional Arrow: Step 1 -> Step 2 */}
+                            <div className="absolute -right-[14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-[#141c35] border border-white/10 flex items-center justify-center text-teal-400/80 shadow-md">
+                                <ArrowRight className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+
+                        {/* Step 2: Semantic Search */}
+                        <div className="col-start-2 row-start-1 bg-white/[0.02] border border-white/[0.06] hover:border-teal-400/25 hover:bg-white/[0.04] rounded-xl p-4 flex flex-col justify-between min-h-[140px] relative transition-all duration-300 group">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-5 h-5 rounded-md bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center text-[10px] font-bold font-mono">
+                                        2
+                                    </span>
+                                    <h5 className="text-[11px] font-bold text-white tracking-wider uppercase">Semantic Search</h5>
+                                </div>
+                                <p className="text-[11px] text-white/60 leading-relaxed font-normal">
+                                    Converts your query into a vector embedding to search and fetch the most relevant journal entries from your secure database.
+                                </p>
+                            </div>
+                            {/* Directional Arrow: Step 2 -> Step 3 */}
+                            <div className="absolute -bottom-[14px] left-1/2 -translate-x-1/2 z-10 w-7 h-7 rounded-full bg-[#141c35] border border-white/10 flex items-center justify-center text-teal-400/80 shadow-md">
+                                <ArrowDown className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+
+                        {/* Step 3: Context Assembly */}
+                        <div className="col-start-2 row-start-2 bg-white/[0.02] border border-white/[0.06] hover:border-teal-400/25 hover:bg-white/[0.04] rounded-xl p-4 flex flex-col justify-between min-h-[140px] relative transition-all duration-300 group">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-5 h-5 rounded-md bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center text-[10px] font-bold font-mono">
+                                        3
+                                    </span>
+                                    <h5 className="text-[11px] font-bold text-white tracking-wider uppercase">Context Assembly</h5>
+                                </div>
+                                <p className="text-[11px] text-white/60 leading-relaxed font-normal">
+                                    Combines the retrieved journal matches with your active habits and goals to build a rich, personalized prompt context.
+                                </p>
+                            </div>
+                            {/* Directional Arrow: Step 3 -> Step 4 */}
+                            <div className="absolute -left-[14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-[#141c35] border border-white/10 flex items-center justify-center text-teal-400/80 shadow-md">
+                                <ArrowLeft className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+
+                        {/* Step 4: Quality Evaluation */}
+                        <div className="col-start-1 row-start-2 bg-white/[0.02] border border-white/[0.06] hover:border-teal-400/25 hover:bg-white/[0.04] rounded-xl p-4 flex flex-col justify-between min-h-[140px] relative transition-all duration-300 group">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-5 h-5 rounded-md bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center text-[10px] font-bold font-mono">
+                                        4
+                                    </span>
+                                    <h5 className="text-[11px] font-bold text-white tracking-wider uppercase">Quality Evaluation</h5>
+                                </div>
+                                <p className="text-[11px] text-white/60 leading-relaxed font-normal">
+                                    Runs a post-generation check to rate response faithfulness and relevancy, ensuring the answer is accurate and grounded.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* What to Ask Section */}
+                <div className="space-y-3 border-t border-white/5 pt-5">
+                    <h4 className="text-xs font-bold text-white/60 uppercase tracking-wider">What to Ask the AI</h4>
+                    <p className="text-xs text-white/50 mb-3">Click on any suggestion below to test the RAG query pipeline instantly:</p>
+                    
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => onSelectSuggestion?.("How consistent have I been with my running and meditation habits over the last 30 days?")}
+                            className="w-full text-left bg-white/3 hover:bg-teal-400/5 border border-white/10 hover:border-teal-400/30 rounded-xl p-3.5 font-sans text-xs text-white/80 hover:text-white leading-relaxed transition-all duration-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-400/50 animate-fade-in"
+                        >
+                            How consistent have I been with my running and meditation habits over the last 30 days?
+                        </button>
+                        <button
+                            onClick={() => onSelectSuggestion?.("Summarize my anxiety levels and journal patterns this week.")}
+                            className="w-full text-left bg-white/3 hover:bg-teal-400/5 border border-white/10 hover:border-teal-400/30 rounded-xl p-3.5 font-sans text-xs text-white/80 hover:text-white leading-relaxed transition-all duration-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-400/50 animate-fade-in"
+                        >
+                            Summarize my anxiety levels and journal patterns this week.
+                        </button>
+                        <button
+                            onClick={() => onSelectSuggestion?.("Am I hitting my goals?")}
+                            className="w-full text-left bg-white/3 hover:bg-teal-400/5 border border-white/10 hover:border-teal-400/30 rounded-xl p-3.5 font-sans text-xs text-white/80 hover:text-white leading-relaxed transition-all duration-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-400/50 animate-fade-in"
+                        >
+                            Am I hitting my goals?
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Session footer — pinned */}
+            <div className="flex-shrink-0 h-10 flex items-center px-5 border-t border-white/6 bg-[#141c35]">
+                <span className="text-xs text-white/45 font-mono">
+                    Type a message or click a suggestion to start
+                </span>
+            </div>
+        </div>
+    );
+
     // ─── Pipeline timeline ────────────────────────────────────────────────
     const PipelineTimeline = () => (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full bg-[#141c35]">
             {/* Header */}
-            <div className="flex-shrink-0 px-5 pt-5 pb-4">
+            <div className="flex-shrink-0 px-5 pt-5 pb-4 bg-[#141c35]">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400/20 to-emerald-400/20 flex items-center justify-center border border-teal-400/20">
@@ -971,17 +1055,19 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
                             <p className="text-[10px] text-white/30 mt-0.5">How I built this answer</p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 hover:bg-white/8 rounded-lg transition-colors"
-                    >
-                        <X className="w-4 h-4 text-white/30" />
-                    </button>
+                    {mode !== 'docked' && (
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 hover:bg-white/8 rounded-lg transition-colors"
+                        >
+                            <X className="w-4 h-4 text-white/30" />
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* Pipeline steps — scrollable */}
-            <div className="flex-1 overflow-y-auto px-5 pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+            <div className="flex-1 overflow-y-auto px-5 pb-2 bg-[#141c35]" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
                 <div className="pb-4">
                     {STEP_ORDER.map((stepId, index) => {
                         const stepState = stepStates[stepId];
@@ -1023,7 +1109,7 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
             </div>
 
             {/* Session footer — pinned 36px */}
-            <div className="flex-shrink-0 h-9 flex items-center justify-between px-5 border-t border-white/6">
+            <div className="flex-shrink-0 h-9 flex items-center justify-between px-5 border-t border-white/6 bg-[#141c35]">
                 <span className="text-[10px] text-white/25 font-mono">
                     Session · {sessionQueryCount} {sessionQueryCount === 1 ? 'query' : 'queries'}
                 </span>
@@ -1040,14 +1126,14 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
     if (mode === 'docked') {
         return (
             <motion.div
-                className="h-full flex flex-col overflow-hidden"
+                className="h-full flex flex-col overflow-hidden bg-[#141c35]"
                 style={{ background: '#141c35', borderLeft: '1px solid rgba(255,255,255,0.06)' }}
                 initial={{ x: 20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: 20, opacity: 0 }}
                 transition={{ duration: 0.3, ease: 'easeOut' }}
             >
-                <PipelineTimeline />
+                {hasSentMessage ? <PipelineTimeline /> : <OnboardingGuide />}
             </motion.div>
         );
     }
@@ -1063,7 +1149,7 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
                 onClick={onClose}
             >
                 <motion.div
-                    className="w-full max-h-[90vh] flex flex-col overflow-hidden rounded-t-2xl"
+                    className="w-full max-h-[90vh] flex flex-col overflow-hidden rounded-t-2xl bg-[#141c35]"
                     style={{ background: '#141c35', border: '1px solid rgba(255,255,255,0.06)' }}
                     initial={{ y: '100%' }}
                     animate={{ y: 0 }}
@@ -1071,7 +1157,7 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
                     transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                     onClick={e => e.stopPropagation()}
                 >
-                    <PipelineTimeline />
+                    {hasSentMessage ? <PipelineTimeline /> : <OnboardingGuide />}
                 </motion.div>
             </motion.div>
         </AnimatePresence>

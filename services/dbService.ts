@@ -692,34 +692,63 @@ export async function getBehavioralContext(
     habits: [], goals: [], habitLogs: []
   };
 
-  const [habitsRes, goalsRes, logsRes] =
-    await Promise.all([
-      supabase
-        .from('habits')
-        .select('*')
-        .eq('user_id', userId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('intentions')
-        .select('*')
-        .eq('user_id', userId)
-        .is('deleted_at', null)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('habit_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('completed_at', new Date(
-          Date.now() - 30 * 24 * 60 * 60 * 1000
-        ).toISOString())
-    ]);
+  const habitsRes = await supabase
+    .from('habits')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  const habits = (habitsRes.data || []) as Habit[];
+  
+  if (habits.length === 0) {
+    const goalsRes = await supabase
+      .from('intentions')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    return {
+      habits: [],
+      goals: (goalsRes.data || []) as Intention[],
+      habitLogs: []
+    };
+  }
+
+  const habitIds = habits.map(h => h.id);
+  const [goalsRes, logsRes] = await Promise.all([
+    supabase
+      .from('intentions')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('habit_logs')
+      .select('*')
+      .in('habit_id', habitIds)
+      .gte('completed_at', new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000
+      ).toISOString())
+  ]);
+
+  const habitLogs = logsRes.data || [];
+  console.log('habitLogs count:', habitLogs?.length, 'for userId:', userId);
+  const habitsWithCompletion = habits.map(h => {
+    const logsCount = habitLogs.filter(l => l.habit_id === h.id).length;
+    const completion_rate = Math.round((logsCount / 30) * 100);
+    return {
+      ...h,
+      completion_rate
+    };
+  });
 
   return {
-    habits: habitsRes.data || [],
-    goals: goalsRes.data || [],
-    habitLogs: logsRes.data || []
+    habits: habitsWithCompletion,
+    goals: (goalsRes.data || []) as Intention[],
+    habitLogs
   };
 }
 
@@ -1873,4 +1902,151 @@ export const deleteUserChatFeedback = async (userId: string): Promise<boolean> =
         console.error('Error deleting chat feedback:', error);
         return false;
     }
+};
+
+export const computeUserProfile = async (userId: string): Promise<string> => {
+    if (!supabase) return "";
+
+    // 1. Fetch last 30 journal entries
+    const { data: entries } = await supabase
+        .from('entries')
+        .select('text, tags, primary_sentiment, timestamp')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('timestamp', { ascending: false })
+        .limit(30);
+
+    const recentEntries = (entries || []) as any[];
+
+    // Extract tags
+    const tagCounts: Record<string, number> = {};
+    recentEntries.forEach(e => {
+        (e.tags || []).forEach((t: string) => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+    });
+    const topTopics = Object.entries(tagCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(x => x[0]);
+
+    // Extract emotions
+    const emotionCounts: Record<string, number> = {};
+    recentEntries.forEach(e => {
+        if (e.primary_sentiment) {
+            emotionCounts[e.primary_sentiment] = (emotionCounts[e.primary_sentiment] || 0) + 1;
+        }
+    });
+    const topEmotions = Object.entries(emotionCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(x => x[0]);
+
+    // Mood dips
+    const negativeSentiments = ['Sad', 'Frustrated', 'Overwhelmed', 'Anxious'];
+    const lowMoodDays: Record<string, number> = {};
+    recentEntries.forEach(e => {
+        if (e.primary_sentiment && negativeSentiments.includes(e.primary_sentiment)) {
+            const dayName = new Date(e.timestamp).toLocaleDateString('en-US', { weekday: 'long' });
+            lowMoodDays[dayName] = (lowMoodDays[dayName] || 0) + 1;
+        }
+    });
+    const topLowMoodDays = Object.entries(lowMoodDays).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]);
+
+    // Recent insight
+    const insightEntry = recentEntries.find(e => (e.tags || []).includes('insight') || (e.tags || []).includes('breakthrough'));
+    const recentInsight = insightEntry ? insightEntry.text.slice(0, 150) + (insightEntry.text.length > 150 ? '...' : '') : 'None recently.';
+
+    // 2. Fetch habits and logs
+    const { data: habitsData } = await supabase.from('habits').select('*').eq('user_id', userId).is('deleted_at', null);
+    const habits = (habitsData || []) as any[];
+
+    let habitLogs: any[] = [];
+    if (habits.length > 0) {
+        const habitIds = habits.map(h => h.id);
+        const { data: logsData } = await supabase.from('habit_logs').select('*').in('habit_id', habitIds).gte('completed_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+        habitLogs = logsData || [];
+    }
+
+    const habitsWithRates = habits.map(habit => {
+        const logs = habitLogs.filter(l => l.habit_id === habit.id);
+        const completed = logs.filter(l => l.completed !== false).length;
+        const rate = logs.length > 0 ? (completed / logs.length * 100).toFixed(1) : null;
+        return { ...habit, completionRate: rate, completedCount: completed, totalLogs: logs.length };
+    });
+
+    const habitsLines = habitsWithRates.map(h => 
+        `${h.name} | Streak: ${h.current_streak || 0}d | Completion: ${h.completionRate ? `${h.completionRate}% (${h.completedCount}/${h.totalLogs} logs)` : 'N/A'} | ${h.category}`
+    ).join('\n');
+
+    // 3. Fetch goals
+    const { data: goalsData } = await supabase.from('intentions').select('*').eq('user_id', userId).is('deleted_at', null).eq('status', 'pending');
+    const goals = (goalsData || []) as any[];
+    const goalsLines = goals.map(g => `${g.text} | ${g.category} | ${g.status}`).join('\n');
+
+    // 4. Return formatted string
+    return `[USER PROFILE]
+Dominant moods: ${topEmotions.join(', ') || 'None'}
+Low energy patterns: ${topLowMoodDays.join(', ') || 'None'}
+Key topics: ${topTopics.join(', ') || 'None'}
+Recent insight: ${recentInsight}
+
+[LIVE HABITS]
+${habitsLines || '(No active habits)'}
+
+[ACTIVE GOALS]
+${goalsLines || '(No active goals)'}`;
+};
+
+export const getUserProfile = async (userId: string): Promise<string> => {
+    if (!supabase) return "";
+
+    const { data: profile } = await supabase.from('profiles').select('is_demo').eq('id', userId).single();
+    if (profile?.is_demo) {
+        return computeUserProfile(userId);
+    }
+
+    const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).single();
+    const now = Date.now();
+    
+    if (data && data.computed_at) {
+        const age = now - new Date(data.computed_at).getTime();
+        if (age < 24 * 60 * 60 * 1000) {
+            return data.profile_text;
+        }
+    }
+
+    const newText = await computeUserProfile(userId);
+    await supabase.from('user_profiles').upsert({
+        user_id: userId,
+        profile_text: newText,
+        computed_at: new Date().toISOString()
+    });
+    
+    return newText;
+};
+
+export const getRecentAmbientContext = async (userId: string, days: number = 7): Promise<string> => {
+    if (!supabase) return "";
+    
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+
+    const { data: entries } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .gte('timestamp', cutoff.toISOString())
+        .order('timestamp', { ascending: false });
+
+    if (!entries || entries.length === 0) return `[RECENT ENTRIES — Last ${days} Days]\n(No recent entries)`;
+
+    const lines = entries.map((e: any) => {
+        const date = new Date(e.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const summary = e.text.slice(0, 150).replace(/\n/g, ' ');
+        // using primary_sentiment in place of mood_score out of 10
+        const moodScore = e.primary_sentiment || 'Neutral';
+        return `${date}: ${summary}${e.text.length > 150 ? '...' : ''}. Mood: ${moodScore}.`;
+    });
+
+    return `[RECENT ENTRIES — Last ${days} Days]\n${lines.join('\n')}`;
 };

@@ -16,6 +16,7 @@ interface ChatViewProps {
   entryPoint?: EntryPoint;
   onTakeawaySaved?: (entry: Entry) => void;
   setToast?: (toast: { message: string; action?: { label: string; onClick: () => void } } | null) => void;
+  isDemo?: boolean;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -26,7 +27,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   currentPersonality = 'stoic',
   entryPoint = 'organic',
   onTakeawaySaved,
-  setToast
+  setToast,
+  isDemo = false
 }) => {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [ttsEnabled, setTtsEnabled] = useState(() => {
@@ -40,6 +42,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
     const saved = localStorage.getItem('chatSharingEnabled');
     return saved ? JSON.parse(saved) : false;
   });
+
+  // Default sharing to true in demo mode
+  useEffect(() => {
+    if (isDemo) {
+      setChatSharingEnabled(true);
+    }
+  }, [isDemo]);
   const [chatSharingPromptShown, setChatSharingPromptShown] = useState(() => {
     const saved = localStorage.getItem('chatSharingPromptShown');
     return saved ? JSON.parse(saved) : false;
@@ -102,17 +111,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
   useEffect(() => {
     const userMessages = messages.filter(m => m.sender === 'user');
 
-    // Show prompt after 3rd user message, if:
-    // - Not shown before (lifetime check)
-    // - Not currently showing
-    // - Sharing is NOT already enabled (don't prompt if they already turned it on manually)
-    if (userMessages.length >= 3 && !chatSharingPromptShown && !showSharingModal && !chatSharingEnabled) {
+    // Count user messages and trigger prompt after 3rd
+    // ONLY show if: not shown before, not currently showing, AND sharing not already enabled
+    // Always bypassed in demo mode
+    if (!isDemo && userMessages.length >= 3 && !chatSharingPromptShown && !showSharingModal && !chatSharingEnabled) {
       setShowSharingModal(true);
       if (userId) {
         logEvent(userId, 'chat_sharing_prompt_shown');
       }
     }
-  }, [messages, chatSharingPromptShown, showSharingModal, chatSharingEnabled, userId]);
+  }, [messages, chatSharingPromptShown, showSharingModal, chatSharingEnabled, userId, isDemo]);
 
   // Save/update chat feedback after AI finishes responding
   // INSERT on first save, UPDATE on subsequent saves
@@ -322,27 +330,29 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {/* Header with TTS and Sharing toggles */}
         <div className="flex-shrink-0 flex flex-col border-b border-white/5 bg-brand-indigo">
           <div className="flex justify-end gap-2 p-3">
-            {/* Chat Sharing Toggle */}
-            <button
-              onClick={toggleChatSharing}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${chatSharingEnabled
-                ? 'bg-brand-teal/20 text-brand-teal border border-brand-teal/30'
-                : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
-                }`}
-              title={chatSharingEnabled ? 'Chat sharing enabled' : 'Chat sharing disabled'}
-            >
-              {chatSharingEnabled ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Sharing</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-4 h-4" />
-                  <span>Share: Off</span>
-                </>
-              )}
-            </button>
+            {/* Chat Sharing Toggle - hidden in demo mode */}
+            {!isDemo && (
+              <button
+                onClick={toggleChatSharing}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${chatSharingEnabled
+                  ? 'bg-brand-teal/20 text-brand-teal border border-brand-teal/30'
+                  : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                  }`}
+                title={chatSharingEnabled ? 'Chat sharing enabled' : 'Chat sharing disabled'}
+              >
+                {chatSharingEnabled ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Sharing</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4" />
+                    <span>Share: Off</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* TTS Toggle */}
             <button
@@ -388,10 +398,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </button>
             )}
           </div>
-          {/* Ephemerality indicator */}
-          <div className="text-xs text-gray-500 text-center pb-2">
-            💡 Conversations reset when you leave this tab
-          </div>
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 min-h-0">
@@ -418,6 +424,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
           )}
           <div ref={messagesEndRef} />
         </main>
+        
+        {/* Subtle footer note styled as secondary text */}
+        <div className="flex-shrink-0 text-[11px] text-white/30 text-center py-2 border-t border-white/5 bg-brand-indigo/40 select-none">
+          Conversations reset when you leave this tab
+        </div>
       </div>
 
       {/* Chat Sharing Modal */}

@@ -9,6 +9,7 @@ import { NavBar, View } from './components/NavBar';
 import { Stream } from './components/Stream';
 import { InputBar } from './components/InputBar';
 import { LandingScreen } from './components/LandingScreen';
+import { DemoWelcomeModal } from './components/DemoWelcomeModal';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { SearchModal } from './components/SearchModal';
 import { ChatView } from './components/ChatView';
@@ -123,6 +124,10 @@ export const MindstreamApp: React.FC = () => {
     const hasVisitedInsightsKey = user ? `hasVisitedInsights_${user.id}` : 'hasVisitedInsights';
     const [hasVisitedInsights, setHasVisitedInsights] = useLocalStorage<boolean>(hasVisitedInsightsKey, false);
 
+    // Demo Mode welcome modal tracking
+    const [showDemoWelcome, setShowDemoWelcome] = useState(false);
+    const [hasSeenDemoWelcome, setHasSeenDemoWelcome] = useLocalStorage<boolean>(user ? `seen_demo_welcome_${user.id}` : 'seen_demo_welcome', false);
+
     // Count real entries (exclude temp entries)
     const realEntryCount = state.entries.filter(e => !e.id.startsWith('temp-')).length;
     const insightsUnlocked = realEntryCount >= 5;
@@ -186,6 +191,19 @@ export const MindstreamApp: React.FC = () => {
             setOnboardingStep(ONBOARDING_GUIDED_COMPLETE);
         }
     }, [legacyPrivacy, onboardingStep]);
+
+    // Demo Mode welcome modal and onboarding skip
+    useEffect(() => {
+        if (user && isDemo && !isSeeding) {
+            if (onboardingStep === ONBOARDING_NOT_STARTED) {
+                setOnboardingStep(ONBOARDING_QUICK_START);
+                setView('stream');
+            }
+            if (!hasSeenDemoWelcome) {
+                setShowDemoWelcome(true);
+            }
+        }
+    }, [user, isDemo, isSeeding, onboardingStep, hasSeenDemoWelcome]);
 
     // Loading timeout
     useEffect(() => {
@@ -265,6 +283,13 @@ export const MindstreamApp: React.FC = () => {
 
     // Show Landing Screen
     if (onboardingStep === ONBOARDING_NOT_STARTED && user) {
+        if (isDemo) {
+            return (
+                <div className="h-screen w-screen bg-brand-indigo flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            );
+        }
         return (
             <LandingScreen
                 onQuickStart={() => {
@@ -322,7 +347,8 @@ export const MindstreamApp: React.FC = () => {
 
 
     // Responsive Docking Logic — use reactive windowWidth
-    const showDocked = isEngineerViewOpen && isDesktopViewport;
+    // Demo sidebar is permanent for desktops when in chat view
+    const showDocked = (isDemoUser && isDesktopViewport && view === 'chat') || (isEngineerViewOpen && isDesktopViewport);
     const showModal = isEngineerViewOpen && !isDesktopViewport;
 
     // Derive last AI response for quality evaluation
@@ -400,10 +426,11 @@ export const MindstreamApp: React.FC = () => {
                                         onAddSuggestion={() => { }}
                                         userId={user?.id}
                                         entryPoint={onboardingStep === ONBOARDING_QUICK_START ? 'quick_start' : onboardingStep === ONBOARDING_GUIDED_COMPLETE ? 'guided' : 'organic'}
+                                        isDemo={isDemo}
                                     />
                                     <div className="p-4 bg-brand-indigo border-t border-white/5">
                                         {/* GlassBox toggle for demo users */}
-                                        {isDemoMode && (
+                                        {isDemoMode && !isDesktopViewport && (
                                             <div className="flex justify-end mb-2">
                                                 <button
                                                     onClick={() => {
@@ -642,13 +669,13 @@ export const MindstreamApp: React.FC = () => {
                         </AnimatePresence>
                     </main>
 
-                    {/* DOCKED GLASS BOX (Desktop Only — 460px animated panel) */}
+                    {/* DOCKED GLASS BOX (Desktop Only — 540px animated panel) */}
                     <AnimatePresence>
                         {showDocked && (
                             <motion.div
                                 key="glassbox-docked"
                                 initial={{ width: 0, opacity: 0 }}
-                                animate={{ width: 460, opacity: 1 }}
+                                animate={{ width: 540, opacity: 1 }}
                                 exit={{ width: 0, opacity: 0 }}
                                 transition={{ duration: 0.3, ease: 'easeOut' }}
                                 className="flex-shrink-0 h-full overflow-hidden relative z-20"
@@ -664,6 +691,8 @@ export const MindstreamApp: React.FC = () => {
                                     queryId={state.queryId}
                                     lastAIResponse={lastAIResponse}
                                     currentUserMessage={currentUserMessage}
+                                    messages={state.messages}
+                                    onSelectSuggestion={handleSendMessageWithTracking}
                                 />
                             </motion.div>
                         )}
@@ -801,6 +830,20 @@ export const MindstreamApp: React.FC = () => {
                     onClose={() => actions.setShowDemoLimitModal(false)}
                 />
 
+                {/* DEMO WELCOME MODAL */}
+                <DemoWelcomeModal
+                    isOpen={showDemoWelcome}
+                    onClose={() => {
+                        setHasSeenDemoWelcome(true);
+                        setShowDemoWelcome(false);
+                    }}
+                    onExploreChat={() => {
+                        setHasSeenDemoWelcome(true);
+                        setShowDemoWelcome(false);
+                        setView('chat');
+                    }}
+                />
+
                 {/* MOBILE GLASS BOX — floating pill + bottom sheet */}
                 {isDemoMode && !isDesktopViewport && isEngineerViewOpen && (
                     <MobilePipelineButton
@@ -828,6 +871,8 @@ export const MindstreamApp: React.FC = () => {
                         queryId={state.queryId}
                         lastAIResponse={lastAIResponse}
                         currentUserMessage={currentUserMessage}
+                        messages={state.messages}
+                        onSelectSuggestion={handleSendMessageWithTracking}
                     />
                 )}
             </div>

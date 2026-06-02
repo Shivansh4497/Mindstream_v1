@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "sharp": "data:application/javascript,export default {}",
+    "onnxruntime-node": "data:application/javascript,export default {}"
+  }
+}
