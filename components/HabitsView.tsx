@@ -84,12 +84,30 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
         return habits.filter(h => h.frequency === activeFrequency);
     }, [habits, activeFrequency]);
 
-    const dailyHabits = useMemo(() => habits.filter(h => h.frequency === 'daily'), [habits]);
-    const completedToday = useMemo(() => {
-        return dailyHabits.filter(h => todaysLogs.some(log => log.habit_id === h.id)).length;
-    }, [dailyHabits, todaysLogs]);
-    const totalDaily = dailyHabits.length;
-    const percentage = totalDaily > 0 ? completedToday / totalDaily : 0;
+    const activeHabits = useMemo(() => habits.filter(h => h.frequency === activeFrequency), [habits, activeFrequency]);
+    
+    const completedActive = useMemo(() => {
+        const now = new Date();
+        
+        return activeHabits.filter(h => {
+            const habitLogs = todaysLogs.filter(log => log.habit_id === h.id);
+            
+            if (activeFrequency === 'daily') {
+                return habitLogs.some(l => isSameDay(new Date(l.completed_at), now));
+            } else if (activeFrequency === 'weekly') {
+                const wId = getWeekId(now);
+                return habitLogs.some(l => getWeekId(new Date(l.completed_at)) === wId);
+            } else {
+                const mId = getMonthId(now);
+                return habitLogs.some(l => getMonthId(new Date(l.completed_at)) === mId);
+            }
+        }).length;
+    }, [activeHabits, todaysLogs, activeFrequency]);
+
+    const totalActive = activeHabits.length;
+    const percentage = totalActive > 0 ? completedActive / totalActive : 0;
+    
+    const label = activeFrequency === 'daily' ? 'Today' : activeFrequency === 'weekly' ? 'This Week' : 'This Month';
 
     const radius = 34;
     const circumference = 2 * Math.PI * radius;
@@ -116,7 +134,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
             </header>
 
             <main className="flex-grow overflow-y-auto p-4">
-                {dailyHabits.length > 0 && (
+                {activeHabits.length > 0 && (
                     <div className="flex flex-col items-center justify-center mt-4 mb-6">
                         <div className="relative w-[80px] h-[80px]">
                             <svg width="80" height="80" className="transform -rotate-90">
@@ -130,8 +148,8 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                                         className="transition-all duration-700 ease-out" />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-xl font-bold text-white leading-none">{completedToday}/{totalDaily}</span>
-                                <span className="text-[10px] font-medium text-gray-400 mt-1 uppercase tracking-wider">Today</span>
+                                <span className="text-xl font-bold text-white leading-none">{completedActive}/{totalActive}</span>
+                                <span className="text-[10px] font-medium text-gray-400 mt-1 uppercase tracking-wider">{label}</span>
                             </div>
                         </div>
                     </div>
