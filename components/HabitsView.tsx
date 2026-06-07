@@ -5,6 +5,7 @@ import { HabitCard } from './HabitCard';
 import { celebrate, getCelebrationTypeForStreak } from '../utils/celebrations';
 import { calculateStreak } from '../utils/streak';
 import { EmptyHabitsState } from './EmptyHabitsState';
+import { isSameDay, getWeekId, getMonthId } from '../utils/date';
 
 interface HabitsViewProps {
     habits: Habit[];
