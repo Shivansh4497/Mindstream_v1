@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
+import { embeddings } from './embeddings.ts';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -158,14 +159,22 @@ serve(async (req) => {
         }
 
         // --- 3. Insert Entries (spread across 30 days) ---
-        const entriesToInsert = ENTRY_TEMPLATES.slice(0, 28).map((entry, i) => {
+        // Load pre-computed embeddings
+        let precomputedEmbeddings = embeddings;
+
+        const entriesToInsert = [];
+        const templates = ENTRY_TEMPLATES.slice(0, 28);
+        for (let i = 0; i < templates.length; i++) {
+            const entry = templates[i];
             const dayOffset = 28 - i; // Most recent entries use later templates
             const entryDate = new Date(now.getTime() - dayOffset * 24 * 60 * 60 * 1000);
             // Vary the time of day
             const hours = [7, 8, 12, 13, 18, 19, 20, 21][Math.floor(Math.random() * 8)];
             entryDate.setHours(hours, Math.floor(Math.random() * 60), 0);
 
-            return {
+            const embedding = precomputedEmbeddings[i] || null;
+
+            entriesToInsert.push({
                 user_id: userId,
                 text: entry.text,
                 title: entry.title,
@@ -173,12 +182,13 @@ serve(async (req) => {
                 tags: entry.tags,
                 primary_sentiment: entry.primary_sentiment,
                 timestamp: entryDate.toISOString(),
-            };
-        });
+                embedding: embedding
+            });
+        }
 
         const { error: entriesError } = await supabaseAdmin.from('entries').insert(entriesToInsert);
         if (entriesError) throw new Error(`Entries insert failed: ${entriesError.message}`);
-        console.log(`[Seed Demo] Inserted ${entriesToInsert.length} entries`);
+        console.log(`[Seed Demo] Inserted ${entriesToInsert.length} entries with embeddings`);
 
         // --- 4. Insert Intentions ---
         const intentionsToInsert = INTENTIONS.map((intention, i) => ({

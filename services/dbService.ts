@@ -2360,3 +2360,73 @@ export const getAIProfile = async (
   if (error || !data?.ai_profile) return null;
   return data.ai_profile;
 };
+
+export const getHabitContextForChat = async (userId: string): Promise<string> => {
+  if (!supabase) return '';
+  
+  // Fetch active habits
+  const { data: habits, error: habitsError } = await supabase
+    .from('habits')
+    .select('*')
+    .eq('user_id', userId);
+    
+  if (habitsError || !habits || habits.length === 0) return '';
+
+  // Fetch habit logs from the last 30 days
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const { data: habitLogs, error: logsError } = await supabase
+    .from('habit_logs')
+    .select('*')
+    .in('habit_id', habits.map(h => h.id))
+    .gte('completed_at', thirtyDaysAgo.toISOString());
+
+  if (logsError) return '';
+
+  const today = new Date().toISOString().split('T')[0];
+  let contextString = `HABIT DATA (as of ${today}):\n`;
+
+  const now = new Date();
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(now.getDate() - 7);
+
+  habits.forEach(habit => {
+    const logsForHabit = (habitLogs || []).filter(l => l.habit_id === habit.id);
+    
+    // Sort logs descending by date
+    const sortedLogs = logsForHabit.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
+    
+    const lastLogged = sortedLogs.length > 0 
+      ? new Date(sortedLogs[0].completed_at).toISOString().split('T')[0]
+      : 'Never';
+
+    const completedLast7 = logsForHabit.filter(l => new Date(l.completed_at) >= sevenDaysAgo).length;
+    const completedLast30 = logsForHabit.length;
+
+    contextString += `- ${habit.name} (${habit.category || 'Uncategorized'}): ${habit.current_streak}-day streak, completed ${completedLast7}/7 days this week, ${completedLast30}/30 days this month. Last logged: ${lastLogged}.\n`;
+  });
+
+  return contextString;
+};
+
+export const getGoalContextForChat = async (userId: string): Promise<string> => {
+  if (!supabase) return '';
+  
+  const { data: intentions, error } = await supabase
+    .from('intentions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'pending');
+    
+  if (error || !intentions || intentions.length === 0) return '';
+
+  let contextString = `ACTIVE GOALS:\n`;
+  intentions.forEach(goal => {
+    const due = goal.due_date ? goal.due_date : "No deadline";
+    contextString += `- ${goal.text} (${goal.category || 'Uncategorized'}) — Status: ${goal.status}, Due: ${due}\n`;
+  });
+
+  return contextString;
+};
+

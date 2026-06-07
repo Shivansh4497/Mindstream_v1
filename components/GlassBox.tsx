@@ -18,7 +18,11 @@ export interface GlassBoxMeta {
     fallback_chain?: string[];
     action?: string;
     userMessage?: string;
-    contextSnippet?: string;
+    contextSnippet?: string; // Legacy/fallback
+    structuredContext?: string;
+    profileContext?: string;
+    recentContext?: string;
+    historyContext?: string;
     attempted?: string[];
     query_intent?: {
         intent: string;
@@ -369,13 +373,19 @@ const StepContent: React.FC<{
             return entryDate >= startDate && entryDate <= endDate;
         });
 
+        const rawStrategy = meta?.retrieval_strategy || 'Vector Search';
+        let displayStrategy = rawStrategy;
+        if (rawStrategy === 'HABIT_QUERY') displayStrategy = 'STRUCTURED FETCH — HABITS';
+        else if (rawStrategy === 'GOAL_QUERY') displayStrategy = 'STRUCTURED FETCH — GOALS';
+        else if (rawStrategy === 'HYBRID_RETRIEVAL') displayStrategy = 'HYBRID RETRIEVAL — SEMANTIC + STRUCTURED';
+
         return (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-4">
                 {/* 1. Vector Search */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-white/60 uppercase tracking-wider">
-                            {meta?.retrieval_strategy || 'Vector Search'}
+                            {displayStrategy}
                         </span>
                         {searchMs > 0 && <LatencyBadge ms={searchMs} />}
                     </div>
@@ -420,6 +430,8 @@ const StepContent: React.FC<{
                                 })}
                             </div>
                         </>
+                    ) : rawStrategy === 'HABIT_QUERY' || rawStrategy === 'GOAL_QUERY' ? (
+                        <span className="text-xs text-teal-400/80 italic">Successfully injected structured real-time data.</span>
                     ) : (
                         <span className="text-xs text-white/40 italic">No semantic matches found</span>
                     )}
@@ -815,7 +827,12 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
                         payload: {
                             userMessage: meta.userMessage,
                             retrievedContext: fullContext,
+                            structuredContext: meta.structuredContext,
+                            profileContext: meta.profileContext,
+                            recentContext: meta.recentContext,
+                            historyContext: meta.historyContext,
                             aiResponse: lastAIResponse ?? '',
+                            queryIntent: meta.query_intent?.intent,
                         }
                     }
                 });

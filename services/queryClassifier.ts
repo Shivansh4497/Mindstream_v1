@@ -8,7 +8,9 @@ export type QueryIntent =
   | 'TEMPORAL_TOPIC'
   | 'BEHAVIORAL'
   | 'ANALYTICAL'
-  | 'CONVERSATIONAL';
+  | 'CONVERSATIONAL'
+  | 'HABIT_QUERY'
+  | 'GOAL_QUERY';
 
 export interface ClassifiedQuery {
   intent: QueryIntent;
@@ -20,6 +22,7 @@ export interface ClassifiedQuery {
   endDate: Date | null;
   confidence: number;
   reasoning: string;
+  requiresStructuredContext?: boolean;
 }
 
 function applyPreChecks(query: string): string | null {
@@ -30,7 +33,20 @@ function applyPreChecks(query: string): string | null {
   
   if (!hasTemporalWindow) {
     if (/when did i|when was i|when have i/.test(q)) return 'SEMANTIC_TOPIC';
-    if (/\bstreak\b/.test(q) || /\bhabit(s)?\b/.test(q) || /\bconsisten(t|cy)\b/.test(q) || /completion rate/.test(q)) return 'BEHAVIORAL';
+    
+    const isMixedEmotional = /(overwhelm|feel|mood|cope|sad|depress|anxious|stress|happy|low)/.test(q);
+    const hasHabitKeywords = /(how is my .* going|am i consistent with|how often do i|\bhabit(s)?\b|\bworkout(s)?\b|\bexercis(e|ing)\b|\bsleep(ing)?\b|\bdiet\b|\bstreak\b|\bconsisten(t|cy)\b|completion rate)/.test(q);
+    const hasGoalKeywords = /\b(goal(s)?|intention(s)?|target(s)?|milestone(s)?|progress|on track)\b/.test(q);
+
+    // We can't set requiresStructuredContext from this deterministic function easily without refactoring,
+    // so if it's mixed, we bypass pre-checks and let the LLM classify it properly with the flag.
+    if (isMixedEmotional && (hasHabitKeywords || hasGoalKeywords)) {
+       // Let the LLM handle it to set requiresStructuredContext: true
+    } else {
+        if (hasHabitKeywords) return 'HABIT_QUERY';
+        if (hasGoalKeywords) return 'GOAL_QUERY';
+    }
+
     if (/\bpattern(s)?\b/.test(q)) return 'ANALYTICAL';
     if (/(most common|what topics|trend(s)?|frequent(ly)?)/.test(q)) return 'ANALYTICAL';
   }
@@ -58,7 +74,8 @@ export async function classifyQueryIntent(
       startDate: isTemporal ? temporal.startDate : null,
       endDate: isTemporal ? temporal.endDate : null,
       confidence: 1.0,
-      reasoning: 'Deterministic pre-check'
+      reasoning: 'Deterministic pre-check',
+      requiresStructuredContext: false
     };
   }
 
@@ -80,9 +97,11 @@ ${recentHistory || 'None'}
 Current query: "${userMessage}"
 
 PRE-CHECK RULES (apply in order before decision tree):
-1. "when did I" pattern: If query contains "when did I", "when have I", "when was I", or "when did I last" -> ALWAYS SEMANTIC_TOPIC. hasTemporalIntent MUST be false, and temporalExpression MUST be null. Never classify as TEMPORAL_TOPIC. (Example: "when did I last feel proud" -> SEMANTIC_TOPIC with hasTemporalIntent: false, temporalExpression: null).
-2. "streak" / "consistency" keywords: If query contains "streak", "my streak", "current streak", "streak going", "consistent", "consistency", or "completion rate" -> ALWAYS BEHAVIORAL. hasTemporalIntent MUST be false, and temporalExpression MUST be null. (Example: "how consistent am I with habits" -> BEHAVIORAL, hasTemporalIntent: false, temporalExpression: null).
-3. "habit" + time window: If query contains the word "habit" or a specific activity name AND an explicit time period (like "last 2 weeks", "this week", "last month") but does NOT ask about "streak", "consistency", or "completion rate" -> ALWAYS TEMPORAL_TOPIC. hasTemporalIntent MUST be true. (Example: "my meditation habit last 2 weeks" -> TEMPORAL_TOPIC).
+0. MIXED QUERY: If the query mixes emotional/reflective content with habits or goals (e.g. "I'm overwhelmed, what have I been doing to cope?", "feeling low, how is my routine holding up?") -> classify as SEMANTIC_TOPIC AND set requiresStructuredContext: true. Stop.
+1. HABIT QUERY: If the query mentions specific habit names, exercise types, physical activities, sleep, diet, or asks "how is my [activity] going", "am I consistent with", "how often do I" -> classify as HABIT_QUERY. Stop.
+2. GOAL QUERY: If the query asks about goals, intentions, targets, milestones, progress toward something, whether they're on track -> classify as GOAL_QUERY. Stop.
+3. "when did I" pattern: If query contains "when did I", "when have I", "when was I", or "when did I last" -> ALWAYS SEMANTIC_TOPIC. hasTemporalIntent MUST be false, and temporalExpression MUST be null. Never classify as TEMPORAL_TOPIC. (Example: "when did I last feel proud" -> SEMANTIC_TOPIC with hasTemporalIntent: false, temporalExpression: null).
+4. "habit" + time window: If query contains the word "habit" or a specific activity name AND an explicit time period (like "last 2 weeks", "this week", "last month") but does NOT ask about "streak", "consistency", or "completion rate" -> ALWAYS TEMPORAL_TOPIC. hasTemporalIntent MUST be true. (Example: "my meditation habit last 2 weeks" -> TEMPORAL_TOPIC).
 
 DECISION TREE (follow in order):
 1. CONVERSATIONAL: If query is a follow-up, acknowledgement, reaction (e.g. "interesting"), or conversational question (e.g. "what do you mean?", "tell me more") -> CONVERSATIONAL. Stop.
@@ -98,6 +117,8 @@ INTENT DEFINITIONS:
 - TEMPORAL_TOPIC: SPECIFIC topic within a time window. (e.g., "how has my anxiety been this week", "sleep quality over the last month").
 - SEMANTIC_TOPIC: Specific topic/emotion/memory lookup, no explicit time window. (e.g., "when did I last feel proud", "tell me about my running").
 - BEHAVIORAL: Habits, goals, streaks, tracking, consistency. (e.g., "am I hitting my goals").
+- HABIT_QUERY: Queries explicitly about specific habits, exercise, sleep, diet, consistency.
+- GOAL_QUERY: Queries explicitly about goals, milestones, progress, intentions.
 - ANALYTICAL: Patterns, trends, insights.
 - CONVERSATIONAL: Chat, follow-ups, acknowledgement, conversational questions. (e.g., "tell me more", "interesting", "what do you mean?").
 
@@ -108,8 +129,9 @@ EXTRACT:
 - detectedTopic: single main noun representing topic (e.g., "running", "anxiety") or null
 - confidence: 0.0-1.0
 - reasoning: brief explanation of classification
+- requiresStructuredContext: boolean, true ONLY if the query mixes emotional/reflective content with habits or goals. Default false.
 
-Return ONLY a valid JSON object matching this schema. The "intent" field MUST be one of these exact strings: "TEMPORAL_SUMMARY", "TEMPORAL_TOPIC", "SEMANTIC_TOPIC", "BEHAVIORAL", "ANALYTICAL", "CONVERSATIONAL". Do NOT use typos like "SEMIC_TOPIC" or any other values.
+Return ONLY a valid JSON object matching this schema. The "intent" field MUST be one of these exact strings: "TEMPORAL_SUMMARY", "TEMPORAL_TOPIC", "SEMANTIC_TOPIC", "BEHAVIORAL", "HABIT_QUERY", "GOAL_QUERY", "ANALYTICAL", "CONVERSATIONAL". Do NOT use typos like "SEMIC_TOPIC" or any other values.
 {
   "intent": "TEMPORAL_TOPIC",
   "hasTemporalIntent": false,
@@ -117,7 +139,8 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
   "topicKeywords": [],
   "detectedTopic": null,
   "confidence": 0.95,
-  "reasoning": "Explanation based on classification rules."
+  "reasoning": "Explanation based on classification rules.",
+  "requiresStructuredContext": false
 }`;
 
   try {
@@ -177,7 +200,8 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
       temporalExpression: finalTemporalExpression,
       detectedTopic,
       startDate,
-      endDate
+      endDate,
+      requiresStructuredContext: classified.requiresStructuredContext ?? false
     };
 
   } catch (error) {
@@ -192,7 +216,8 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
       startDate: null,
       endDate: null,
       confidence: 0.5,
-      reasoning: 'Classification failed, defaulting to semantic'
+      reasoning: 'Classification failed, defaulting to semantic',
+      requiresStructuredContext: false
     };
   }
 }

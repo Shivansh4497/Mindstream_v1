@@ -83,6 +83,10 @@ export interface AdaptiveRetrievalResult {
         topTags: string[];
         sentimentDistribution: Record<string, number>;
     };
+    structuredContext?: {
+        habits?: string;
+        goals?: string;
+    };
     classifierLatencyMs?: number;
     embeddingLatencyMs?: number;
 }
@@ -104,6 +108,7 @@ export async function adaptiveRetrieval(
     const semanticThreshold = isDemoUser ? 0.60 : 0.80;
 
     let matches: Array<Entry & { similarity?: number }> = [];
+    let structuredContext: { habits?: string; goals?: string } = {};
     const normalizedIntent = intent.intent?.trim() || 'SEMANTIC_TOPIC';
     let retrievalStrategy: string = normalizedIntent;
 
@@ -147,7 +152,8 @@ export async function adaptiveRetrieval(
                 console.error('[P1] SEMANTIC_TOPIC: preGeneratedEmbedding is UNDEFINED. Check getChatResponseStream() call site — embedding must be passed through to adaptiveRetrieval().');
                 return null;
             }
-            matches = await db.semanticSearchEntries(
+            
+            const semanticPromise = db.semanticSearchEntries(
                 userId,
                 userMessage,
                 5,
@@ -156,10 +162,72 @@ export async function adaptiveRetrieval(
                 undefined,
                 preGeneratedEmbedding
             );
-            retrievalStrategy = `Vector search · threshold ${semanticThreshold}`;
+
+            if (intent.requiresStructuredContext) {
+                const [semanticHits, habitsContext, goalsContext] = await Promise.all([
+                    semanticPromise,
+                    db.getHabitContextForChat(userId),
+                    db.getGoalContextForChat(userId)
+                ]);
+                matches = semanticHits;
+                if (habitsContext) structuredContext.habits = habitsContext;
+                if (goalsContext) structuredContext.goals = goalsContext;
+                retrievalStrategy = 'HYBRID_RETRIEVAL';
+            } else {
+                matches = await semanticPromise;
+                retrievalStrategy = `Vector search · threshold ${semanticThreshold}`;
+            }
             break;
             
+        case 'HABIT_QUERY':
         case 'BEHAVIORAL':
+            if (!preGeneratedEmbedding) {
+                console.error('[P1] BEHAVIORAL/HABIT_QUERY: preGeneratedEmbedding is UNDEFINED.');
+                return null;
+            }
+            
+            const [habitSemanticHits, habitContextStr] = await Promise.all([
+                db.semanticSearchEntries(
+                    userId,
+                    userMessage,
+                    3,
+                    semanticThreshold,
+                    undefined,
+                    undefined,
+                    preGeneratedEmbedding
+                ),
+                db.getHabitContextForChat(userId)
+            ]);
+            
+            matches = habitSemanticHits;
+            if (habitContextStr) structuredContext.habits = habitContextStr;
+            retrievalStrategy = normalizedIntent;
+            break;
+            
+        case 'GOAL_QUERY':
+            if (!preGeneratedEmbedding) {
+                console.error('[P1] GOAL_QUERY: preGeneratedEmbedding is UNDEFINED.');
+                return null;
+            }
+            
+            const [goalSemanticHits, goalContextStr] = await Promise.all([
+                db.semanticSearchEntries(
+                    userId,
+                    userMessage,
+                    3,
+                    semanticThreshold,
+                    undefined,
+                    undefined,
+                    preGeneratedEmbedding
+                ),
+                db.getGoalContextForChat(userId)
+            ]);
+            
+            matches = goalSemanticHits;
+            if (goalContextStr) structuredContext.goals = goalContextStr;
+            retrievalStrategy = 'GOAL_QUERY';
+            break;
+            
         case 'CONVERSATIONAL':
             return null;
             
@@ -185,10 +253,59 @@ export async function adaptiveRetrieval(
         entries: matches,
         retrievalStrategy,
         strategy: retrievalStrategy,
+        structuredContext: Object.keys(structuredContext).length > 0 ? structuredContext : undefined,
         classifierLatencyMs,
         embeddingLatencyMs: classifierLatencyMs
     };
 }
+
+const CONVERSATIONAL_INTELLIGENCE = `
+=== CONVERSATIONAL INTELLIGENCE ===
+
+You are NOT an AI assistant. You are a wise friend texting someone you care about.
+
+STEP 1: READ THE ROOM (Context-Based Detection)
+GOLDEN RULE: Match their energy. Don't over-interpret single words.
+
+1. VENTING (sharing emotions): Mirror briefly. Don't solve. 1-2 sentences.
+2. STUCK (decision paralysis): ONE fresh perspective. Not more analysis.
+3. EXPLORING (vague): Ask ONE clarifying question. Don't assume.
+4. CELEBRATING (sharing win): Celebrate WITH them. Let it land.
+5. ASKING FOR HELP: Give ONE clear, personalized answer.
+
+CRITICAL ANTI-PATTERNS:
+- DON'T assume one short word = disengaged
+- DON'T keep asking questions if they're not engaging
+
+STEP 2: VOICE RULES
+DO:
+- Use contractions: "You've", "That's", "I'm"
+- Keep it SHORT: 1-3 sentences max, one question at a time
+- Sound like texting: "Yeah", "Makes sense", "Got it"
+- Use fillers: "Look,", "Honestly,", "I mean,"
+
+NEVER USE:
+- Parenthetical asides like "(One thing to keep in mind...)" — feels robotic
+- Multiple paragraphs — keep it to 1-2 at most
+- Bullet points or lists in chat — too formal
+- Asterisks (*text*) or any markdown formatting — this is chat, not a document
+
+STEP 3: BREVITY
+ABSOLUTE MAX: 50 words. If you write more, you've failed.
+
+Format: [Brief mirror] + [ONE question OR insight — pick one, not both]
+
+STEP 4: RESPONSE VARIETY
+CRITICAL: Don't be a broken record. Vary your patterns.
+RHYTHM: After 2-3 questions, offer an observation or suggestion instead.
+
+FINAL CHECK:
+□ Is my response SHORT enough for mobile?
+□ Does it sound like a TEXT from a friend?
+□ Am I following THEIR lead, not forcing my agenda?
+□ Did I vary my response format from the last message?
+
+Remember: You're a companion who cares, not a productivity app. Listen. Understand. Occasionally nudge. Never lecture.`;
 
 export const buildSystemContext = (
     userProfile: string,
@@ -198,6 +315,7 @@ export const buildSystemContext = (
     personalitySystemPrompt: string
 ): string => {
     let contextString = `${personalitySystemPrompt}\n\n`;
+    contextString += `${CONVERSATIONAL_INTELLIGENCE}\n\n`;
     contextString += `${userProfile}\n\n`;
     contextString += `${recentContext}\n\n`;
 
@@ -206,6 +324,17 @@ export const buildSystemContext = (
             `- On ${new Date(e.timestamp).toLocaleDateString()}: "${e.text}"`
         ).join('\n');
         contextString += `[RETRIEVED CONTEXT]\n${matchesText}\n\n`;
+    }
+
+    if (layer4Results && layer4Results.structuredContext) {
+        contextString += `[STRUCTURED DATA - GROUNDED FACTS]\n`;
+        contextString += `Use these numbers exactly as provided. Never calculate or estimate your own values.\n\n`;
+        if (layer4Results.structuredContext.habits) {
+            contextString += `${layer4Results.structuredContext.habits}\n\n`;
+        }
+        if (layer4Results.structuredContext.goals) {
+            contextString += `${layer4Results.structuredContext.goals}\n\n`;
+        }
     }
 
     // Include last 3 complete turns = 6 messages + 1 user prompt from history
@@ -218,16 +347,12 @@ export const buildSystemContext = (
     }
 
     const GROUNDING_RULES = `
-GROUNDING RULES (apply to every response):
-- Only state facts present in [USER PROFILE], [LIVE HABITS], 
-  [ACTIVE GOALS], [RECENT ENTRIES], or [RETRIEVED CONTEXT] above.
-- Do not cite statistics, percentages, or numeric claims from 
-  previous Assistant responses in conversation history — those 
-  are not verified sources of user data.
-- Only use completion rates and streak counts that are explicitly 
-  provided in [LIVE HABITS]. Do not calculate or estimate your own.
-- If you cannot ground a claim in the labeled context above, 
-  do not make it.
+CRITICAL GROUNDING RULES:
+1. When answering based on [RETRIEVED CONTEXT], YOU MUST CITE THE DATE of the journal entry you are drawing from. Example: "On May 12th, you wrote that..."
+2. NEVER mix up the user's past entries with their current prompt.
+3. If the retrieved context doesn't contain the answer, say so. Do not invent memories.
+4. If there is NO [RETRIEVED CONTEXT] provided, and the user asks a question about their past, you MUST state that you do not have enough logged data to answer.
+5. CRITICAL: You must NEVER state specific numbers (streak counts, completion rates, day counts, percentages) unless that exact number appears verbatim in the [STRUCTURED DATA - GROUNDED FACTS] block above. If no structured data is available for a question about habits or goals, say you don't have enough logged data to answer precisely rather than estimating.
 `;
     contextString += GROUNDING_RULES;
 
@@ -263,6 +388,16 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
 
     // Build comprehensive coach memory block
     let coachMemory = '';
+
+    // Handle special summary requests gracefully in character
+    if (retrieval?.intent?.intent === 'TEMPORAL_SUMMARY' || retrieval?.intent?.intent === 'TEMPORAL_TOPIC') {
+        coachMemory += `\n\n[SPECIAL INSTRUCTION: TIME-BASED SUMMARY REQUEST]\nThe user is explicitly asking you to summarize their past entries.
+CRITICAL RULES FOR SUMMARIZING:
+1. DO NOT break character. You are still their conversational coach, NOT a data analyst or reporter.
+2. DO NOT output long, clinical breakdowns, bullet points, or markdown tables.
+3. Instead, provide a brief, conversational reflection (max 3-4 sentences) highlighting their dominant emotional arc or key actions related to their question.
+4. Naturally weave in 1 or 2 specific facts from their data so they feel seen, then ask ONE brief follow-up question.`;
+    }
 
     // 1. Who they were when they started
     if (onboardingContext) {
@@ -322,6 +457,13 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
     
     const historyTokens = Math.ceil(historyContext.length / 4);
 
+    let structuredContextText = '';
+    if (retrieval && retrieval.structuredContext) {
+        structuredContextText = `[STRUCTURED DATA - GROUNDED FACTS]\n`;
+        if (retrieval.structuredContext.habits) structuredContextText += `${retrieval.structuredContext.habits}\n`;
+        if (retrieval.structuredContext.goals) structuredContextText += `${retrieval.structuredContext.goals}\n`;
+    }
+
     enrichLastAIMeta({
         profile_tokens: profileTokens,
         recent_tokens: recentTokens,
@@ -337,7 +479,14 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
         query_intent: retrieval?.intent,
         retrieval_strategy: retrieval?.retrievalStrategy,
         classifier_latency_ms: retrieval?.classifierLatencyMs,
-        embedding_latency_ms: retrieval?.embeddingLatencyMs
+        embedding_latency_ms: retrieval?.embeddingLatencyMs,
+        
+        // Context fields for GlassBox evaluator
+        contextSnippet: retrievedContextText || "No context provided",
+        structuredContext: structuredContextText || undefined,
+        profileContext: userProfile || undefined,
+        recentContext: recentContext || undefined,
+        historyContext: historyContext || undefined,
     });
 
     const chatHistory = history.slice(0, -1).map(msg => ({
@@ -354,20 +503,12 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
         });
 
         if (retrieval?.intent) {
-            callAIProxy('evaluate-response', {
-                userMessage,
-                profileContext: userProfile,
-                recentContext,
-                retrievedContext: retrievedContextText,
-                historyContext,
-                aiResponse: result.response,
-                queryIntent: retrieval.intent.intent
-            }).then((evalResult: any) => {
-                console.log("[RAGAS EVALUATION]", evalResult);
-                enrichLastAIMeta({
-                  // Store evaluation if needed
-                });
-            }).catch(console.error);
+            let structuredContextText = '';
+            if (retrieval.structuredContext) {
+                structuredContextText = `[STRUCTURED DATA - GROUNDED FACTS]\n`;
+                if (retrieval.structuredContext.habits) structuredContextText += `${retrieval.structuredContext.habits}\n`;
+                if (retrieval.structuredContext.goals) structuredContextText += `${retrieval.structuredContext.goals}\n`;
+            }
         }
 
     } catch (e: any) {

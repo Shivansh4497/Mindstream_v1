@@ -1,5 +1,6 @@
 import React from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuth } from '../context/AuthContext';
 import { AISuggestion, ExtractionChip } from '../types';
 import { ActionableSuggestion } from './ActionableSuggestion';
@@ -39,8 +40,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             : 'bg-dark-surface-light rounded-bl-lg'
             }`}
         >
-          <div className="prose prose-invert prose-p:my-0 p-4">
-            <Markdown>{text}</Markdown>
+          <div className="prose prose-invert prose-p:my-0 p-4 w-full overflow-x-auto">
+            <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
           </div>
           {suggestions && suggestions.length > 0 && (
             <div className="p-3 border-t border-brand-teal/20 flex flex-col gap-2">

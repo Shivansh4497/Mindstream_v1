@@ -26,7 +26,8 @@ import { EditEntryModal } from './components/EditEntryModal';
 import { EditHabitModal } from './components/EditHabitModal';
 import { EditIntentionModal } from './components/EditIntentionModal';
 import { HabitsView } from './components/HabitsView';
-
+import { HabitsInputBar } from './components/HabitsInputBar';
+import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { SettingsView } from './components/SettingsView';
 // LifeAreaDashboard unused?
 import { InsightsView } from './components/InsightsView';
@@ -283,10 +284,13 @@ export const MindstreamApp: React.FC = () => {
 
     // Show Landing Screen
     if (onboardingStep === ONBOARDING_NOT_STARTED && user) {
-        if (isDemo) {
+        if (isDemoUser) {
             return (
-                <div className="h-screen w-screen bg-brand-indigo flex flex-col items-center justify-center">
+                <div className="h-screen w-screen bg-brand-indigo flex flex-col items-center justify-center gap-4">
                     <div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
+                    <div className="text-center mt-4 animate-pulse">
+                        <p className="text-brand-teal font-medium mb-1">Loading up your Demo Environment</p>
+                    </div>
                 </div>
             );
         }
@@ -325,8 +329,7 @@ export const MindstreamApp: React.FC = () => {
                 <div className="w-12 h-12 border-4 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
                 {isSeeding && (
                     <div className="text-center mt-4 animate-pulse">
-                        <p className="text-brand-teal font-medium mb-1">Preparing Demo Environment...</p>
-                        <p className="text-brand-slate text-sm">Seeding journal entries & habits</p>
+                        <p className="text-brand-teal font-medium mb-1">Loading up your Demo Environment</p>
                     </div>
                 )}
                 {loadingTimedOut && !isSeeding && (
@@ -488,6 +491,11 @@ export const MindstreamApp: React.FC = () => {
                                         activeFrequency={activeHabitFrequency}
                                         onFrequencyChange={setActiveHabitFrequency}
                                     />
+                                    <HabitsInputBar
+                                        onAddHabit={actions.handleAddHabit}
+                                        activeFrequency={activeHabitFrequency}
+                                        isLoading={state.isAddingHabit}
+                                    />
                                 </motion.div>
                             )}
 
@@ -508,6 +516,7 @@ export const MindstreamApp: React.FC = () => {
                                         onEditIntention={(intention) => setIntentionToEdit(intention)}
                                         isLoading={!state.isDataLoaded}
                                     />
+                                    <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
                                 </motion.div>
                             )}
 

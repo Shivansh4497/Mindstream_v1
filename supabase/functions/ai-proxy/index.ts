@@ -19,19 +19,21 @@ const geminiKey = Deno.env.get('GEMINI_API_KEY');
 
 // Groq models (primary - most capacity)
 const GROQ_API_BASE = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL_PRIMARY = 'llama-3.3-70b-versatile';
-const GROQ_MODEL_BACKUP = 'llama-3.1-8b-instant';
+const GROQ_MODEL_120B = 'openai/gpt-oss-120b';
+const GROQ_MODEL_70B = 'llama-3.3-70b-versatile';
+const GROQ_MODEL_17B = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_MODEL_20B = 'openai/gpt-oss-20b';
+const GROQ_MODEL_8B = 'llama-3.1-8b-instant';
 
 // Gemini models (fallback)
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_MODEL_PRIMARY = 'gemini-2.0-flash';
-const GEMINI_MODEL_BACKUP = 'gemini-2.5-flash-lite';
+const GEMINI_MODEL_PRIMARY = 'gemini-1.5-flash';
+const GEMINI_MODEL_BACKUP = 'gemini-1.5-flash-8b';
 
 // Startup logging
 console.log('[AI Proxy] Initializing multi-provider system...');
 console.log('[AI Proxy] GROQ_API_KEY present:', !!groqKey);
 console.log('[AI Proxy] GEMINI_API_KEY present:', !!geminiKey);
-console.log('[AI Proxy] Provider chain: Groq 70B -> Groq 8B -> Gemini Flash -> Gemini Lite -> Cached');
 
 interface AIRequest {
     action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response' | 'build-ai-profile';
@@ -186,13 +188,23 @@ function estimateTokens(text: string): number {
 
 async function callAI(prompt: string, action: string): Promise<AICallResult> {
     const providers = [
-        { name: 'Groq 70B', fn: async () => callGroqWithModel(GROQ_MODEL_PRIMARY, prompt), available: !!groqKey },
-        { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_BACKUP, prompt), available: !!groqKey },
+        { name: 'Groq 120B', fn: async () => callGroqWithModel(GROQ_MODEL_120B, prompt), available: !!groqKey },
+        { name: 'Groq 70B', fn: async () => callGroqWithModel(GROQ_MODEL_70B, prompt), available: !!groqKey },
+        { name: 'Groq 17B Scout', fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt), available: !!groqKey },
+        { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt), available: !!groqKey },
         { name: 'Gemini Flash', fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
     ];
 
     if (action === 'evaluate-response' || action === 'extract-keywords') {
-        providers.push({ name: 'Gemini Lite', fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey });
+        // Clear standard providers and set background-optimized chain
+        providers.length = 0;
+        providers.push(
+            { name: 'Groq 17B Scout', fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt), available: !!groqKey },
+            { name: 'Groq 20B', fn: async () => callGroqWithModel(GROQ_MODEL_20B, prompt), available: !!groqKey },
+            { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt), available: !!groqKey },
+            { name: 'Gemini Lite', fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey },
+            { name: 'Gemini Flash', fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey }
+        );
     }
 
     const attempted: string[] = [];
@@ -975,7 +987,7 @@ Rules:
                 case 'evaluate-response': {
                     const clamp = (n: number, min: number, max: number) => Math.round(Math.min(max, Math.max(min, n || 0)));
                     
-                    const { userMessage, retrievedContext, profileContext, recentContext, historyContext, aiResponse, queryIntent } = payload;
+                    const { userMessage, retrievedContext, structuredContext, profileContext, recentContext, historyContext, aiResponse, queryIntent } = payload;
                     const prompt = `You are evaluating a RAG system response using RAGAS metrics.
 
 QUERY INTENT: ${queryIntent || 'UNKNOWN'}
@@ -983,6 +995,7 @@ USER QUERY: "${userMessage}"
 PROFILE CONTEXT: ${profileContext || 'None'}
 RECENT CONTEXT: ${recentContext || 'None'}
 RETRIEVED CONTEXT: ${retrievedContext || 'None'}
+STRUCTURED CONTEXT: ${structuredContext || 'None'}
 HISTORY CONTEXT: ${historyContext || 'None'}
 AI RESPONSE: "${aiResponse}"
 
@@ -990,11 +1003,12 @@ Score these 4 RAGAS metrics (0-100 each):
 
 FAITHFULNESS: Is every claim in the response grounded in the provided contexts?
 Score 100 if fully grounded, 0 if hallucinated.
+CRITICAL FOR FAITHFULNESS: If the response cites specific numbers (streaks, completion rates, goals) that exactly match the STRUCTURED CONTEXT, you MUST reward them as grounded facts, not penalize them as hallucinations.
 
 ANSWER_RELEVANCY: Does the response directly address what the user asked?
 Score 100 if fully addresses query, 0 if off-topic.
 
-CONTEXT_PRECISION: Of the provided contexts, how much was actually useful for the answer?
+CONTEXT_PRECISION: Of the provided contexts (including structured context), how much was actually useful for the answer?
 Score 100 if all context was useful, 0 if irrelevant.
 
 CONTEXT_RECALL: Did the provided contexts contain all information needed to answer?
@@ -1215,6 +1229,9 @@ If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
                 throw parseError;
             }
             result = getCachedResponse(action);
+            if (action === 'chat') {
+                result.response = `I'm having trouble connecting right now — Error: ${parseError.message}. Please try again.`;
+            }
         }
 
         console.log(`[AI Proxy] Success for action: ${action}`);

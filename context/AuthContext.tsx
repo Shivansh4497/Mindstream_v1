@@ -133,6 +133,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   await db.backfillMissingEmbeddings(user.id);
                 } catch (seedError) {
                   console.error('[AuthContext] Failed to seed demo data:', seedError);
+                  await supabase!.from('analytics_events').insert({
+                    user_id: user.id,
+                    event_name: 'demo_seed_error',
+                    properties: { error: String(seedError), details: JSON.stringify(seedError) },
+                    client_event_id: `seed_error_${Date.now()}`
+                  });
                 } finally {
                   setIsSeeding(false); // RELEASE UI
                 }

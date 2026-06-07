@@ -54,6 +54,11 @@ export interface AIProxyMeta {
     user_message_tokens?: number;
     // For quality evaluation
     userMessage?: string;
+    contextSnippet?: string;
+    structuredContext?: string;
+    profileContext?: string;
+    recentContext?: string;
+    historyContext?: string;
     // Context Inventory for RAG component
     context_inventory?: {
         recentEntriesCount: number;
