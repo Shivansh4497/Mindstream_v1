@@ -4,14 +4,19 @@ import { useAuth } from '../context/AuthContext';
 import * as db from '../services/dbService';
 import * as gemini from '../services/geminiService';
 import * as nudgeEngine from '../services/nudgeEngine';
+import { runCorrelationEngine } from '../services/correlationEngine';
+import { runProfileEngine } from '../services/profileEngine';
 import type { Entry, Reflection, Intention, Message, IntentionTimeframe, Habit, HabitLog, HabitFrequency, EntrySuggestion, AIStatus, UserContext, HabitCategory, InsightCard, Nudge, Profile } from '../types';
 import { isSameDay, getWeekId, getMonthId } from '../utils/date';
 import { calculateStreak } from '../utils/streak';
+import { useChatSession } from './useChatSession';
+import { runExtractionPipeline } from '../services/extractionService';
+import type { ExtractionChip } from '../types';
 
-const INITIAL_GREETING = "Hey! I'm here to help you reflect on what's on your mind. I can see your journal entries and help you spot patterns. What's going on today?";
 const PAGE_SIZE = 20;
 
 import { DemoLimitError, enrichLastAIMeta } from '../services/geminiClient';
+import { supabase } from '../services/supabaseClient';
 
 export const useAppLogic = () => {
     const { user, isSeeding } = useAuth();
@@ -22,8 +27,19 @@ export const useAppLogic = () => {
     const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
     const [insights, setInsights] = useState<InsightCard[]>([]);
     const [nudges, setNudges] = useState<Nudge[]>([]);
+    const [correlationInsight, setCorrelationInsight] = useState<{
+        pattern_text: string;
+        confidence: number;
+    } | null>(null);
     const [autoReflections, setAutoReflections] = useState<Reflection[]>([]);
-    const [messages, setMessages] = useState<Message[]>([{ sender: 'ai', text: INITIAL_GREETING, id: 'initial' }]);
+    const [messages, setMessages] = useState<Message[]>([]);
+    
+    const { getSessionId, isResumed } = useChatSession(
+        user?.id ?? null,
+        messages,
+        'stoic',  // currentPersonality default
+        setMessages
+    );
 
     const [isDataLoaded, setIsDataLoaded] = useState(false);
     const [aiStatus, setAiStatus] = useState<AIStatus>('initializing');
@@ -157,6 +173,28 @@ export const useAppLogic = () => {
             return () => clearTimeout(timer);
         }
     }, [isDataLoaded, user, entries.length, habitLogs.length, intentions.length]);
+
+    // Check for Correlation Insights and AI Profile updates
+    useEffect(() => {
+        if (!isDataLoaded || !user) return;
+        
+        // Backfill missing embeddings — highest priority, run first
+        db.backfillMissingEmbeddings(user.id).catch(() => {});
+
+        // Run correlation engine weekly — fire and forget
+        runCorrelationEngine(user.id, entries, habits, habitLogs)
+            .then(result => {
+                if (result && isMounted.current) {
+                    setCorrelationInsight(result);
+                }
+            })
+            .catch(() => {});
+
+        // Run profile engine — fire and forget
+        runProfileEngine(user.id, entries, habits, habitLogs, intentions)
+            .catch(() => {});
+
+    }, [isDataLoaded]);
 
     const handleLoadMore = async () => {
         if (!user || isLoadingMore || !hasMore) return;
@@ -416,13 +454,72 @@ export const useAppLogic = () => {
             // Enrich parse_ms approximation after response
             enrichLastAIMeta({ parse_ms: 12 });
 
+            // Phase 2: Run extraction pipeline after AI responds
+            // Fire and forget — non-blocking, never delays chat response
+            if (user && !isDemoUser) {
+              runExtractionPipeline(
+                user.id,
+                text,                    // the original user message
+                [...messages, newUserMsg],
+                habits,
+                intentions
+              ).then(async (result) => {
+                if (!isMounted.current || result.action === 'none') return;
+
+                let createdItemId: string | null = null;
+
+                // Auto-act on definite signals
+                if (result.commitment_level === 'definite') {
+                  if (result.action === 'create_habit' && result.name) {
+                    const habit = await handleAddHabit(result.name, (result.frequency as HabitFrequency) ?? 'daily');
+                    createdItemId = habit?.id ?? null;
+                  } else if (result.action === 'log_habit' && result.name) {
+                    const habit = habits.find(h => h.name.toLowerCase() === result.name!.toLowerCase());
+                    if (habit) {
+                      await handleToggleHabit(habit.id);
+                      createdItemId = habit.id;
+                    }
+                  } else if (result.action === 'create_goal' && result.name) {
+                    const intention = await handleAddIntention(result.name, result.due_date ? new Date(result.due_date) : null, result.is_life_goal ?? false);
+                    createdItemId = intention?.id ?? null;
+                  }
+                }
+
+                // Attach extraction chip to the last AI message
+                const chip: ExtractionChip = {
+                  id: crypto.randomUUID(),
+                  action: result.action as any,
+                  name: result.name!,
+                  commitment_level: result.commitment_level as any,
+                  status: result.commitment_level === 'definite' ? 'confirmed' : 'pending',
+                  itemId: createdItemId ?? undefined
+                };
+
+                setMessages(prev => {
+                  const updated = [...prev];
+                  // Find last AI message and attach chip
+                  for (let i = updated.length - 1; i >= 0; i--) {
+                    if (updated[i].sender === 'ai') {
+                      updated[i] = { ...updated[i], extraction: chip };
+                      break;
+                    }
+                  }
+                  return updated;
+                });
+              }).catch(err => {
+                // Extraction failure is silent — never breaks chat
+                console.warn('[Extraction] Pipeline failed silently:', err);
+              });
+            }
+
         } catch (error) {
+            console.error('[handleSendMessage] Exception thrown:', error);
             if (isMounted.current) {
-                if (error instanceof DemoLimitError) {
+                if (error instanceof DemoLimitError || (error as any)?.name === 'DemoLimitError') {
                     setShowDemoLimitModal(true);
                     setMessages(prev => [...prev, { sender: 'ai', text: "You've used all your demo AI calls! Create a free account to keep exploring." }]);
                 } else {
-                    setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble connecting right now." }]);
+                    setMessages(prev => [...prev, { sender: 'ai', text: `I'm having trouble connecting right now. (Error: ${error instanceof Error ? error.message : String(error)})` }]);
                 }
             }
         } finally {
@@ -448,6 +545,7 @@ export const useAppLogic = () => {
 
             const h = await db.addHabit(user.id, n, emoji, category, f);
             if (isMounted.current && h) setHabits(prev => [...prev, h]);
+            return h;
         } finally {
             if (isMounted.current) setIsAddingHabit(false);
         }
@@ -490,7 +588,7 @@ export const useAppLogic = () => {
                 user.id, text, dueDate, isLifeGoal, false, onAIEnriched
             );
 
-            if (!isMounted.current) return;
+            if (!isMounted.current) return savedIntention;
 
             if (savedIntention) {
                 // Replace temp with saved
@@ -503,6 +601,7 @@ export const useAppLogic = () => {
                 setIntentions(prev => prev.filter(i => i.id !== tempId));
                 showToast('Failed to save goal. Try again.');
             }
+            return savedIntention;
         } catch (error) {
             console.error('Error adding intention:', error);
             if (isMounted.current) {
@@ -570,9 +669,49 @@ export const useAppLogic = () => {
         }
     };
 
-    const handleDismissNudge = async (nudge: Nudge) => {
-        setNudges(prev => prev.filter(n => n.id !== nudge.id));
-        await db.updateNudgeStatus(nudge.id, 'dismissed');
+    const handleDismissNudge = async (nudgeId: string) => {
+        if (!user) return;
+        await db.updateNudgeStatus(nudgeId, 'dismissed');
+        setNudges(prev => prev.filter(n => n.id !== nudgeId));
+    };
+
+    const handleConfirmExtraction = async (chip: ExtractionChip) => {
+        if (!user) return;
+        let itemId: string | null = null;
+
+        if (chip.action === 'create_habit' && chip.name) {
+            const habit = await handleAddHabit(chip.name, 'daily');
+            itemId = habit?.id ?? null;
+        } else if (chip.action === 'create_goal' && chip.name) {
+            const intention = await handleAddIntention(chip.name, null, false);
+            itemId = intention?.id ?? null;
+        }
+
+        // Update chip status to confirmed + attach itemId
+        setMessages(prev => prev.map(msg =>
+            msg.extraction?.id === chip.id
+                ? { ...msg, extraction: { ...msg.extraction, status: 'confirmed', itemId: itemId ?? undefined } }
+                : msg
+        ));
+    };
+
+    const handleUndoExtraction = async (chip: ExtractionChip) => {
+        if (!chip.itemId) return;
+
+        if (chip.action === 'create_habit' || chip.action === 'log_habit') {
+            await db.deleteHabit(chip.itemId);
+            setHabits(prev => prev.filter(h => h.id !== chip.itemId));
+        } else if (chip.action === 'create_goal') {
+            await db.deleteIntention(chip.itemId);
+            setIntentions(prev => prev.filter(i => i.id !== chip.itemId));
+        }
+
+        // Update chip status to undone
+        setMessages(prev => prev.map(msg =>
+            msg.extraction?.id === chip.id
+                ? { ...msg, extraction: { ...msg.extraction, status: 'undone' } }
+                : msg
+        ));
     };
 
     /**
@@ -584,6 +723,7 @@ export const useAppLogic = () => {
 
         console.log('[refreshAllData] Reloading all data from DB');
 
+        setIsDataLoaded(false);
         // Reset all state to empty immediately
         setEntries([]);
         setReflections([]);
@@ -593,7 +733,7 @@ export const useAppLogic = () => {
         setInsights([]);
         setAutoReflections([]);
         setNudges([]);
-        setMessages([{ sender: 'ai', text: "Hello! I'm Mindstream. You can ask me anything about your thoughts, feelings, or goals. How can I help you today?" }]);
+        setMessages([]);
         setHasMore(true);
 
         // Reload from DB
@@ -629,6 +769,8 @@ export const useAppLogic = () => {
             console.log('[refreshAllData] Data reload complete');
         } catch (error) {
             console.error('[refreshAllData] Error reloading data:', error);
+        } finally {
+            if (isMounted.current) setIsDataLoaded(true);
         }
     };
 
@@ -644,8 +786,14 @@ export const useAppLogic = () => {
         }
     }, [isSeeding]);
 
+    const handleDismissCorrelation = async () => {
+        setCorrelationInsight(null);
+        const weekId = getWeekId();
+        if (user) await db.dismissCorrelationInsight(user.id, weekId);
+    };
+
     return {
-        state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore, pendingInsight, accountCreatedAt, showDemoLimitModal, queryId },
-        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleToggleStar, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections, setPendingInsight, setIntentions, refreshAllData, setIsChatLoading, setShowDemoLimitModal }
+        state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, correlationInsight, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore, pendingInsight, accountCreatedAt, showDemoLimitModal, queryId, isResumed },
+        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleToggleStar, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, handleDismissCorrelation, handleConfirmExtraction, handleUndoExtraction, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections, setPendingInsight, setIntentions, refreshAllData, setIsChatLoading, setShowDemoLimitModal }
     };
 };

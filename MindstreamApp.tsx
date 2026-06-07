@@ -15,7 +15,7 @@ import { SearchModal } from './components/SearchModal';
 import { ChatView } from './components/ChatView';
 import { ChatInputBar } from './components/ChatInputBar';
 import { IntentionsView } from './components/IntentionsView';
-import { IntentionsInputBar } from './components/IntentionsInputBar';
+
 // reflections view unused?
 import { ThematicModal } from './components/ThematicModal';
 import { AIStatusBanner } from './components/AIStatusBanner';
@@ -26,7 +26,7 @@ import { EditEntryModal } from './components/EditEntryModal';
 import { EditHabitModal } from './components/EditHabitModal';
 import { EditIntentionModal } from './components/EditIntentionModal';
 import { HabitsView } from './components/HabitsView';
-import { HabitsInputBar } from './components/HabitsInputBar';
+
 import { SettingsView } from './components/SettingsView';
 // LifeAreaDashboard unused?
 import { InsightsView } from './components/InsightsView';
@@ -427,6 +427,9 @@ export const MindstreamApp: React.FC = () => {
                                         userId={user?.id}
                                         entryPoint={onboardingStep === ONBOARDING_QUICK_START ? 'quick_start' : onboardingStep === ONBOARDING_GUIDED_COMPLETE ? 'guided' : 'organic'}
                                         isDemo={isDemo}
+                                        isResumed={state.isResumed}
+                                        onConfirmExtraction={actions.handleConfirmExtraction}
+                                        onUndoExtraction={actions.handleUndoExtraction}
                                     />
                                     <div className="p-4 bg-brand-indigo border-t border-white/5">
                                         {/* GlassBox toggle for demo users */}
@@ -485,11 +488,6 @@ export const MindstreamApp: React.FC = () => {
                                         activeFrequency={activeHabitFrequency}
                                         onFrequencyChange={setActiveHabitFrequency}
                                     />
-                                    <HabitsInputBar
-                                        onAddHabit={actions.handleAddHabit}
-                                        activeFrequency={activeHabitFrequency}
-                                        isLoading={state.isAddingHabit}
-                                    />
                                 </motion.div>
                             )}
 
@@ -510,7 +508,6 @@ export const MindstreamApp: React.FC = () => {
                                         onEditIntention={(intention) => setIntentionToEdit(intention)}
                                         isLoading={!state.isDataLoaded}
                                     />
-                                    <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
                                 </motion.div>
                             )}
 
@@ -649,6 +646,8 @@ export const MindstreamApp: React.FC = () => {
                                         }}
                                         isGeneratingYearly={isGeneratingYearly}
                                         accountCreatedAt={state.accountCreatedAt}
+                                        correlationInsight={state.correlationInsight}
+                                        onDismissCorrelation={actions.handleDismissCorrelation}
                                     />
                                 </motion.div>
                             )}

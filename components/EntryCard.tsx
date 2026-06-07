@@ -18,6 +18,25 @@ interface EntryCardProps {
   onAcceptSuggestion?: (entryId: string, suggestion: EntrySuggestion) => void;
 }
 
+const SENTIMENT_COLORS: Record<string, string> = {
+  // Positive
+  Joyful: 'border-emerald-400',
+  Grateful: 'border-emerald-400',
+  Proud: 'border-emerald-400',
+  Hopeful: 'border-teal-400',
+  Content: 'border-teal-400',
+  // Neutral
+  Reflective: 'border-blue-400',
+  Inquisitive: 'border-blue-400',
+  Observational: 'border-gray-400',
+  Confused: 'border-gray-400',
+  // Negative
+  Anxious: 'border-amber-400',
+  Frustrated: 'border-amber-400',
+  Overwhelmed: 'border-red-400',
+  Sad: 'border-red-400',
+};
+
 const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): string => {
   switch (sentiment) {
     // Positive
@@ -69,8 +88,10 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
     };
   }, []);
 
+  const sentimentBorderClass = entry.primary_sentiment ? (SENTIMENT_COLORS[entry.primary_sentiment] ?? 'border-gray-600') : (isChatTakeaway ? 'border-purple-400' : 'border-gray-600');
+
   return (
-    <div className={`bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] ${isProcessing ? 'opacity-70' : ''} ${isChatTakeaway ? 'border-l-4 border-purple-400' : ''}`}>
+    <div className={`bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] border-l-4 ${sentimentBorderClass} ${isProcessing ? 'opacity-70' : ''}`}>
 
       <div className="flex justify-between items-start mb-3 gap-4">
         <div className="flex-grow">

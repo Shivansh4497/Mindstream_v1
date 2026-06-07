@@ -127,6 +127,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   if (seedErrorPayload) throw seedErrorPayload;
 
                   console.log('[AuthContext] 🧪 Demo data seeded successfully. Result:', JSON.stringify(seedData));
+                  
+                  // Backfill embeddings immediately so RAG works on first use
+                  console.log('[AuthContext] 🧪 Backfilling embeddings for demo entries...');
+                  await db.backfillMissingEmbeddings(user.id);
                 } catch (seedError) {
                   console.error('[AuthContext] Failed to seed demo data:', seedError);
                 } finally {

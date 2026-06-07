@@ -298,6 +298,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
   const [selectedTrigger, setSelectedTrigger] = useState<string | null>(null);
   const [elaboration, setElaboration] = useState('');
   const [insight, setInsight] = useState<InstantInsight | null>(null);
+  const [selectedPersonality, setSelectedPersonality] = useState<string | null>(null);
 
   // Enhancements
   const [isProcessing, setIsProcessing] = useState(false);
@@ -530,6 +531,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         primary_sentiment: selectedSentiment as any,
       });
 
+      // Save onboarding context
+      await db.saveOnboardingContext(userId, {
+        sentiment: selectedSentiment,
+        life_area: selectedArea,
+        trigger: selectedTrigger,
+        elaboration_summary: elaboration.substring(0, 300),
+        personality_id: selectedPersonality ?? 'stoic',
+      });
+
       // Skip straight to the insight moment (no suggestions step)
       setStep('awe');
     } catch (error) {
@@ -619,7 +629,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {/* Step 1.5: Personality */}
       {step === 'personality' && (
         <div className="w-full max-w-6xl px-6 animate-fade-in relative z-10 h-full overflow-y-auto py-10 flex items-center justify-center">
-          <PersonalitySelector onSelect={() => setStep('spark')} />
+          <PersonalitySelector onSelect={(id) => { setSelectedPersonality(id); setStep('spark'); }} />
         </div>
       )}
 

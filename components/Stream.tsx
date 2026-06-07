@@ -86,6 +86,36 @@ export const Stream: React.FC<StreamProps> = ({
     );
   }, [intentions]);
 
+  const todayEntries = useMemo(() => entries.filter(e => isSameDay(new Date(e.timestamp), new Date())), [entries]);
+  const dominantSentiment = useMemo(() => {
+    const counts = todayEntries.reduce((acc, e) => {
+      if (e.primary_sentiment) acc[e.primary_sentiment] = (acc[e.primary_sentiment] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  }, [todayEntries]);
+
+  const MOOD_GRADIENTS: Record<string, string> = {
+    positive: 'from-teal-900/40 to-transparent',
+    neutral: 'from-blue-900/30 to-transparent',
+    negative: 'from-amber-900/30 to-transparent',
+  };
+
+  const SENTIMENT_VALENCE: Record<string, 'positive'|'neutral'|'negative'> = {
+    Joyful: 'positive', Grateful: 'positive', Proud: 'positive', Hopeful: 'positive', Content: 'positive',
+    Reflective: 'neutral', Inquisitive: 'neutral', Observational: 'neutral', Confused: 'neutral',
+    Anxious: 'negative', Frustrated: 'negative', Overwhelmed: 'negative', Sad: 'negative',
+  };
+
+  const SENTIMENT_EMOJIS: Record<string, string> = {
+    Joyful: '😄', Grateful: '🙏', Proud: '🌟', Hopeful: '🌱', Content: '😌',
+    Reflective: '🤔', Inquisitive: '🧐', Observational: '👀', Confused: '❓',
+    Anxious: '😰', Frustrated: '😤', Overwhelmed: '😵', Sad: '😢'
+  };
+
+  const gradientClass = dominantSentiment ? MOOD_GRADIENTS[SENTIMENT_VALENCE[dominantSentiment] || 'neutral'] : '';
+  const moodEmoji = dominantSentiment ? SENTIMENT_EMOJIS[dominantSentiment] : '';
+
   if (feedItems.length === 0) {
     return (
       <div className="h-full flex flex-col">
@@ -97,9 +127,14 @@ export const Stream: React.FC<StreamProps> = ({
 
   return (
     <div>
+      {todayEntries.length > 0 && dominantSentiment && (
+        <div className={`h-16 flex items-center px-4 bg-gradient-to-b ${gradientClass}`}>
+          <span className="text-gray-300 font-medium text-sm flex items-center gap-2">
+            Today {moodEmoji && <span className="text-lg">{moodEmoji}</span>}
+          </span>
+        </div>
+      )}
       {todaysIntentions.length > 0 && <TodaysFocusBanner intentions={todaysIntentions} />}
-
-
 
       <div className="p-4">
         {sortedDates.map(date => {

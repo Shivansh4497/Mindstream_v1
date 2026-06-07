@@ -16,7 +16,11 @@ export type AIProxyAction =
     | 'monthly-reflection'
     | 'chat-summary'
     | 'evaluate-response'
-    | 'classify-intent';
+    | 'classify-intent'
+    | 'classify-behavior'
+    | 'build-ai-profile'
+    | 'extract-behavior'
+    | 'summarise-session';
 
 export interface AIProxyMeta {
     provider?: string;

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Volume2, VolumeX, Share2, Check, FileText, Loader2 } from 'lucide-react';
-import { Message, AISuggestion, Entry } from '../types';
+import { Message, AISuggestion, Entry, ExtractionChip } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { speak, stopSpeaking, initializeTTS } from '../utils/tts';
 import { ChatSharingModal } from './ChatSharingModal';
@@ -17,6 +17,9 @@ interface ChatViewProps {
   onTakeawaySaved?: (entry: Entry) => void;
   setToast?: (toast: { message: string; action?: { label: string; onClick: () => void } } | null) => void;
   isDemo?: boolean;
+  isResumed?: boolean;
+  onConfirmExtraction?: (chip: ExtractionChip) => void;
+  onUndoExtraction?: (chip: ExtractionChip) => void;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -28,7 +31,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
   entryPoint = 'organic',
   onTakeawaySaved,
   setToast,
-  isDemo = false
+  isDemo = false,
+  isResumed = false,
+  onConfirmExtraction,
+  onUndoExtraction
 }) => {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [ttsEnabled, setTtsEnabled] = useState(() => {
@@ -408,6 +414,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
               text={msg.text}
               suggestions={msg.suggestions}
               onAddSuggestion={onAddSuggestion}
+              extraction={msg.extraction}
+              onConfirmExtraction={onConfirmExtraction}
+              onUndoExtraction={onUndoExtraction}
             />
           ))}
           {isLoading && messages[messages.length - 1]?.text !== '' && (
@@ -425,10 +434,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
           <div ref={messagesEndRef} />
         </main>
         
-        {/* Subtle footer note styled as secondary text */}
-        <div className="flex-shrink-0 text-[11px] text-white/30 text-center py-2 border-t border-white/5 bg-brand-indigo/40 select-none">
-          Conversations reset when you leave this tab
-        </div>
+        {/* Session resume indicator */}
+        {isResumed && (
+          <div className="flex-shrink-0 text-xs text-center text-brand-teal py-2 border-t border-white/5 bg-brand-indigo/40 animate-fade-out">
+            ↩ Continuing from where you left off
+          </div>
+        )}
       </div>
 
       {/* Chat Sharing Modal */}

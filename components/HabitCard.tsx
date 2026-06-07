@@ -17,13 +17,13 @@ interface HabitCardProps {
     onDelete: () => void;
 }
 
-const categoryColors: Record<HabitCategory, string> = {
-    Health: 'bg-rose-500/20 text-rose-300 ring-rose-500/50',
-    Growth: 'bg-amber-500/20 text-amber-300 ring-amber-500/50',
-    Career: 'bg-sky-500/20 text-sky-300 ring-sky-500/50',
-    Finance: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/50',
-    Connection: 'bg-purple-500/20 text-purple-300 ring-purple-500/50',
-    System: 'bg-slate-500/20 text-slate-300 ring-slate-500/50',
+const CATEGORY_COLORS: Record<string, string> = {
+    Health: 'border-emerald-400',
+    Growth: 'border-blue-400',
+    Career: 'border-purple-400',
+    Finance: 'border-yellow-400',
+    Connection: 'border-pink-400',
+    System: 'border-gray-400',
 };
 
 export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onEdit, onDelete }) => {
@@ -103,35 +103,42 @@ export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onE
     const historyDates = getHistoryItems();
 
     return (
-        <div className="bg-dark-surface rounded-lg mb-3 shadow-lg transition-all duration-300 animate-fade-in-up overflow-hidden">
+        <div className={`bg-dark-surface rounded-lg mb-3 shadow-lg transition-all duration-300 animate-fade-in-up overflow-hidden border-l-4 ${CATEGORY_COLORS[habit.category || 'System']}`}>
 
             {/* MAIN ROW */}
-            <div className="p-4 flex flex-wrap items-center justify-between gap-y-4 cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
+            <div className="p-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
 
                 {/* LEFT: Info */}
-                <div className="flex items-center gap-3 overflow-hidden flex-grow min-w-[200px] mr-4">
+                <div className="flex items-center gap-3 overflow-hidden flex-grow min-w-0 mr-4">
                     <span className="text-2xl flex-shrink-0">{habit.emoji}</span>
-                    <div className="min-w-0">
-                        <h3 className="text-lg font-medium text-white truncate">{habit.name}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            {habit.category && (
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${categoryColors[habit.category] || categoryColors.System}`}>
-                                    {habit.category.toUpperCase()}
-                                </span>
-                            )}
-                            {currentStreak > 0 && (
-                                <div className="flex items-center gap-1 text-orange-400 text-xs font-bold">
-                                    <FlameIcon className="w-3 h-3" />
-                                    {currentStreak} {habit.frequency === 'daily' ? 'day' : habit.frequency === 'weekly' ? 'wk' : 'mo'} streak
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <h3 className="text-lg font-medium text-white truncate">{habit.name}</h3>
                 </div>
 
-                {/* RIGHT: Visual History */}
-                <div className="flex items-center gap-2 ml-auto">
-                    <div className="flex gap-1.5 items-center">
+                {/* RIGHT: Streak, Checkbox, Chevron */}
+                <div className="flex items-center gap-4 flex-shrink-0">
+                    {currentStreak > 0 && (
+                        <div className="flex items-center gap-1 text-orange-400 text-sm font-bold">
+                            <FlameIcon className="w-4 h-4" />
+                            {currentStreak}
+                        </div>
+                    )}
+                    <input
+                        type="checkbox"
+                        checked={isLogged(new Date())}
+                        onChange={(e) => { e.stopPropagation(); onToggle(new Date().toISOString()); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-6 h-6 text-brand-teal bg-gray-700 border-gray-600 rounded focus:ring-brand-teal focus:ring-2 cursor-pointer transition-transform hover:scale-110 flex-shrink-0"
+                    />
+                    <div className="pl-2 border-l border-white/10">
+                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                </div>
+            </div>
+
+            {/* EXPANDED DRAWER: History & Edit / Delete Options */}
+            {isExpanded && (
+                <div className="px-4 pb-4 pt-0 border-t border-white/5 bg-white/5">
+                    <div className="flex gap-1.5 items-center mt-4 overflow-x-auto pb-2">
                         {historyDates.map((date, i) => (
                             <HabitLogButton
                                 key={i}
@@ -143,17 +150,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({ habit, logs, onToggle, onE
                             />
                         ))}
                     </div>
-                    {/* Mobile Chevron */}
-                    <div className="ml-2 pl-2 border-l border-white/10">
-                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                    </div>
-                </div>
-            </div>
-
-            {/* EXPANDED DRAWER: Edit / Delete Options */}
-            {isExpanded && (
-                <div className="px-4 pb-4 pt-0 border-t border-white/5 bg-white/5">
-                    <div className="flex justify-end items-center my-2 pt-2 gap-3">
+                    <div className="flex justify-end items-center my-2 pt-2 gap-3 border-t border-white/5 mt-2">
                         <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-xs text-brand-teal hover:text-teal-200 flex items-center gap-1 py-2 px-3 rounded hover:bg-brand-teal/10 transition-colors">
                             <PencilIcon className="w-3 h-3" /> Edit
                         </button>

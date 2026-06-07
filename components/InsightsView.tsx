@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Activity, ChevronRight } from 'lucide-react';
 import { ReflectionsView } from './ReflectionsView';
 import { LifeAreaDashboard } from './LifeAreaDashboard';
+import { WeeklyObservationCard } from './WeeklyObservationCard';
 import type { Entry, Intention, Reflection, Habit, HabitLog, AIStatus, EntrySuggestion } from '../types';
 
 interface InsightsViewProps {
@@ -29,6 +30,9 @@ interface InsightsViewProps {
     // Account info for progressive unlock
     accountCreatedAt?: string | null;
 
+    // Correlation
+    correlationInsight?: { pattern_text: string; confidence: number } | null;
+    onDismissCorrelation: () => void;
 }
 
 type InsightsTab = 'reflect' | 'deep_dive';
@@ -38,7 +42,8 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     onGenerateDaily, onGenerateWeekly, onGenerateMonthly, onExploreInChat,
     isGenerating, onAddSuggestion, aiStatus, onDebug, debugOutput,
     onOpenYearlyReview, isGeneratingYearly,
-    accountCreatedAt
+    accountCreatedAt,
+    correlationInsight, onDismissCorrelation
 }) => {
     const [activeTab, setActiveTab] = useState<InsightsTab>('reflect');
 
@@ -69,6 +74,18 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
                     </button>
                 )}
             </div>
+
+            {/* Correlation Insight Card */}
+            {correlationInsight && (
+                <div className="px-4 pb-2 flex-shrink-0">
+                    <WeeklyObservationCard
+                        pattern_text={correlationInsight.pattern_text}
+                        confidence={correlationInsight.confidence}
+                        onDismiss={onDismissCorrelation}
+                        onExploreInChat={onExploreInChat}
+                    />
+                </div>
+            )}
 
             {/* Content Area */}
             <div className="flex-grow overflow-hidden relative">

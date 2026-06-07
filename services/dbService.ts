@@ -1,7 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { User } from '@supabase/supabase-js';
-import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext, SearchResult } from '../types';
+import type { Profile, Entry, Reflection, Intention, IntentionTimeframe, IntentionStatus, GranularSentiment, Habit, HabitLog, HabitFrequency, HabitCategory, UserContext, SearchResult, ChatSession, Message } from '../types';
 import { getDateFromWeekId, getMonthId, getWeekId, getFormattedDate } from '../utils/date';
 import { calculateStreak } from '../utils/streak';
 import { parseTemporalIntent } from './temporalParser';
@@ -186,6 +186,8 @@ export const createProfile = async (user: User, isDemo: boolean = false): Promis
         throw error;
     }
 
+    clearAccountCreatedAtCache(user.id);
+
     console.log('[dbService] Profile created/updated result:', data);
 
     // Clear cache to ensure app picks up new timestamp
@@ -269,18 +271,22 @@ export const addEntry = async (userId: string, entryData: Omit<Entry, 'id' | 'us
         throw error;
     }
     
-    // Non-blocking background embedding call
+    // After successful entry insert — generate embedding immediately
+    const entryId = data.id;
+    const entryText = data.text;
+
+    // Fire and forget — never block entry creation
     supabase.functions.invoke('ai-proxy', {
-        body: {
-            action: 'generate-and-store-embedding',
-            payload: {
-                entryId: data.id,
-                entryText: entryData.text
-            }
-        }
-    }).catch(err => 
-        console.error('Embedding generation failed:', err)
-    );
+      body: { action: 'generate-embedding', payload: { text: entryText } }
+    }).then(result => {
+      const embedding = result.data?.embedding;
+      if (embedding?.length === 384) {
+        // MUST call .then() to actually execute the Supabase query builder
+        supabase.from('entries').update({ embedding }).eq('id', entryId).then(({ error }) => {
+          if (error) console.warn('[Embedding] Failed to update entry:', error);
+        });
+      }
+    }).catch(err => console.warn('[Embedding] Failed for new entry:', err));
 
     return data;
 };
@@ -538,6 +544,47 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
     return results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
 };
 
+export const backfillMissingEmbeddings = async (userId: string): Promise<void> => {
+  if (!supabase) return;
+
+  const { data: entries, error } = await supabase
+    .from('entries')
+    .select('id, text')
+    .eq('user_id', userId)
+    .is('embedding', null)
+    .is('deleted_at', null)
+    .order('timestamp', { ascending: false })
+    .limit(30); // process max 30 per session load
+
+  if (error || !entries?.length) {
+    if (entries?.length === 0) console.log('[Backfill] No missing embeddings found');
+    return;
+  }
+
+  console.log(`[Backfill] Found ${entries.length} entries without embeddings — generating...`);
+
+  for (const entry of entries) {
+    try {
+      const result = await supabase.functions.invoke('ai-proxy', {
+        body: { 
+          action: 'generate-and-store-embedding', 
+          payload: { entryId: entry.id, entryText: entry.text } 
+        }
+      });
+
+      if (result.error) {
+        console.error(`[Backfill] Failed to update entry ${entry.id}:`, result.error);
+      } else {
+        console.log(`[Backfill] Generated & stored embedding for entry ${entry.id}`);
+      }
+    } catch (err) {
+      console.warn(`[Backfill] Error for entry ${entry.id}:`, err);
+    }
+  }
+
+  console.log('[Backfill] Complete');
+};
+
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!supabase) return [];
   try {
@@ -559,7 +606,7 @@ export async function semanticSearchEntries(
   userId: string,
   queryText: string,
   matchCount: number = 3,
-  matchThreshold: number = 0.82,
+  matchThreshold: number = 0.65,
   startDate: Date | null = null,
   endDate: Date | null = null,
   preGeneratedEmbedding?: number[]
@@ -581,9 +628,11 @@ export async function semanticSearchEntries(
       activeThreshold = 0.3;
       activeStartDate = temporal.startDate ? temporal.startDate.toISOString() : null;
       activeEndDate = temporal.endDate ? temporal.endDate.toISOString() : null;
+    } else {
+      activeThreshold = 0.85;
     }
   } else {
-    activeThreshold = 0.70; // lower threshold for explicit bounds
+    activeThreshold = 0.85; // lower threshold for explicit bounds
   }
   
   const payload: any = {
@@ -2049,4 +2098,265 @@ export const getRecentAmbientContext = async (userId: string, days: number = 7):
     });
 
     return `[RECENT ENTRIES — Last ${days} Days]\n${lines.join('\n')}`;
+};
+// ============================================================================
+// CHAT SESSIONS
+// ============================================================================
+
+export const getActiveChatSession = async (
+  userId: string
+): Promise<ChatSession | null> => {
+  if (!supabase) return null;
+  
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .gt('last_message_at', cutoff)       // < 24h old
+    .is('summary', null)                  // not yet archived
+    .order('last_message_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) { console.error('[ChatSession] getActive failed:', error); return null; }
+  return data;
+};
+
+export const createChatSession = async (
+  userId: string,
+  personality: string
+): Promise<string | null> => {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .insert({ user_id: userId, personality, messages: [] })
+    .select('id')
+    .single();
+
+  if (error) { console.error('[ChatSession] create failed:', error); return null; }
+  return data?.id ?? null;
+};
+
+export const updateChatSession = async (
+  sessionId: string,
+  messages: Message[],
+  personality: string
+): Promise<boolean> => {
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({
+      messages,
+      message_count: messages.length,
+      personality,
+      last_message_at: new Date().toISOString()
+    })
+    .eq('id', sessionId);
+
+  if (error) { console.error('[ChatSession] update failed:', error); return false; }
+  return true;
+};
+
+export const getRecentSessionSummaries = async (
+  userId: string,
+  limit = 3
+): Promise<{ summary: string; started_at: string }[]> => {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('summary, started_at')
+    .eq('user_id', userId)
+    .order('last_message_at', { ascending: false })
+    .limit(limit * 2);
+
+  if (error) { console.error('[ChatSession] getSummaries failed:', error); return []; }
+  
+  return (data || [])
+    .filter(session => session.summary != null && session.summary !== '')
+    .slice(0, limit);
+};
+
+export const archiveChatSession = async (
+  sessionId: string,
+  summary: string,
+  keyTopics: string[]
+): Promise<boolean> => {
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ summary, key_topics: keyTopics })
+    .eq('id', sessionId);
+
+  if (error) { console.error('[ChatSession] archive failed:', error); return false; }
+  return true;
+};
+
+// Get this week's correlation insight
+export const getCorrelationInsight = async (
+  userId: string,
+  weekId: string
+): Promise<{ pattern_text: string; confidence: number } | null> => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('correlation_insights')
+    .select('pattern_text, confidence')
+    .eq('user_id', userId)
+    .eq('week_id', weekId)
+    .is('dismissed_at', null)
+    .maybeSingle();
+  if (error) return null;
+  return data;
+};
+
+// Save new correlation insight
+export const saveCorrelationInsight = async (
+  userId: string,
+  insight: {
+    pattern_text: string;
+    pattern_type: string;
+    confidence: number;
+    week_id: string;
+    evidence_entry_ids: string[];
+    evidence_habit_ids: string[];
+  }
+): Promise<boolean> => {
+  if (!supabase) return false;
+  const { error } = await supabase
+    .from('correlation_insights')
+    .upsert({ user_id: userId, ...insight }, { onConflict: 'user_id,week_id' });
+  return !error;
+};
+
+// Dismiss correlation insight
+export const dismissCorrelationInsight = async (
+  userId: string,
+  weekId: string
+): Promise<boolean> => {
+  if (!supabase) return false;
+  const { error } = await supabase
+    .from('correlation_insights')
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('week_id', weekId);
+  return !error;
+};
+
+// Get last N correlation insights (for coach memory)
+export const getRecentCorrelations = async (
+  userId: string,
+  limit = 3
+): Promise<{ pattern_text: string; generated_at: string }[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('correlation_insights')
+    .select('pattern_text, generated_at')
+    .eq('user_id', userId)
+    .neq('pattern_text', '')
+    .order('generated_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data ?? [];
+};
+
+// Save onboarding context (called once, never overwritten)
+export const saveOnboardingContext = async (
+  userId: string,
+  context: {
+    sentiment: string;
+    life_area: string;
+    trigger: string;
+    elaboration_summary: string;
+    personality_id: string;
+    onboarded_at: string;
+  }
+): Promise<boolean> => {
+  if (!supabase) return false;
+  
+  // Only save if not already set — never overwrite
+  const { data: existing } = await (supabase as any)
+    .from('profiles')
+    .select('onboarding_context')
+    .eq('id', userId)
+    .single();
+    
+  if (existing?.onboarding_context) return true; // Already saved
+  
+  const { error } = await (supabase as any)
+    .from('profiles')
+    .update({ onboarding_context: context })
+    .eq('id', userId);
+    
+  return !error;
+};
+
+// Get onboarding context for coach injection
+export const getOnboardingContext = async (
+  userId: string
+): Promise<{
+  sentiment: string;
+  life_area: string;
+  trigger: string;
+  elaboration_summary: string;
+  personality_id: string;
+  onboarded_at: string;
+} | null> => {
+  if (!supabase) return null;
+  
+  const { data, error } = await (supabase as any)
+    .from('profiles')
+    .select('onboarding_context')
+    .eq('id', userId)
+    .single();
+    
+  if (error || !data?.onboarding_context) return null;
+  return data.onboarding_context;
+};
+
+// Save AI profile (called weekly by background job)
+export const saveAIProfile = async (
+  userId: string,
+  profile: {
+    dominant_emotions: string[];
+    active_life_areas: string[];
+    pattern_summary: string;
+    goal_trajectory: string;
+    last_updated: string;
+  }
+): Promise<boolean> => {
+  if (!supabase) return false;
+  
+  const { error } = await (supabase as any)
+    .from('profiles')
+    .update({ ai_profile: profile })
+    .eq('id', userId);
+    
+  return !error;
+};
+
+// Get AI profile for coach injection
+export const getAIProfile = async (
+  userId: string
+): Promise<{
+  dominant_emotions: string[];
+  active_life_areas: string[];
+  pattern_summary: string;
+  goal_trajectory: string;
+  last_updated: string;
+} | null> => {
+  if (!supabase) return null;
+  
+  const { data, error } = await (supabase as any)
+    .from('profiles')
+    .select('ai_profile')
+    .eq('id', userId)
+    .single();
+    
+  if (error || !data?.ai_profile) return null;
+  return data.ai_profile;
 };

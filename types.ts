@@ -122,6 +122,7 @@ export interface Message {
   sender: 'user' | 'ai';
   text: string;
   suggestions?: AISuggestion[];
+  extraction?: ExtractionChip;
 }
 
 export interface InstantInsight {
@@ -165,4 +166,69 @@ export interface SearchResult {
   item: Entry | Habit | Intention;
   matchText: string; // The text that matched (for highlighting)
   timestamp: string; // Unified timestamp for sorting
+}
+
+export interface ChatSession {
+  id: string;
+  user_id: string;
+  messages: Message[];
+  message_count: number;
+  personality: string | null;
+  started_at: string;
+  last_message_at: string;
+  summary: string | null;
+  key_topics: string[] | null;
+  extractions: { habits: string[]; goals: string[] };
+}
+
+export interface ExtractionResult {
+  action: 'create_habit' | 'log_habit' | 'create_goal' | 'none';
+  name?: string;
+  frequency?: string;
+  category?: string;
+  commitment_level?: 'definite' | 'aspirational' | 'reflective';
+  matched_item_name?: string;
+  classificationConfidence: number;
+  extractionConfidence?: number;
+  skippedReason?: string;
+  due_date?: string;
+  is_life_goal?: boolean;
+}
+
+export interface ExtractionChip {
+  id: string;                          // unique per message
+  action: 'create_habit' | 'log_habit' | 'create_goal';
+  name: string;
+  commitment_level: 'definite' | 'aspirational';
+  status: 'pending' | 'confirmed' | 'dismissed' | 'undone';
+  itemId?: string;                     // DB id once created — for undo
+}
+
+export interface CorrelationInsight {
+  id?: string;
+  pattern_text: string;
+  pattern_type: 'habit_mood' | 'time_mood' | 'goal_behavior' | 'streak_mood' | string;
+  confidence: number;
+  week_id: string;
+  evidence_entry_ids?: string[];
+  evidence_habit_ids?: string[];
+  generated_at?: string;
+  dismissed_at?: string | null;
+}
+
+export interface OnboardingContext {
+  sentiment: string;
+  life_area: string;
+  trigger: string;
+  elaboration_summary: string;
+  personality_id: string;
+  onboarded_at: string;
+}
+
+export interface AIProfile {
+  dominant_emotions: string[];
+  active_life_areas: string[];
+  pattern_summary: string;
+  goal_trajectory: string;
+  last_updated: string;
 }

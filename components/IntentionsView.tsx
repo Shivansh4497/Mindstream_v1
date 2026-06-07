@@ -3,18 +3,26 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Intention } from '../types';
 import { IntentionCard } from './IntentionCard';
 import { EmptyIntentionsState } from './EmptyIntentionsState';
-import { getUrgencyCategory, getUrgencyCategoryLabel, type UrgencyCategory } from '../utils/etaCalculator';
 
 interface IntentionsViewProps {
     intentions: Intention[];
     onToggle: (id: string, currentStatus: Intention['status']) => void;
     onDelete: (id: string) => void;
     onStarToggle: (id: string, isStarred: boolean) => void;
-    onEdit?: (intention: Intention) => void;
     onAddIntention?: (text: string) => void;
 }
 
-const urgencyCategoryOrder: UrgencyCategory[] = ['overdue', 'today', 'this_week', 'this_month', 'later', 'life'];
+const LIFE_AREA_ORDER = ['Health', 'Career', 'Growth', 'Finance', 'Connection', 'System', 'Other'];
+
+const LIFE_AREA_EMOJIS: Record<string, string> = {
+    Health: '❤️',
+    Career: '💼',
+    Growth: '🌱',
+    Finance: '💰',
+    Connection: '🤝',
+    System: '⚙️',
+    Other: '📌'
+};
 
 export const IntentionsView: React.FC<IntentionsViewProps> = ({
     intentions,
@@ -25,16 +33,21 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     onAddIntention
 }) => {
     const [showCompleted, setShowCompleted] = useState(false);
-    const [isOverdueCollapsed, setIsOverdueCollapsed] = useState(true); // Default to collapsed
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+    const toggleGroup = (category: string) => {
+        setCollapsedGroups(prev => ({ ...prev, [category]: !prev[category] }));
+    };
 
     const { pendingByCategory, allCompleted } = useMemo(() => {
-        const pendingGroups: Record<UrgencyCategory, Intention[]> = {
-            overdue: [],
-            today: [],
-            this_week: [],
-            this_month: [],
-            later: [],
-            life: [],
+        const pendingGroups: Record<string, Intention[]> = {
+            Health: [],
+            Career: [],
+            Growth: [],
+            Finance: [],
+            Connection: [],
+            System: [],
+            Other: [],
         };
         const completedIntentions: Intention[] = [];
 
@@ -42,16 +55,15 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
             if (intention.status === 'completed') {
                 completedIntentions.push(intention);
             } else {
-                const dueDate = intention.due_date ? new Date(intention.due_date) : null;
-                const isLifeGoal = intention.is_life_goal || false;
-                const category = getUrgencyCategory(dueDate, isLifeGoal);
+                const category = intention.category && LIFE_AREA_ORDER.includes(intention.category) 
+                  ? intention.category 
+                  : 'Other';
                 pendingGroups[category].push(intention);
             }
         });
 
         // Sort pending by Starred -> Due Date -> Created At
-        Object.keys(pendingGroups).forEach(key => {
-            const category = key as UrgencyCategory;
+        Object.keys(pendingGroups).forEach(category => {
             pendingGroups[category].sort((a, b) => {
                 // 1. Starred First
                 if (a.is_starred && !b.is_starred) return -1;
@@ -83,17 +95,6 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
 
     const hasAnyIntentions = intentions.length > 0;
 
-    const getCategoryColor = (category: UrgencyCategory): string => {
-        switch (category) {
-            case 'overdue': return 'text-red-400';
-            case 'today': return 'text-brand-teal';
-            case 'this_week': return 'text-blue-400';
-            case 'this_month': return 'text-purple-400';
-            case 'later': return 'text-gray-400';
-            case 'life': return 'text-amber-400';
-        }
-    };
-
     return (
         <div className="flex-grow flex flex-col overflow-hidden">
             <header className="flex-shrink-0 p-4 border-b border-white/10">
@@ -106,67 +107,45 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                     <EmptyIntentionsState onCreateIntention={onAddIntention} />
                 )}
 
-                {/* Pending Intentions by Urgency */}
-                {urgencyCategoryOrder.map(category => {
+                {/* Pending Intentions by Life Area */}
+                {LIFE_AREA_ORDER.map(category => {
                     const pendingList = pendingByCategory[category];
                     if (pendingList.length === 0) return null;
-
-                    // Special handling for Overdue section
-                    if (category === 'overdue') {
-                        return (
-                            <div key={category} className="mb-6">
-                                <button
-                                    onClick={() => setIsOverdueCollapsed(!isOverdueCollapsed)}
-                                    className="w-full flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors group"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <ChevronDown className={`w-5 h-5 text-red-400 transition-transform ${isOverdueCollapsed ? '-rotate-90' : ''}`} />
-                                        <h2 className="text-lg font-bold font-display text-red-400">Overdue</h2>
-                                    </div>
-                                    <span className="text-sm font-bold text-red-300 bg-red-500/20 px-2 py-0.5 rounded-full">
-                                        {pendingList.length} items
-                                    </span>
-                                </button>
-
-                                {!isOverdueCollapsed && (
-                                    <div className="mt-3 pl-2 border-l-2 border-red-500/10 ml-4 animate-fade-in-down">
-                                        {pendingList.map(intention => (
-                                            <IntentionCard
-                                                key={intention.id}
-                                                intention={intention}
-                                                onToggle={onToggle}
-                                                onDelete={onDelete}
-                                                onStarToggle={onStarToggle}
-                                                onEdit={onEdit}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    }
+                    
+                    const isCollapsed = collapsedGroups[category] || false;
 
                     return (
-                        <div key={category} className="mb-8">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className={`text-xl font-bold font-display ${getCategoryColor(category)}`}>
-                                    {getUrgencyCategoryLabel(category)}
-                                </h2>
-                                <span className="text-sm text-gray-300">
+                        <div key={category} className="mb-6">
+                            <button
+                                onClick={() => toggleGroup(category)}
+                                className="w-full flex items-center justify-between p-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors group mb-3"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                                    <h2 className="text-lg font-bold font-display text-white">
+                                        <span className="mr-2">{LIFE_AREA_EMOJIS[category]}</span>
+                                        {category}
+                                    </h2>
+                                </div>
+                                <span className="text-sm font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">
                                     {pendingList.length}
                                 </span>
-                            </div>
+                            </button>
 
-                            {pendingList.map(intention => (
-                                <IntentionCard
-                                    key={intention.id}
-                                    intention={intention}
-                                    onToggle={onToggle}
-                                    onDelete={onDelete}
-                                    onStarToggle={onStarToggle}
-                                    onEdit={onEdit}
-                                />
-                            ))}
+                            {!isCollapsed && (
+                                <div className="pl-2 border-l-2 border-white/5 ml-4 animate-fade-in-down">
+                                    {pendingList.map(intention => (
+                                        <IntentionCard
+                                            key={intention.id}
+                                            intention={intention}
+                                            onToggle={onToggle}
+                                            onDelete={onDelete}
+                                            onStarToggle={onStarToggle}
+                                            onEdit={onEdit}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     );
                 })}

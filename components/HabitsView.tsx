@@ -84,6 +84,17 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
         return habits.filter(h => h.frequency === activeFrequency);
     }, [habits, activeFrequency]);
 
+    const dailyHabits = useMemo(() => habits.filter(h => h.frequency === 'daily'), [habits]);
+    const completedToday = useMemo(() => {
+        return dailyHabits.filter(h => todaysLogs.some(log => log.habit_id === h.id)).length;
+    }, [dailyHabits, todaysLogs]);
+    const totalDaily = dailyHabits.length;
+    const percentage = totalDaily > 0 ? completedToday / totalDaily : 0;
+
+    const radius = 34;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percentage * circumference);
+
     return (
         <div ref={celebrationTriggerRef} className="flex-grow flex flex-col overflow-hidden">
             {/* Frequency Tabs Header */}
@@ -105,6 +116,27 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
             </header>
 
             <main className="flex-grow overflow-y-auto p-4">
+                {dailyHabits.length > 0 && (
+                    <div className="flex flex-col items-center justify-center mt-4 mb-6">
+                        <div className="relative w-[80px] h-[80px]">
+                            <svg width="80" height="80" className="transform -rotate-90">
+                                <circle cx="40" cy="40" r={radius} stroke="rgba(255,255,255,0.1)" 
+                                        strokeWidth="6" fill="none" />
+                                <circle cx="40" cy="40" r={radius} stroke="#2DD4BF" 
+                                        strokeWidth="6" fill="none"
+                                        strokeDasharray={circumference}
+                                        strokeDashoffset={strokeDashoffset}
+                                        strokeLinecap="round"
+                                        className="transition-all duration-700 ease-out" />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <span className="text-xl font-bold text-white leading-none">{completedToday}/{totalDaily}</span>
+                                <span className="text-[10px] font-medium text-gray-400 mt-1 uppercase tracking-wider">Today</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {filteredHabits.length === 0 && (
                     <EmptyHabitsState onCreateHabit={onAddHabit} />
                 )}

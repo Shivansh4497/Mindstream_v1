@@ -20,17 +20,17 @@ ON user_preferences(ai_personality);
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own preferences
-CREATE POLICY IF NOT EXISTS "Users can view own preferences"
+CREATE POLICY "Users can view own preferences"
 ON user_preferences FOR SELECT
 USING (auth.uid() = user_id);
 
 -- Users can insert their own preferences
-CREATE POLICY IF NOT EXISTS "Users can insert own preferences"
+CREATE POLICY "Users can insert own preferences"
 ON user_preferences FOR INSERT
 WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own preferences
-CREATE POLICY IF NOT EXISTS "Users can update own preferences"
+CREATE POLICY "Users can update own preferences"
 ON user_preferences FOR UPDATE
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);

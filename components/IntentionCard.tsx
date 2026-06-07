@@ -6,6 +6,7 @@ import { Star, ChevronDown, ChevronUp } from 'lucide-react';
 import { celebrate, CelebrationType } from '../utils/celebrations';
 import { triggerHaptic } from '../utils/haptics';
 import { formatDueDate } from '../utils/etaCalculator';
+import { differenceInDays, parseISO } from 'date-fns';
 
 interface IntentionCardProps {
   intention: Intention;
@@ -42,6 +43,15 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
   const dueDateText = formatDueDate(dueDate, isLifeGoal);
   const hasNotes = !!intention.notes?.trim();
 
+  const createdAt = parseISO(intention.created_at);
+  const parsedDueDate = intention.due_date ? parseISO(intention.due_date) : null;
+  const now = new Date();
+
+  const totalDays = parsedDueDate ? differenceInDays(parsedDueDate, createdAt) : null;
+  const elapsedDays = differenceInDays(now, createdAt);
+  const progressPercent = totalDays && totalDays > 0 ? Math.max(0, Math.min(elapsedDays / totalDays, 1)) * 100 : null;
+  const daysRemaining = parsedDueDate ? differenceInDays(parsedDueDate, now) : null;
+
   return (
     <div ref={cardRef} className={`flex flex-col bg-dark-surface p-4 rounded-lg mb-3 transition-all duration-300 animate-fade-in-up hover:bg-white/5 ${intention.is_starred ? 'ring-1 ring-amber-400/30 bg-amber-400/5' : ''}`}>
       <div className="flex items-start">
@@ -60,6 +70,37 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
             {dueDateText}
             {intention.category && <span className="ml-2 text-gray-400">• {intention.category}</span>}
           </span>
+
+          {/* Progress Bar / Life Goal Badge */}
+          {intention.status !== 'completed' && (
+            <div className="mt-2 mb-1">
+              {isLifeGoal ? (
+                <span className="inline-block px-2 py-1 bg-white/5 rounded text-xs font-bold text-amber-400 border border-amber-400/20">
+                  ♾️ Life goal
+                </span>
+              ) : parsedDueDate && daysRemaining !== null && progressPercent !== null && totalDays !== null && totalDays > 0 ? (
+                <div className="w-full">
+                  <div className="h-1 rounded-full bg-white/10 w-full overflow-hidden mt-2">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        daysRemaining < 0 
+                          ? 'bg-red-400' 
+                          : (daysRemaining / totalDays < 0.2) 
+                            ? 'bg-amber-400' 
+                            : 'bg-brand-teal'
+                      }`}
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <div className={`text-[10px] mt-1 font-bold tracking-wider uppercase ${
+                    daysRemaining < 0 ? 'text-red-400' : 'text-gray-500'
+                  }`}>
+                    {daysRemaining < 0 ? 'Overdue' : `${daysRemaining} days left`}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
           {/* Notes: inline preview or Add notes prompt */}
           {hasNotes ? (
             <div className="mt-2">

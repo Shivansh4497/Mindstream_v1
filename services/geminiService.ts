@@ -237,20 +237,70 @@ GROUNDING RULES (apply to every response):
 export const getChatResponseStream = async (userId: string, history: Message[], isDemoUser: boolean) => {
     const userMessage = history[history.length - 1]?.text ?? '';
     
-    const [userProfile, recentContext, retrieval] = await Promise.all([
+    const [userProfile, recentContext, retrieval, sessionSummaries, correlations, onboardingContext, aiProfile, baseProfile] = await Promise.all([
         db.getUserProfile(userId),
         db.getRecentAmbientContext(userId),
-        adaptiveRetrieval(userId, userMessage, history.slice(0, -1).map(m => m.text), isDemoUser)
+        adaptiveRetrieval(userId, userMessage, history.slice(0, -1).map(m => m.text), isDemoUser),
+        db.getRecentSessionSummaries(userId, 3).catch(() => []),
+        db.getRecentCorrelations(userId, 2).catch(() => []),
+        db.getOnboardingContext(userId).catch(() => null),
+        db.getAIProfile(userId).catch(() => null),
+        db.getProfile(userId).catch(() => null)
     ]);
     
     const personality = getPersonality(DEFAULT_PERSONALITY);
-    const systemInstruction = buildSystemContext(
+    let systemInstruction = buildSystemContext(
         userProfile,
         recentContext,
         retrieval,
         history.slice(0, -1),
         personality.systemPrompt
     );
+
+    const firstName = baseProfile?.full_name?.split(' ')[0] 
+        || baseProfile?.email?.split('@')[0] 
+        || 'you';
+
+    // Build comprehensive coach memory block
+    let coachMemory = '';
+
+    // 1. Who they were when they started
+    if (onboardingContext) {
+        const daysAgo = Math.round(
+            (Date.now() - new Date(onboardingContext.onboarded_at).getTime()) / 86400000
+        );
+        coachMemory += `\n\nUSER ORIGIN CONTEXT (${daysAgo} days ago):\nWhen ${firstName} first started, they felt ${onboardingContext.sentiment} about ${onboardingContext.life_area} (specifically: ${onboardingContext.trigger}).\nThey said: "${onboardingContext.elaboration_summary}"`;
+    }
+
+    // 2. Who they are now (longitudinal profile)
+    if (aiProfile?.pattern_summary) {
+        const daysAgo = aiProfile.last_updated 
+            ? Math.round((Date.now() - new Date(aiProfile.last_updated).getTime()) / 86400000) 
+            : '?';
+        coachMemory += `\n\nLONGITUDINAL PROFILE (updated ${daysAgo} days ago):\nDominant emotions: ${aiProfile.dominant_emotions?.join(', ') || 'unknown'}\nActive life areas: ${aiProfile.active_life_areas?.join(', ') || 'unknown'}\nPattern: ${aiProfile.pattern_summary}\nGoal trajectory: ${aiProfile.goal_trajectory}`;
+    }
+
+    // 3. Recent session memory
+    if (sessionSummaries.length > 0) {
+        coachMemory += `\n\nRECENT CONVERSATION MEMORY:` +
+            sessionSummaries.map(s => {
+                const daysAgo = Math.round(
+                    (Date.now() - new Date(s.started_at).getTime()) / 86400000
+                );
+                return `\n- ${daysAgo === 0 ? 'Earlier today' : `${daysAgo} day${daysAgo > 1 ? 's' : ''} ago`}: ${s.summary}`;
+            }).join('');
+    }
+
+    // 4. Detected behavioral patterns
+    if (correlations.length > 0) {
+        coachMemory += `\n\nDETECTED BEHAVIORAL PATTERNS (reference when relevant, don't force):` +
+            correlations.map(c => `\n- ${c.pattern_text}`).join('');
+    }
+
+    // Append to system prompt
+    if (coachMemory) {
+        systemInstruction += `\n\n---\nCOACH MEMORY — Use this to personalize responses. Reference naturally, not robotically.${coachMemory}\n---`;
+    }
     
     const historyContext = history.slice(0, -1)
         .filter(m => m.sender === 'ai')
@@ -258,8 +308,8 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
         .map(m => typeof m.text === 'string' ? m.text : '')
         .join('\n---\n');
         
-    const profileTokens = Math.ceil(userProfile.length / 4);
-    const recentTokens = Math.ceil(recentContext.length / 4);
+    const profileTokens = Math.ceil((userProfile?.length || 0) / 4);
+    const recentTokens = Math.ceil((recentContext?.length || 0) / 4);
     
     let retrievedTokens = 0;
     let retrievedContextText = '';

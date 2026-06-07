@@ -107,3 +107,67 @@ export const detectIntentionPatterns = (intentions: Intention[]): DetectedPatter
 
     return null;
 };
+
+export const detectWeeklyPatterns = (
+  entries: Entry[],
+  habits: Habit[],
+  habitLogs: HabitLog[]
+): DetectedPattern | null => {
+  const oneWeekAgo = subDays(new Date(), 7);
+  const weekEntries = entries.filter(e => parseISO(e.timestamp) >= oneWeekAgo);
+  const weekLogs = habitLogs.filter(l => parseISO(l.completed_at) >= oneWeekAgo);
+
+  if (weekEntries.length < 3) return null;
+
+  // Check habit completion rate this week
+  const dailyHabits = habits.filter(h => h.frequency === 'daily');
+  if (dailyHabits.length > 0) {
+    const expectedLogs = dailyHabits.length * 7;
+    const actualLogs = weekLogs.filter(log =>
+      dailyHabits.some(h => h.id === log.habit_id)
+    ).length;
+    const completionRate = actualLogs / expectedLogs;
+
+    if (completionRate < 0.3 && weekEntries.length >= 3) {
+      return {
+        type: 'habit_abandonment',
+        severity: 'medium',
+        message: `Habit completion was low this week (${Math.round(completionRate * 100)}%). Want to talk about what got in the way?`,
+        suggestedAction: 'chat_reflection',
+        context: { completionRate, weekLogs: actualLogs, expected: expectedLogs }
+      };
+    }
+  }
+
+  return null;
+};
+
+export const checkTagThresholds = (entries: Entry[]): DetectedPattern | null => {
+  // Count tag frequency across last 14 days
+  const twoWeeksAgo = subDays(new Date(), 14);
+  const recentEntries = entries.filter(e => parseISO(e.timestamp) >= twoWeeksAgo);
+
+  const tagCounts: Record<string, number> = {};
+  recentEntries.forEach(e => {
+    (e.tags || []).forEach(tag => {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+  });
+
+  // Find dominant tag (appears in > 40% of entries)
+  const threshold = recentEntries.length * 0.4;
+  const dominantTag = Object.entries(tagCounts)
+    .find(([_, count]) => count >= threshold && count >= 3);
+
+  if (dominantTag) {
+    return {
+      type: 'mood_decline',
+      severity: 'low',
+      message: `"${dominantTag[0]}" has come up in ${dominantTag[1]} of your recent entries. Worth exploring?`,
+      suggestedAction: 'chat_reflection',
+      context: { tag: dominantTag[0], count: dominantTag[1] }
+    };
+  }
+
+  return null;
+};

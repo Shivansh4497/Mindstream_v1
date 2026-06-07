@@ -34,7 +34,7 @@ console.log('[AI Proxy] GEMINI_API_KEY present:', !!geminiKey);
 console.log('[AI Proxy] Provider chain: Groq 70B -> Groq 8B -> Gemini Flash -> Gemini Lite -> Cached');
 
 interface AIRequest {
-    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response';
+    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response' | 'build-ai-profile';
     payload: Record<string, any>;
 }
 
@@ -207,7 +207,12 @@ async function callAI(prompt: string, action: string): Promise<AICallResult> {
         }
 
         if (lastProvider) {
-            fallback_events.push({ from: lastProvider, to: provider.name, reason: 'Previous provider failed' });
+            fallback_events.push({ 
+                from: lastProvider, 
+                to: provider.name,
+                reason: 'Previous provider failed',
+                error: (provider as any).lastError || 'Unknown error'
+            });
         }
         lastProvider = provider.name;
         attempted.push(provider.name);
@@ -597,6 +602,64 @@ If entry doesn't warrant suggestions, return: {"suggestions": []}`;
                     break;
                 }
 
+                case 'build-ai-profile': {
+                  const { entries, habits, habitLogs, intentions, onboardingContext } = payload;
+
+                  const entrySummary = entries.slice(0, 40).map((e: any) =>
+                    `[${e.timestamp.split('T')[0]}] sentiment:${e.primary_sentiment || 'unknown'} tags:${(e.tags || []).join(',')} title:"${e.title || ''}"`
+                  ).join('\n');
+
+                  const habitSummary = habits.map((h: any) => {
+                    const logs = habitLogs.filter((l: any) => l.habit_id === h.id);
+                    return `${h.name} (${h.frequency}): ${logs.length} completions, streak:${h.current_streak}`;
+                  }).join('\n');
+
+                  const intentionSummary = intentions.slice(0, 10).map((i: any) =>
+                    `"${i.text}" status:${i.status} category:${i.category || 'unknown'}`
+                  ).join('\n');
+
+                  const onboardingLine = onboardingContext
+                    ? `When they started: felt ${onboardingContext.sentiment} about ${onboardingContext.life_area} (${onboardingContext.trigger}). Said: "${onboardingContext.elaboration_summary}"`
+                    : 'No onboarding context available.';
+
+                  const prompt = `You are building a longitudinal understanding profile of a Mindstream user based on their journal entries, habits, and goals over time.
+
+ONBOARDING CONTEXT:
+${onboardingLine}
+
+RECENT ENTRIES (last 40):
+${entrySummary}
+
+HABITS & COMPLETION:
+${habitSummary}
+
+GOALS:
+${intentionSummary}
+
+Build a profile that captures who this person is RIGHT NOW based on patterns in the data. Be specific — use actual themes from their entries.
+
+Return ONLY JSON:
+{
+  "dominant_emotions": ["Anxious", "Reflective"],         // top 2-3 recurring emotions
+  "active_life_areas": ["Work", "Health"],                 // life areas they write about most
+  "pattern_summary": "Tends to journal when stressed about work deliverables. More positive entries on days exercise is logged. Struggles with consistency on health habits despite setting them repeatedly.",
+  "goal_trajectory": "Currently focused on career growth and health. Three goals set, one completed. Health goals show pattern of resets.",
+  "last_updated": "${new Date().toISOString()}"
+}
+
+Rules:
+- pattern_summary must be 2-3 sentences max, specific to their actual data
+- goal_trajectory must be 1-2 sentences, factual
+- dominant_emotions max 3 items
+- active_life_areas max 3 items
+- If insufficient data (< 5 entries), return all fields empty with last_updated set`;
+
+                  const aiResult = await callAI(prompt, action);
+                  aiMeta = aiResult;
+                  result = parseJSON(aiResult.text);
+                  break;
+                }
+
                 case 'instant-insight': {
                     const { text, sentiment, lifeArea, trigger } = payload;
                     const prompt = `You are a wise coach. Respond with ONLY JSON (no markdown):
@@ -962,6 +1025,182 @@ Return ONLY valid JSON:
                     break;
                 }
 
+
+                case 'summarise-session': {
+                    const { messages } = payload;
+                    const transcript = messages
+                        .map((m: any) => `${m.sender === 'user' ? 'User' : 'Coach'}: ${m.text}`)
+                        .join('\n');
+
+                    const prompt = `Summarise this conversation in 2-3 sentences from the coach's perspective.
+Focus on: what the user was processing, any decisions made, emotional state, open threads.
+Be specific — use actual details from the conversation, not generic summaries.
+Also extract 3-5 key topics as single words.
+
+Conversation:
+${transcript}
+
+Return ONLY JSON: 
+{
+  "summary": "User was processing anxiety about...",
+  "key_topics": ["anxiety", "work", "exercise"]
+}`;
+
+                    const aiResult = await callAI(prompt, action);
+                    aiMeta = aiResult;
+                    result = parseJSON(aiResult.text);
+                    break;
+                }
+
+                case 'classify-behavior': {
+                    const { userMessage, recentMessages } = payload;
+                    
+                    const conversationContext = recentMessages
+                        ?.slice(-4)
+                        .map((m: any) => `${m.sender === 'user' ? 'User' : 'Coach'}: ${m.text}`)
+                        .join('\n') ?? '';
+
+                    const prompt = `You are analyzing a message to determine if it contains a behavioral signal — a habit the user does or wants to track, or a goal they are working toward.
+
+Recent conversation context:
+${conversationContext}
+
+Current message: "${userMessage}"
+
+RULES:
+- "habit_log" = user reporting they DID something (past tense, definite)
+- "habit_intent" = user expressing desire/plan to build a recurring behavior (future, conditional)  
+- "goal_log" = user reporting progress on a one-time goal
+- "goal_intent" = user expressing a specific one-time goal with an end state
+- "none" = everything else (venting, questions, casual conversation, greetings)
+
+Confidence rules:
+- Words like "should", "maybe", "thinking about", "would be nice", "eventually" → confidence MAX 0.5
+- Words like "i did", "just finished", "went for", "hit the gym", "completed" → confidence MIN 0.7
+- Vague labels like "exercise more", "be healthier", "do better" → confidence MAX 0.4
+
+Respond ONLY with JSON:
+{
+  "contains_behavioral_signal": true,
+  "signal_type": "habit_log",
+  "confidence": 0.85,
+  "reason": "User said 'went for a run' — past tense, definite action"
+}
+
+If no behavioral signal: { "contains_behavioral_signal": false, "signal_type": "none", "confidence": 1.0, "reason": "..." }`;
+
+                    const aiResult = await callAI(prompt, action);
+                    aiMeta = aiResult;
+                    result = parseJSON(aiResult.text);
+                    break;
+                }
+
+                case 'extract-behavior': {
+                    const { userMessage, signalType, existingHabits, existingGoals } = payload;
+
+                    const habitsContext = existingHabits?.length
+                        ? `Existing habits: ${existingHabits.map((h: any) => `"${h.name}" (${h.frequency})`).join(', ')}`
+                        : 'No existing habits.';
+
+                    const goalsContext = existingGoals?.length
+                        ? `Existing goals: ${existingGoals.map((g: any) => `"${g.text}"`).join(', ')}`
+                        : 'No existing goals.';
+
+                    const prompt = `You are extracting structured data from a user message. Be conservative — when in doubt, return "none".
+
+User message: "${userMessage}"
+Signal type detected: ${signalType}
+
+${habitsContext}
+${goalsContext}
+
+TASK: Determine the correct action and extract structured data.
+
+action options:
+- "log_existing": user is reporting completion of an existing habit/goal (match by name similarity)
+- "create_new": user is describing something genuinely new
+- "none": not enough specificity to act
+
+commitment_level options:
+- "definite": clear, specific, committed ("went for a run", "meditated this morning", "finish report by Friday")
+- "aspirational": desire or intention but not committed ("want to start running", "should meditate more")
+- "reflective": observational, no action implied ("I never seem to exercise", "I used to meditate")
+
+HARD RULES:
+- If label would be fewer than 3 meaningful words → action: "none"
+- If label contains "more", "better", "try", "maybe" → action: "none"  
+- If same meaning exists in existing habits/goals (fuzzy match) → action: "log_existing" with that item's name
+- commitment_level "reflective" → always action: "none"
+- frequency must be explicit in message, never inferred. If unclear → null
+
+Respond ONLY with JSON:
+{
+  "action": "create_new",
+  "type": "habit",
+  "name": "Morning run",
+  "frequency": "daily",
+  "category": "Health",
+  "commitment_level": "definite",
+  "matched_item_name": null,
+  "due_date": null,
+  "is_life_goal": false,
+  "extraction_confidence": 0.9
+}`;
+
+                    const aiResult = await callAI(prompt, action);
+                    aiMeta = aiResult;
+                    result = parseJSON(aiResult.text);
+                    break;
+                }
+                case 'detect-correlations': {
+                    const { entries, habits, habitLogs } = payload;
+
+                    // Build structured data summary for AI
+                    const entryLines = entries.slice(0, 30).map((e: any) =>
+                        `[${e.timestamp.split('T')[0]}] sentiment:${e.primary_sentiment || 'unknown'} tags:${(e.tags || []).join(',')} text:"${e.text?.substring(0, 100)}"`
+                    ).join('\n');
+
+                    const habitLogLines = habitLogs.slice(0, 60).map((log: any) => {
+                        const habit = habits.find((h: any) => h.id === log.habit_id);
+                        return `[${log.completed_at.split('T')[0]}] completed:"${habit?.name || 'unknown'}"`;
+                    }).join('\n');
+
+                    const prompt = `You are analyzing a user's personal data to find genuine behavioral correlations. Be specific and honest. Only report patterns that appear at least 3 times in the data.
+
+JOURNAL ENTRIES (last 30):
+${entryLines}
+
+HABIT COMPLETIONS (last 60 logs):
+${habitLogLines}
+
+TASK: Find the single strongest correlation between habits and mood/sentiment in this data.
+
+RULES:
+- Must appear at least 3 times to count as a pattern
+- Must be specific — cite actual dates or counts
+- Must connect a habit (or habit absence) to a mood/sentiment outcome
+- If no clear pattern exists, return confidence: 0.0
+- Pattern text must be one sentence, under 100 characters, written as an observation
+- Good: "Anxiety entries appear 3x more often on days you skipped Morning run"
+- Bad: "Exercise seems to affect your mood" (too vague, no data cited)
+
+Return ONLY JSON:
+{
+  "pattern_text": "...",
+  "pattern_type": "habit_mood",
+  "confidence": 0.82,
+  "evidence_dates": ["2026-05-12", "2026-05-15"],
+  "habit_name": "Morning run",
+  "entry_sentiments": ["Anxious", "Overwhelmed"]
+}
+
+If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
+
+                    const aiResult = await callAI(prompt, action);
+                    aiMeta = aiResult;
+                    result = parseJSON(aiResult.text);
+                    break;
+                }
 
                 default:
                     return new Response(JSON.stringify({ success: false, error: `Unknown action: ${action}` }), {

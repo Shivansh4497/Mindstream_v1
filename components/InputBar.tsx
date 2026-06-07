@@ -6,35 +6,7 @@ import { triggerHaptic } from '../utils/haptics';
 import { useToast, Toast } from './Toast';
 import { getStreamPrompt } from '../services/smartDefaults';
 
-// FIX: Define types for the Web Speech API to resolve TypeScript errors.
-// These are not included in default DOM typings.
-interface SpeechRecognitionAlternative {
-  readonly transcript: string;
-  readonly confidence: number;
-}
-
-interface SpeechRecognitionResult {
-  readonly isFinal: boolean;
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  readonly resultIndex: number;
-  readonly results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  readonly error: string;
-}
-// End of Web Speech API type definitions.
+import { useSpeechRecognition } from '../utils/useSpeechRecognition';
 
 interface InputBarProps {
   onAddEntry: (text: string, viaVoice: boolean) => void;
@@ -47,52 +19,21 @@ const GUIDED_PROMPTS = [
   "A small win from today was..."
 ];
 
-// FIX: Cast window to `any` to access non-standard browser APIs `SpeechRecognition` and `webkitSpeechRecognition`.
-const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-if (recognition) {
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-}
 
 
 export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   const [text, setText] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [usedVoice, setUsedVoice] = useState(false); // Track if voice was used for this entry
-  const [isProcessing, setIsProcessing] = useState(false);
-  const recognitionRef = useRef(recognition);
+  const [usedVoice, setUsedVoice] = useState(false);
   const { toast, showToast, hideToast } = useToast();
   const [placeholder, setPlaceholder] = useState(getStreamPrompt());
 
-  useEffect(() => {
-    const rec = recognitionRef.current;
-    if (!rec) return;
-
-    rec.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      if (finalTranscript) {
-        setText(prevText => prevText + (prevText.length > 0 ? ' ' : '') + finalTranscript);
-        setUsedVoice(true); // Mark that voice was used
-      }
-    };
-
-    rec.onend = () => {
-      setIsListening(false);
-    };
-
-    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('Speech recognition error', event.error);
-      setIsListening(false);
-
-      // User-friendly error messages
-      switch (event.error) {
+  const { isListening, startListening, stopListening, isSupported } = useSpeechRecognition({
+    onResult: (transcript) => {
+      setText(prevText => prevText + (prevText.length > 0 ? ' ' : '') + transcript);
+      setUsedVoice(true);
+    },
+    onError: (error) => {
+      switch (error) {
         case 'not-allowed':
           showToast('🎤 Microphone access denied. Please enable in browser settings.', 'error');
           break;
@@ -105,17 +46,14 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
         case 'audio-capture':
           showToast('🎤 No microphone found. Check your device.', 'error');
           break;
+        case 'not-supported':
+          showToast('🎤 Voice input not supported in this browser. Try Chrome.', 'warning');
+          break;
         default:
-          showToast(`🎤 Voice input error: ${event.error}`, 'error');
+          showToast(`🎤 Voice input error: ${error}`, 'error');
       }
-    };
-
-    return () => {
-      if (rec) {
-        rec.stop();
-      }
-    };
-  }, []);
+    }
+  });
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -136,17 +74,15 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   };
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
+    if (!isSupported) {
       showToast('🎤 Voice input not supported in this browser. Try Chrome.', 'warning');
       return;
     }
     if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      stopListening();
       triggerHaptic('light');
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
+      startListening();
       triggerHaptic('medium');
     }
   };
