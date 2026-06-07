@@ -27,7 +27,7 @@ export interface ClassifiedQuery {
 
 function applyPreChecks(query: string): string | null {
   const q = query.toLowerCase();
-  if (/^(summarize?|summarise?|recap|overview|review)\s+(my\s+)?(last|past|recent|this)\s+\d+\s+(day|week|month)/.test(q)) return 'TEMPORAL_SUMMARY';
+  if (/^(summarize?|summarise?|recap|overview|review|how did|how was)\s+(my\s+)?(last|past|recent|this)\s+(\d+\s+)?(day|week|month)s?/.test(q)) return 'TEMPORAL_SUMMARY';
   
   const hasTemporalWindow = /(last|past|recent|this)\s+(\d+\s+)?(day(s)?|week(s)?|month(s)?|year(s)?)/.test(q);
   
@@ -106,8 +106,8 @@ PRE-CHECK RULES (apply in order before decision tree):
 DECISION TREE (follow in order):
 1. CONVERSATIONAL: If query is a follow-up, acknowledgement, reaction (e.g. "interesting"), or conversational question (e.g. "what do you mean?", "tell me more") -> CONVERSATIONAL. Stop.
 2. BEHAVIORAL: If query asks about habit consistency, goal progress, streaks, completion rates, or tracking -> BEHAVIORAL. Stop.
-3. TEMPORAL_SUMMARY Special Rule: Any query starting/containing "summarise", "summarize", "recap", "catch me up", or "what happened" followed ONLY by a time expression with NO named activity/emotion/topic -> ALWAYS TEMPORAL_SUMMARY. (Examples: "summarise my last 7 days" -> TEMPORAL_SUMMARY; "what happened this week" -> TEMPORAL_SUMMARY; "catch me up on the last 10 days" -> TEMPORAL_SUMMARY). Stop.
-4. TEMPORAL_TOPIC: ONLY if BOTH: (a) an EXPLICIT time expression exists ("last N days", "this week", "last month", "in the past X days" - NOT "when", "last", or habit names on their own), AND (b) a SPECIFIC activity/emotion/topic is named (running, anxiety, sleep, work, etc.). Generic summary actions like "what happened", "summarise", "summarize", "recap", "catch me up" are NOT topics. If no specific topic is named, do NOT classify as TEMPORAL_TOPIC. Stop.
+3. TEMPORAL_SUMMARY Special Rule: Any query starting/containing "summarise", "summarize", "recap", "catch me up", "how did", "how was", or "what happened" followed ONLY by a time expression with NO named activity/emotion/topic -> ALWAYS TEMPORAL_SUMMARY. (Examples: "how did my last 9 days went" -> TEMPORAL_SUMMARY; "summarise my last 7 days" -> TEMPORAL_SUMMARY; "what happened this week" -> TEMPORAL_SUMMARY). Stop.
+4. TEMPORAL_TOPIC: ONLY if BOTH: (a) an EXPLICIT time expression exists ("last N days", "this week", "last month", "in the past X days" - NOT "when", "last", or habit names on their own), AND (b) a SPECIFIC activity/emotion/topic is named (running, anxiety, sleep, work, etc.). Generic summary actions like "what happened", "summarise", "summarize", "recap", "catch me up", "how did" are NOT topics. If no specific topic is named, do NOT classify as TEMPORAL_TOPIC. Stop.
 5. TEMPORAL_SUMMARY: If explicit time expression exists but no specific topic -> TEMPORAL_SUMMARY. Stop.
 6. SEMANTIC_TOPIC: If specific topic/emotion is named but no explicit time expression -> SEMANTIC_TOPIC. Stop.
 7. ANALYTICAL: Pattern/insight questions with no specific time or topic -> ANALYTICAL. Stop.
