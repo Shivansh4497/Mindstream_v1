@@ -50,7 +50,7 @@ export const LifeAreaDashboard: React.FC<LifeAreaDashboardProps> = ({ habits, en
     const AreaIcon = AREA_CONFIG[selectedArea].icon;
 
     return (
-        <div className="min-h-screen bg-dark-bg text-white p-6 md:p-12 overflow-y-auto">
+        <div className="h-full bg-dark-bg text-white p-6 md:p-12 overflow-y-auto">
             <div className="max-w-6xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">

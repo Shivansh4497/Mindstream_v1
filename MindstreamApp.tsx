@@ -490,6 +490,7 @@ export const MindstreamApp: React.FC = () => {
                                         onDelete={(habitId) => actions.handleDeleteHabit(habitId)}
                                         activeFrequency={activeHabitFrequency}
                                         onFrequencyChange={setActiveHabitFrequency}
+                                        onAddHabit={actions.handleAddHabit}
                                     />
                                     <HabitsInputBar
                                         onAddHabit={actions.handleAddHabit}

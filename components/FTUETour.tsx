@@ -32,7 +32,7 @@ const FTUE_STEPS: FTUEStep[] = [
         id: 3,
         tab: 'goals',
         title: 'Set Your Goals',
-        description: 'Life goals, weekly targets, or daily intentions. Add notes to track progress.',
+        description: 'Life goals, weekly targets, or daily goals. Add notes to track progress.',
         emoji: '🎯'
     },
     {

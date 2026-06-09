@@ -57,7 +57,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
           <button
             type="submit"
             className="bg-brand-teal p-3 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
-            aria-label="Add intention"
+            aria-label="Add goal"
             disabled={!text.trim()}
           >
             <SendIcon className="w-6 h-6 text-white" />
@@ -106,7 +106,7 @@ export const IntentionsInputBar: React.FC<IntentionsInputBarProps> = ({ onAddInt
                   onClick={handleConfirmETA}
                   className="flex-1 px-4 py-3 bg-brand-teal hover:bg-teal-400 rounded-lg text-white font-medium transition-colors"
                 >
-                  Create Intention
+                  Create Goal
                 </button>
               </div>
             </motion.div>

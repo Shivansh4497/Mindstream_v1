@@ -17,7 +17,7 @@ export const ActionableSuggestion: React.FC<ActionableSuggestionProps> = ({ sugg
       <button
         onClick={onAdd}
         className="flex-shrink-0 p-1 rounded-full text-brand-teal hover:bg-brand-teal/20 transition-colors"
-        aria-label={`Add suggestion as ${suggestion.timeframe} intention`}
+        aria-label={`Add suggestion as ${suggestion.timeframe} goal`}
       >
         <PlusCircleIcon className="w-6 h-6" />
       </button>

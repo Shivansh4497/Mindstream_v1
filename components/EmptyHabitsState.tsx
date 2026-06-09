@@ -2,7 +2,7 @@ import React from 'react';
 import { Target } from 'lucide-react';
 
 interface EmptyHabitsStateProps {
-  onCreateHabit?: (name: string, emoji: string) => void;
+  onCreateHabit?: (name: string) => void;
 }
 
 export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
@@ -48,7 +48,7 @@ export const EmptyHabitsState: React.FC<EmptyHabitsStateProps> = ({
             {starterHabits.map((habit, index) => (
               <button
                 key={index}
-                onClick={() => onCreateHabit?.(habit.name, habit.emoji)}
+                onClick={() => onCreateHabit?.(habit.name)}
                 className="flex items-center gap-2 p-3 rounded-lg bg-dark-surface border border-white/10 hover:border-brand-teal/40 hover:bg-white/5 transition-all group text-left"
               >
                 <span className="text-2xl">{habit.emoji}</span>

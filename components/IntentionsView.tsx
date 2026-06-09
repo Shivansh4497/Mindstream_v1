@@ -6,10 +6,11 @@ import { EmptyIntentionsState } from './EmptyIntentionsState';
 
 interface IntentionsViewProps {
     intentions: Intention[];
-    onToggle: (id: string, currentStatus: Intention['status']) => void;
-    onDelete: (id: string) => void;
-    onStarToggle: (id: string, isStarred: boolean) => void;
-    onAddIntention?: (text: string) => void;
+    onToggleIntention: (id: string, currentStatus: Intention['status']) => void;
+    onDeleteIntention: (id: string) => void;
+    onEditIntention?: (intention: Intention) => void;
+    onStarToggleIntention?: (id: string, isStarred: boolean) => void;
+    isLoading?: boolean;
 }
 
 const LIFE_AREA_ORDER = ['Health', 'Career', 'Growth', 'Finance', 'Connection', 'System', 'Other'];
@@ -26,18 +27,13 @@ const LIFE_AREA_EMOJIS: Record<string, string> = {
 
 export const IntentionsView: React.FC<IntentionsViewProps> = ({
     intentions,
-    onToggle,
-    onDelete,
-    onStarToggle,
-    onEdit,
-    onAddIntention
+    onToggleIntention,
+    onDeleteIntention,
+    onStarToggleIntention,
+    onEditIntention,
+    isLoading
 }) => {
     const [showCompleted, setShowCompleted] = useState(false);
-    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-    const toggleGroup = (category: string) => {
-        setCollapsedGroups(prev => ({ ...prev, [category]: !prev[category] }));
-    };
 
     const { pendingByCategory, allCompleted } = useMemo(() => {
         const pendingGroups: Record<string, Intention[]> = {
@@ -112,16 +108,10 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                     const pendingList = pendingByCategory[category];
                     if (pendingList.length === 0) return null;
                     
-                    const isCollapsed = collapsedGroups[category] || false;
-
                     return (
                         <div key={category} className="mb-6">
-                            <button
-                                onClick={() => toggleGroup(category)}
-                                className="w-full flex items-center justify-between p-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors group mb-3"
-                            >
+                            <div className="w-full flex items-center justify-between p-3 bg-dark-surface-light rounded-lg hover:bg-white/5 transition-colors group mb-3">
                                 <div className="flex items-center gap-2">
-                                    <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
                                     <h2 className="text-lg font-bold font-display text-white">
                                         <span className="mr-2">{LIFE_AREA_EMOJIS[category]}</span>
                                         {category}
@@ -130,22 +120,20 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                 <span className="text-sm font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">
                                     {pendingList.length}
                                 </span>
-                            </button>
+                            </div>
 
-                            {!isCollapsed && (
-                                <div className="pl-2 border-l-2 border-white/5 ml-4 animate-fade-in-down">
-                                    {pendingList.map(intention => (
-                                        <IntentionCard
-                                            key={intention.id}
-                                            intention={intention}
-                                            onToggle={onToggle}
-                                            onDelete={onDelete}
-                                            onStarToggle={onStarToggle}
-                                            onEdit={onEdit}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                            <div className="pl-2 border-l-2 border-white/5 ml-4 animate-fade-in-down">
+                                {pendingList.map(intention => (
+                                    <IntentionCard
+                                        key={intention.id}
+                                        intention={intention}
+                                        onToggle={onToggleIntention}
+                                        onDelete={onDeleteIntention}
+                                        onStarToggle={onStarToggleIntention}
+                                        onEdit={onEditIntention}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     );
                 })}
@@ -178,9 +166,9 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
                                     <IntentionCard
                                         key={intention.id}
                                         intention={intention}
-                                        onToggle={onToggle}
-                                        onDelete={onDelete}
-                                        onEdit={onEdit}
+                                        onToggle={onToggleIntention}
+                                        onDelete={onDeleteIntention}
+                                        onEdit={onEditIntention}
                                     />
                                 ))}
                             </div>

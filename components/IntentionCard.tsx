@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import type { Intention, IntentionStatus } from '../types';
-import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { Star, ChevronDown, ChevronUp } from 'lucide-react';
 import { celebrate, CelebrationType } from '../utils/celebrations';
@@ -19,6 +18,8 @@ interface IntentionCardProps {
 export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggle, onDelete, onStarToggle, onEdit }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [showNotes, setShowNotes] = useState(false);
+  const [pressTimer, setPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
 
   const handleToggle = () => {
     const isCompleting = intention.status === 'pending';
@@ -40,7 +41,8 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
 
   const dueDate = intention.due_date ? new Date(intention.due_date) : null;
   const isLifeGoal = intention.is_life_goal || false;
-  const dueDateText = formatDueDate(dueDate, isLifeGoal);
+  let dueDateText = formatDueDate(dueDate, isLifeGoal);
+  if (dueDateText === 'No deadline') dueDateText = '';
   const hasNotes = !!intention.notes?.trim();
 
   const createdAt = parseISO(intention.created_at);
@@ -53,7 +55,21 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
   const daysRemaining = parsedDueDate ? differenceInDays(parsedDueDate, now) : null;
 
   return (
-    <div ref={cardRef} className={`flex flex-col bg-dark-surface p-4 rounded-lg mb-3 transition-all duration-300 animate-fade-in-up hover:bg-white/5 ${intention.is_starred ? 'ring-1 ring-amber-400/30 bg-amber-400/5' : ''}`}>
+    <div 
+      ref={cardRef} 
+      className={`flex flex-col bg-dark-surface p-4 rounded-lg mb-3 transition-all duration-300 animate-fade-in-up hover:bg-white/5 ${intention.is_starred ? 'ring-1 ring-amber-400/30 bg-amber-400/5' : ''}`}
+      onMouseDown={() => {
+        const timer = setTimeout(() => setShowDelete(true), 600);
+        setPressTimer(timer);
+      }}
+      onMouseUp={() => { if (pressTimer) { clearTimeout(pressTimer); setPressTimer(null); } }}
+      onMouseLeave={() => { if (pressTimer) { clearTimeout(pressTimer); setPressTimer(null); } }}
+      onTouchStart={() => {
+        const timer = setTimeout(() => setShowDelete(true), 600);
+        setPressTimer(timer);
+      }}
+      onTouchEnd={() => { if (pressTimer) { clearTimeout(pressTimer); setPressTimer(null); } }}
+    >
       <div className="flex items-start">
         <input
           type="checkbox"
@@ -66,10 +82,16 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
             {intention.emoji && <span className="mr-2">{intention.emoji}</span>}
             {intention.text}
           </span>
-          <span className={`text-sm block mt-1 ${intention.status === 'completed' ? 'text-gray-500' : 'text-gray-300'}`}>
-            {dueDateText}
-            {intention.category && <span className="ml-2 text-gray-400">• {intention.category}</span>}
-          </span>
+          {(dueDateText || intention.category) && (
+            <span className={`text-sm block mt-1 ${intention.status === 'completed' ? 'text-gray-500' : 'text-gray-300'}`}>
+              {dueDateText}
+              {intention.category && (
+                <span className={`${dueDateText ? 'ml-2' : ''} text-gray-400`}>
+                  {dueDateText ? '• ' : ''}{intention.category}
+                </span>
+              )}
+            </span>
+          )}
 
           {/* Progress Bar / Life Goal Badge */}
           {intention.status !== 'completed' && (
@@ -107,14 +129,16 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
               {/* Inline preview - first ~50 chars */}
               <button
                 onClick={() => setShowNotes(!showNotes)}
-                className="flex items-center gap-2 text-sm text-gray-400 hover:text-brand-teal transition-colors w-full text-left"
+                className="flex items-center justify-between text-sm text-gray-400 hover:text-brand-teal transition-colors w-full text-left"
               >
-                <span className="text-gray-500">📝</span>
-                <span className="text-gray-300 italic truncate flex-1">
-                  "{intention.notes!.slice(0, 50)}{intention.notes!.length > 50 ? '...' : ''}"
-                </span>
+                <div className="flex items-center gap-2 truncate pr-4">
+                  <span className="text-gray-500 flex-shrink-0">📝</span>
+                  <span className="text-gray-300 italic truncate">
+                    "{intention.notes!.slice(0, 50)}{intention.notes!.length > 50 ? '...' : ''}"
+                  </span>
+                </div>
                 {intention.notes!.length > 50 && (
-                  showNotes ? <ChevronUp className="w-4 h-4 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                  showNotes ? <ChevronUp className="w-4 h-4 flex-shrink-0 text-gray-500" /> : <ChevronDown className="w-4 h-4 flex-shrink-0 text-gray-500" />
                 )}
               </button>
 
@@ -129,7 +153,7 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
             onEdit && (
               <button
                 onClick={() => onEdit(intention)}
-                className="mt-2 text-sm text-gray-500 hover:text-brand-teal transition-colors"
+                className="mt-2 text-xs text-white/25 hover:text-brand-teal transition-colors"
               >
                 + Add notes
               </button>
@@ -159,13 +183,22 @@ export const IntentionCard: React.FC<IntentionCardProps> = ({ intention, onToggl
           </button>
         )}
 
-        <button
-          onClick={() => onDelete(intention.id)}
-          className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-red-400 transition-colors flex-shrink-0"
-          aria-label="Delete intention"
-        >
-          <TrashIcon className="w-5 h-5" />
-        </button>
+        {showDelete ? (
+          <div className="flex items-center gap-1 animate-fade-in">
+            <button
+              onClick={() => { onDelete(intention.id); setShowDelete(false); }}
+              className="px-2 py-1 rounded text-xs font-semibold bg-red-500/20 text-red-400 border border-red-400/30 hover:bg-red-500/30 transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setShowDelete(false)}
+              className="px-2 py-1 rounded text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

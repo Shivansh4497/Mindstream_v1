@@ -13,7 +13,7 @@ interface HabitsViewProps {
     onToggle: (habitId: string, dateString?: string) => void;
     onEdit: (habit: Habit) => void;
     onDelete: (habitId: string) => void;
-    onAddHabit?: (name: string, emoji: string) => void;
+    onAddHabit?: (name: string, frequency: HabitFrequency) => void;
     activeFrequency: HabitFrequency;
     onFrequencyChange: (frequency: HabitFrequency) => void;
 }
@@ -157,7 +157,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                 )}
 
                 {filteredHabits.length === 0 && (
-                    <EmptyHabitsState onCreateHabit={onAddHabit} />
+                    <EmptyHabitsState onCreateHabit={(name) => onAddHabit?.(name, activeFrequency)} />
                 )}
 
                 {/* Habits List */}

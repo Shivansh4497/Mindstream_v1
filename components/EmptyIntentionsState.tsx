@@ -31,10 +31,10 @@ export const EmptyIntentionsState: React.FC<EmptyIntentionsStateProps> = ({
                 {/* Heading */}
                 <div>
                     <h2 className="text-2xl font-display font-bold text-white mb-2">
-                        Set your first intention
+                        Set your first goal
                     </h2>
                     <p className="text-gray-400">
-                        Intentions are finite goals with clear outcomes
+                        Goals are specific targets with clear outcomes
                     </p>
                 </div>
 
@@ -68,7 +68,7 @@ export const EmptyIntentionsState: React.FC<EmptyIntentionsStateProps> = ({
                 {/* Custom Intention CTA */}
                 <div className="pt-4 border-t border-white/10">
                     <p className="text-sm text-gray-400 mb-3">
-                        Or write your own intention below
+                        Or write your own goal below
                     </p>
                     <div className="flex items-center justify-center gap-2 text-purple-400">
                         <span className="text-2xl">↓</span>

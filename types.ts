@@ -82,7 +82,7 @@ export interface Intention {
   user_id: string;
   text: string;
   status: IntentionStatus;
-  notes?: string; // Optional notes/context for the goal
+  notes?: string | null; // Optional notes/context for the goal
   emoji?: string; // NEW: AI-assigned emoji
   category?: 'Health' | 'Growth' | 'Career' | 'Finance' | 'Connection' | 'System'; // NEW: AI-assigned category
   timeframe?: IntentionTimeframe; //  Deprecated, use due_date instead

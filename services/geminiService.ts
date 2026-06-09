@@ -250,17 +250,43 @@ export async function adaptiveRetrieval(
             break;
             
         case 'CONVERSATIONAL':
-            return {
-                intent,
-                queryIntent: intent,
-                matches: [],
-                entries: [],
-                retrievalStrategy: 'CONVERSATIONAL',
-                strategy: 'CONVERSATIONAL',
-                structuredContext: undefined,
-                classifierLatencyMs,
-                embeddingLatencyMs: classifierLatencyMs
-            };
+            // High-confidence CONVERSATIONAL (>=0.90): pure chat, no retrieval needed
+            if (intent.confidence >= 0.90 || !preGeneratedEmbedding) {
+                return {
+                    intent,
+                    queryIntent: intent,
+                    matches: [],
+                    entries: [],
+                    retrievalStrategy: 'CONVERSATIONAL',
+                    strategy: 'CONVERSATIONAL',
+                    structuredContext: undefined,
+                    classifierLatencyMs,
+                    embeddingLatencyMs: classifierLatencyMs
+                };
+            }
+            
+            // Low-confidence CONVERSATIONAL (<0.90): emotionally ambiguous query
+            // Run structured fetch + semantic search in parallel as silent enrichment
+            // The model receives this context with a soft instruction to use it only if relevant
+            const [ambiguousSemanticHits, ambiguousHabitsContext, ambiguousGoalsContext] = await Promise.all([
+                db.semanticSearchEntries(
+                    userId,
+                    userMessage,
+                    3,
+                    semanticThreshold,
+                    undefined,
+                    undefined,
+                    preGeneratedEmbedding
+                ),
+                db.getHabitContextForChat(userId),
+                db.getGoalContextForChat(userId)
+            ]);
+            
+            if (ambiguousHabitsContext) structuredContext.habits = ambiguousHabitsContext;
+            if (ambiguousGoalsContext) structuredContext.goals = ambiguousGoalsContext;
+            matches = ambiguousSemanticHits;
+            retrievalStrategy = 'PROFILE_RECENT_CONTEXT';
+            break;
             
         case 'ANALYTICAL':
             const analytics = await db.getAnalyticalContext(userId);
@@ -365,8 +391,13 @@ export const buildSystemContext = (
     }
 
     if (layer4Results && layer4Results.structuredContext) {
+        const isSoftEnrichment = layer4Results.retrievalStrategy === 'PROFILE_RECENT_CONTEXT';
         contextString += `[STRUCTURED DATA - GROUNDED FACTS]\n`;
-        contextString += `Use these numbers exactly as provided. Never calculate or estimate your own values.\n\n`;
+        if (isSoftEnrichment) {
+            contextString += `This context is provided as optional background. Reference it naturally only if it directly and meaningfully supports your response. Do not force it in.\n\n`;
+        } else {
+            contextString += `Use these numbers exactly as provided. Never calculate or estimate your own values.\n\n`;
+        }
         if (layer4Results.structuredContext.habits) {
             contextString += `${layer4Results.structuredContext.habits}\n\n`;
         }

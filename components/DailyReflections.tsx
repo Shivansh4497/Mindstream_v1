@@ -41,11 +41,8 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
   }, [dailyReflections]);
 
   const sortedDates = useMemo(() => {
-    const entryDates = Object.keys(groupedEntries);
-    const reflectionDates = Object.keys(dailyReflectionsMap);
-    const allDates = new Set([...entryDates, ...reflectionDates]);
-    return Array.from(allDates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  }, [groupedEntries, dailyReflectionsMap]);
+    return Object.keys(groupedEntries).sort((a, b) => b.localeCompare(a));
+  }, [groupedEntries]);
 
   if (entries.length === 0 && dailyReflections.length === 0) {
     return (
@@ -117,23 +114,23 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
 
       {sortedDates.map(date => {
         const entriesForDay = groupedEntries[date];
+        if (!entriesForDay || entriesForDay.length === 0) return null;
+        
         const reflectionForDay = dailyReflectionsMap[date];
         const isGeneratingForThis = isGenerating === date;
         const hasEntries = entriesForDay && entriesForDay.length > 0;
         const isAiDisabled = aiStatus !== 'ready';
 
         return (
-          <div key={date} className="mb-8">
-            <h2 className="text-xl font-bold text-gray-200 font-display mb-4">{getDisplayDate(date)}</h2>
+          <div key={date}>
+            <h2 className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/35 mb-3 mt-6">{getDisplayDate(date)}</h2>
 
-            {reflectionForDay && (
-              <div className="mb-4">
+            <div className="mb-6 space-y-2">
+              {reflectionForDay && (
                 <ReflectionCard reflection={reflectionForDay} onExplore={onExplore} onAddSuggestion={onAddSuggestion} />
-              </div>
-            )}
+              )}
 
-            {hasEntries && (
-              <div className="mt-4">
+              {hasEntries && (
                 <button
                   onClick={() => onGenerate(date, entriesForDay)}
                   disabled={isGeneratingForThis || isAiDisabled}
@@ -155,8 +152,8 @@ export const DailyReflections: React.FC<DailyReflectionsProps> = ({ entries, dai
                     </>
                   )}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         );
       })}

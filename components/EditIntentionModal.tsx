@@ -54,7 +54,7 @@ export const EditIntentionModal: React.FC<EditIntentionModalProps> = ({ intentio
 
         const updates: Partial<Intention> = {
             text: text.trim(),
-            notes: notes.trim() || undefined,
+            notes: notes.trim() || null,
             emoji,
             category: category as any,
             due_date: selectedDueDate?.toISOString() || null,
@@ -90,7 +90,7 @@ export const EditIntentionModal: React.FC<EditIntentionModalProps> = ({ intentio
                 className="bg-dark-surface rounded-xl p-6 max-w-md w-full flex flex-col shadow-2xl animate-fade-in-up max-h-[90vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
             >
-                <h2 className="text-xl font-bold font-display text-white mb-4">Edit Intention</h2>
+                <h2 className="text-xl font-bold font-display text-white mb-4">Edit Goal</h2>
 
                 {/* Emoji & Category Row */}
                 <div className="mb-4 flex items-center gap-3">
@@ -146,7 +146,7 @@ export const EditIntentionModal: React.FC<EditIntentionModalProps> = ({ intentio
 
                 {/* Text Input */}
                 <div className="mb-4">
-                    <label className="text-sm text-gray-400 mb-1 block">Intention</label>
+                    <label className="text-sm text-gray-400 mb-1 block">Goal</label>
                     <textarea
                         value={text}
                         onChange={(e) => setText(e.target.value)}
