@@ -107,10 +107,10 @@ export const FocusView: React.FC<FocusViewProps> = ({
                         >
                             <IntentionsView
                                 intentions={intentions}
-                                onToggle={onToggleIntention}
-                                onDelete={onDeleteIntention}
-                                onStarToggle={onStarToggleIntention}
-                                onEdit={onEditIntention}
+                                onToggleIntention={onToggleIntention}
+                                onDeleteIntention={onDeleteIntention}
+                                onStarToggleIntention={onStarToggleIntention}
+                                onEditIntention={onEditIntention}
                                 onAddIntention={(text) => onAddIntention(text, null, false)}
                             />
                             <IntentionsInputBar onAddIntention={onAddIntention} />

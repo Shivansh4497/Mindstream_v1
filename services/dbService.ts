@@ -35,35 +35,7 @@ export const updateProfile = async (userId: string, updates: Partial<Profile>): 
     return data;
 };
 
-// Cache for account creation timestamps to avoid repeated DB calls
-const accountCreatedAtCache: Map<string, string> = new Map();
-
-// Get account creation timestamp (used to filter out old data from before account recreation)
-export const getAccountCreatedAt = async (userId: string): Promise<string | null> => {
-    // Check cache first
-    if (accountCreatedAtCache.has(userId)) {
-        return accountCreatedAtCache.get(userId)!;
-    }
-
-    const profile = await getProfile(userId);
-
-    // For Demo users, we want to show ALL seeded history (backdated 30 days)
-    // So we return 'null' to skip the date filtering logic in getEntries/getIntentions
-    if (profile?.is_demo) {
-        return null;
-    }
-
-    if (profile?.created_at) {
-        accountCreatedAtCache.set(userId, profile.created_at);
-        return profile.created_at;
-    }
-    return null;
-};
-
-// Clear cache on logout/account change
-export const clearAccountCreatedAtCache = (userId: string) => {
-    accountCreatedAtCache.delete(userId);
-};
+// Account creation cache logic removed to safely restore valid older entries.
 
 /**
  * BULLETPROOF: Reset all user data on onboarding.
@@ -107,8 +79,7 @@ export const resetAccountData = async (userId: string): Promise<boolean> => {
             // Don't fail completely - data was still deleted
         }
 
-        // Clear the cache so new created_at is fetched
-        clearAccountCreatedAtCache(userId);
+        // (Cache clear removed)
 
         console.log('[resetAccountData] Account reset complete. New created_at:', now);
         return true;
@@ -186,12 +157,7 @@ export const createProfile = async (user: User, isDemo: boolean = false): Promis
         throw error;
     }
 
-    clearAccountCreatedAtCache(user.id);
-
     console.log('[dbService] Profile created/updated result:', data);
-
-    // Clear cache to ensure app picks up new timestamp
-    clearAccountCreatedAtCache(user.id);
 
     return data;
 };
@@ -232,19 +198,11 @@ export const getEntries = async (userId: string, page: number = 0, pageSize: num
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
-    // Get account creation timestamp to filter out old data
-    const accountCreatedAt = await getAccountCreatedAt(userId);
-
     let query = supabase
         .from('entries')
         .select('*')
         .eq('user_id', userId)
         .is('deleted_at', null);
-
-    // Filter entries created after account recreation
-    if (accountCreatedAt) {
-        query = query.gte('timestamp', accountCreatedAt);
-    }
 
     const { data, error } = await query
         .order('timestamp', { ascending: false })
@@ -423,9 +381,6 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
 
     const searchQuery = keywords.join(' or ');
 
-    // Get account creation date to filter out entries from before install
-    const accountCreatedAt = await getAccountCreatedAt(userId);
-
     let query = supabase
         .from('entries')
         .select('*')
@@ -435,11 +390,6 @@ export const searchEntries = async (userId: string, keywords: string[]): Promise
             type: 'websearch',
             config: 'english'
         });
-
-    // Filter out entries from before account creation (e.g., test data, previous accounts)
-    if (accountCreatedAt) {
-        query = query.gte('timestamp', accountCreatedAt);
-    }
 
     const { data, error } = await query.limit(10);
 
@@ -458,7 +408,6 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
     if (!supabase || !keywords || keywords.length === 0) return [];
 
     const searchQuery = keywords.join(' or ');
-    const accountCreatedAt = await getAccountCreatedAt(userId);
 
     // 1. Search Entries (Content)
     let entryQuery = supabase
@@ -468,7 +417,6 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
         .is('deleted_at', null)
         .textSearch('text', searchQuery, { type: 'websearch', config: 'english' });
 
-    if (accountCreatedAt) entryQuery = entryQuery.gte('timestamp', accountCreatedAt);
     const entryPromise = entryQuery.limit(5);
 
     // 2. Search Habits (Name & Category)
@@ -484,7 +432,6 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
         .is('deleted_at', null)
         .or(keywordFilter);
 
-    if (accountCreatedAt) habitQuery = habitQuery.gte('created_at', accountCreatedAt);
     const habitPromise = habitQuery.limit(5);
 
     // 3. Search Intentions (Text)
@@ -496,7 +443,6 @@ export const searchUniversal = async (userId: string, keywords: string[]): Promi
         .is('deleted_at', null)
         .or(intentionFilter);
 
-    if (accountCreatedAt) intentionQuery = intentionQuery.gte('created_at', accountCreatedAt);
     const intentionPromise = intentionQuery.limit(5);
 
     // Execute in parallel
@@ -890,8 +836,7 @@ export const findSimilarMoments = async (
     cutoffTime.setHours(cutoffTime.getHours() - excludeHours);
     const cutoffISO = cutoffTime.toISOString();
 
-    // Get account creation date to filter out old data
-    const accountCreatedAt = await getAccountCreatedAt(userId);
+
 
     try {
         // 1. Find entries with same sentiment (strongest match)
@@ -905,10 +850,6 @@ export const findSimilarMoments = async (
                 .lt('timestamp', cutoffISO) // Exclude recent
                 .order('timestamp', { ascending: false })
                 .limit(5);
-
-            if (accountCreatedAt) {
-                sentimentQuery = sentimentQuery.gte('timestamp', accountCreatedAt);
-            }
 
             const { data: sentimentMatches } = await sentimentQuery;
 
@@ -933,10 +874,6 @@ export const findSimilarMoments = async (
                 .lt('timestamp', cutoffISO)
                 .order('timestamp', { ascending: false })
                 .limit(20); // Fetch more to filter client-side
-
-            if (accountCreatedAt) {
-                tagQuery = tagQuery.gte('timestamp', accountCreatedAt);
-            }
 
             const { data: tagCandidates } = await tagQuery;
 
@@ -1001,19 +938,11 @@ export const addFirstIntention = async (userId: string): Promise<Intention | nul
 export const getReflections = async (userId: string): Promise<Reflection[]> => {
     if (!supabase) return [];
 
-    // Get account creation timestamp to filter out old data
-    const accountCreatedAt = await getAccountCreatedAt(userId);
-
     let query = supabase
         .from('reflections')
         .select('*')
         .eq('user_id', userId)
         .is('deleted_at', null);
-
-    // Filter reflections created after account recreation
-    if (accountCreatedAt) {
-        query = query.gte('timestamp', accountCreatedAt);
-    }
 
     const { data, error } = await query.order('timestamp', { ascending: false });
 
@@ -1091,19 +1020,11 @@ export const addReflection = async (userId: string, reflectionData: Omit<Reflect
 export const getIntentions = async (userId: string): Promise<Intention[]> => {
     if (!supabase) return [];
 
-    // Get account creation timestamp to filter out old data
-    const accountCreatedAt = await getAccountCreatedAt(userId);
-
     let query = supabase
         .from('intentions')
         .select('*')
         .eq('user_id', userId)
         .is('deleted_at', null);
-
-    // Filter intentions created after account recreation
-    if (accountCreatedAt) {
-        query = query.gte('created_at', accountCreatedAt);
-    }
 
     const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -1248,9 +1169,6 @@ export const deleteIntention = async (id: string): Promise<boolean> => {
 export const getHabits = async (userId: string): Promise<Habit[]> => {
     if (!supabase) return [];
 
-    // Get account creation timestamp to filter out old data
-    const accountCreatedAt = await getAccountCreatedAt(userId);
-
     // 1. Fetch Habits
     let query = supabase
         .from('habits')
@@ -1258,10 +1176,7 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         .eq('user_id', userId)
         .is('deleted_at', null);
 
-    // Filter habits created after account recreation
-    if (accountCreatedAt) {
-        query = query.gte('created_at', accountCreatedAt);
-    }
+
 
     const { data: habitsData, error } = await query.order('created_at', { ascending: true });
 

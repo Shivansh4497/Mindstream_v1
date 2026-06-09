@@ -10,6 +10,7 @@ interface IntentionsViewProps {
     onDeleteIntention: (id: string) => void;
     onEditIntention?: (intention: Intention) => void;
     onStarToggleIntention?: (id: string, isStarred: boolean) => void;
+    onAddIntention?: (text: string) => void;
     isLoading?: boolean;
 }
 
@@ -31,6 +32,7 @@ export const IntentionsView: React.FC<IntentionsViewProps> = ({
     onDeleteIntention,
     onStarToggleIntention,
     onEditIntention,
+    onAddIntention,
     isLoading
 }) => {
     const [showCompleted, setShowCompleted] = useState(false);

@@ -515,6 +515,8 @@ export const MindstreamApp: React.FC = () => {
                                         onToggleIntention={actions.handleToggleIntention}
                                         onDeleteIntention={(id) => actions.handleDeleteIntention(id)}
                                         onEditIntention={(intention) => setIntentionToEdit(intention)}
+                                        onStarToggleIntention={actions.handleToggleStar}
+                                        onAddIntention={(text) => actions.handleAddIntention(text, null, false)}
                                         isLoading={!state.isDataLoaded}
                                     />
                                     <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
