@@ -97,18 +97,12 @@ serve(async (req) => {
         );
 
         // Idempotency check — skip if data already exists
-        const { data: existingEntries } = await supabaseAdmin
-            .from('entries')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1);
-
-        if (existingEntries && existingEntries.length > 0) {
-            console.log('[Seed Demo] Data already exists, skipping.');
-            return new Response(JSON.stringify({ success: true, message: 'Already seeded' }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-        }
+        // Wipe old data first to ensure fresh embeddings and schema updates
+        await supabaseAdmin.from('entries').delete().eq('user_id', userId);
+        await supabaseAdmin.from('habit_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // Clean way to wipe related logs, though wiping habits will cascade
+        await supabaseAdmin.from('habits').delete().eq('user_id', userId);
+        await supabaseAdmin.from('intentions').delete().eq('user_id', userId);
+        await supabaseAdmin.from('reflections').delete().eq('user_id', userId);
 
         const now = new Date();
 

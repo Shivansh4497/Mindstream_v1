@@ -51,18 +51,30 @@ export function unwrapResponse(text: string): string {
 }
 
 async function generateQueryEmbedding(
-  queryText: string
+  queryText: string,
+  retries = 2
 ): Promise<number[] | null> {
   try {
-    const { data } = await supabase.functions
+    const { data, error } = await supabase.functions
       .invoke('ai-proxy', {
         body: {
           action: 'generate-embedding',
           payload: { text: queryText }
         }
       });
-    return data?.data?.embedding ?? data?.embedding ?? null;
-  } catch {
+    if (error || !data?.success) throw new Error(error?.message || 'Failed');
+    
+    const embedding = data?.data?.embedding ?? data?.embedding ?? null;
+    if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+      throw new Error('Embedding payload is empty or invalid (possible edge function crash)');
+    }
+    return embedding;
+  } catch (err) {
+    if (retries > 0) {
+      console.warn(`[generateQueryEmbedding] Retrying... (${retries} left)`);
+      await new Promise(r => setTimeout(r, 1500));
+      return generateQueryEmbedding(queryText, retries - 1);
+    }
     return null;
   }
 }
@@ -150,7 +162,16 @@ export async function adaptiveRetrieval(
         case 'SEMANTIC_TOPIC':
             if (!preGeneratedEmbedding) {
                 console.error('[P1] SEMANTIC_TOPIC: preGeneratedEmbedding is UNDEFINED. Check getChatResponseStream() call site — embedding must be passed through to adaptiveRetrieval().');
-                return null;
+                return {
+                    intent,
+                    queryIntent: intent,
+                    matches: [],
+                    entries: [],
+                    retrievalStrategy: 'EMBEDDING_FAILED',
+                    strategy: 'EMBEDDING_FAILED',
+                    classifierLatencyMs,
+                    embeddingLatencyMs: classifierLatencyMs
+                };
             }
             
             const semanticPromise = db.semanticSearchEntries(
@@ -229,7 +250,17 @@ export async function adaptiveRetrieval(
             break;
             
         case 'CONVERSATIONAL':
-            return null;
+            return {
+                intent,
+                queryIntent: intent,
+                matches: [],
+                entries: [],
+                retrievalStrategy: 'CONVERSATIONAL',
+                strategy: 'CONVERSATIONAL',
+                structuredContext: undefined,
+                classifierLatencyMs,
+                embeddingLatencyMs: classifierLatencyMs
+            };
             
         case 'ANALYTICAL':
             const analytics = await db.getAnalyticalContext(userId);
@@ -312,10 +343,17 @@ export const buildSystemContext = (
     recentContext: string,
     layer4Results: AdaptiveRetrievalResult | null,
     conversationHistory: Message[],
-    personalitySystemPrompt: string
+    personalitySystemPrompt: string,
+    intent?: string
 ): string => {
     let contextString = `${personalitySystemPrompt}\n\n`;
-    contextString += `${CONVERSATIONAL_INTELLIGENCE}\n\n`;
+    
+    if (intent === 'TEMPORAL_SUMMARY' || intent === 'TEMPORAL_TOPIC') {
+        contextString += `=== SUMMARIZATION INTELLIGENCE ===\n\nYou are providing a comprehensive, chronological summary. Do NOT limit to 50 words. You may use bullet points and lists to structure the information clearly. Focus on accuracy and completeness based on the retrieved context. Do not ask conversational follow-up questions.\n\n`;
+    } else {
+        contextString += `${CONVERSATIONAL_INTELLIGENCE}\n\n`;
+    }
+
     contextString += `${userProfile}\n\n`;
     contextString += `${recentContext}\n\n`;
 
@@ -353,6 +391,7 @@ CRITICAL GROUNDING RULES:
 3. If the retrieved context doesn't contain the answer, say so. Do not invent memories.
 4. If there is NO [RETRIEVED CONTEXT] provided, and the user asks a question about their past, you MUST state that you do not have enough logged data to answer.
 5. CRITICAL: You must NEVER state specific numbers (streak counts, completion rates, day counts, percentages) unless that exact number appears verbatim in the [STRUCTURED DATA - GROUNDED FACTS] block above. If no structured data is available for a question about habits or goals, say you don't have enough logged data to answer precisely rather than estimating.
+6. RECENT CONVERSATION BIAS: For questions about your past, rely PRIMARILY on the [RETRIEVED CONTEXT]. The [CONVERSATION HISTORY] and [RECENT CONTEXT] are only provided for conversational flow. DO NOT extract historical facts, dates, or memories from the recent conversation unless it directly answers the question.
 `;
     contextString += GROUNDING_RULES;
 
@@ -379,7 +418,8 @@ export const getChatResponseStream = async (userId: string, history: Message[], 
         recentContext,
         retrieval,
         history.slice(0, -1),
-        personality.systemPrompt
+        personality.systemPrompt,
+        retrieval?.intent?.intent
     );
 
     const firstName = baseProfile?.full_name?.split(' ')[0] 

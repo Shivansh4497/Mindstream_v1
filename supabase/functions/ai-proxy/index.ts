@@ -44,10 +44,20 @@ interface AIRequest {
 // PROVIDER CALL FUNCTIONS
 // =============================================================================
 
-async function callGroqWithModel(model: string, prompt: string): Promise<string> {
+async function callGroqWithModel(model: string, prompt: string, isJson: boolean = false): Promise<string> {
     if (!groqKey) throw new Error('Groq API key not configured');
 
     console.log(`[AI Proxy] Calling Groq ${model}, prompt length: ${prompt.length}`);
+
+    const body: any = {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2048,
+    };
+    if (isJson) {
+        body.response_format = { type: 'json_object' };
+    }
 
     const response = await fetch(GROQ_API_BASE, {
         method: 'POST',
@@ -55,12 +65,7 @@ async function callGroqWithModel(model: string, prompt: string): Promise<string>
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${groqKey}`,
         },
-        body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-            max_tokens: 2048,
-        })
+        body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -77,21 +82,26 @@ async function callGroqWithModel(model: string, prompt: string): Promise<string>
     return result.choices[0].message.content;
 }
 
-async function callGeminiWithModel(model: string, prompt: string): Promise<string> {
+async function callGeminiWithModel(model: string, prompt: string, isJson: boolean = false): Promise<string> {
     if (!geminiKey) throw new Error('Gemini API key not configured');
 
     const url = `${GEMINI_API_BASE}/${model}:generateContent?key=${geminiKey}`;
     console.log(`[AI Proxy] Calling Gemini ${model}, prompt length: ${prompt.length}`);
+
+    const generationConfig: any = {
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+    };
+    if (isJson) {
+        generationConfig.responseMimeType = 'application/json';
+    }
 
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 2048,
-            }
+            generationConfig
         })
     });
 
@@ -177,6 +187,7 @@ function getCachedResponse(action: string): any {
 interface AICallResult {
     text: string;
     provider: string;
+    model_name: string;
     latency_ms: number;
     attempted: string[];
 }
@@ -186,24 +197,24 @@ function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-async function callAI(prompt: string, action: string): Promise<AICallResult> {
+async function callAI(prompt: string, action: string, isJson: boolean = true): Promise<AICallResult> {
     const providers = [
-        { name: 'Groq 120B', fn: async () => callGroqWithModel(GROQ_MODEL_120B, prompt), available: !!groqKey },
-        { name: 'Groq 70B', fn: async () => callGroqWithModel(GROQ_MODEL_70B, prompt), available: !!groqKey },
-        { name: 'Groq 17B Scout', fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt), available: !!groqKey },
-        { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt), available: !!groqKey },
-        { name: 'Gemini Flash', fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
+        { name: 'Groq 120B', model: GROQ_MODEL_120B, fn: async () => callGroqWithModel(GROQ_MODEL_120B, prompt, isJson), available: !!groqKey },
+        { name: 'Groq 70B', model: GROQ_MODEL_70B, fn: async () => callGroqWithModel(GROQ_MODEL_70B, prompt, isJson), available: !!groqKey },
+        { name: 'Groq 17B Scout', model: GROQ_MODEL_17B, fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt, isJson), available: !!groqKey },
+        { name: 'Groq 8B', model: GROQ_MODEL_8B, fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt, isJson), available: !!groqKey },
+        { name: 'Gemini Flash', model: GEMINI_MODEL_PRIMARY, fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt, isJson), available: !!geminiKey },
     ];
 
-    if (action === 'evaluate-response' || action === 'extract-keywords') {
+    if (action === 'evaluate-response' || action === 'extract-keywords' || action === 'classify-intent') {
         // Clear standard providers and set background-optimized chain
         providers.length = 0;
         providers.push(
-            { name: 'Groq 17B Scout', fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt), available: !!groqKey },
-            { name: 'Groq 20B', fn: async () => callGroqWithModel(GROQ_MODEL_20B, prompt), available: !!groqKey },
-            { name: 'Groq 8B', fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt), available: !!groqKey },
-            { name: 'Gemini Lite', fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey },
-            { name: 'Gemini Flash', fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey }
+            { name: 'Groq 17B Scout', model: GROQ_MODEL_17B, fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt, isJson), available: !!groqKey },
+            { name: 'Groq 20B', model: GROQ_MODEL_20B, fn: async () => callGroqWithModel(GROQ_MODEL_20B, prompt, isJson), available: !!groqKey },
+            { name: 'Groq 8B', model: GROQ_MODEL_8B, fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt, isJson), available: !!groqKey },
+            { name: 'Gemini Lite', model: GEMINI_MODEL_BACKUP, fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt, isJson), available: !!geminiKey },
+            { name: 'Gemini Flash', model: GEMINI_MODEL_PRIMARY, fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt, isJson), available: !!geminiKey }
         );
     }
 
@@ -261,7 +272,7 @@ async function callAI(prompt: string, action: string): Promise<AICallResult> {
                 }
             }
             
-            return { text: result, provider: provider.name, latency_ms, attempted, fallback_events };
+            return { text: result, provider: provider.name, model_name: provider.model, latency_ms, attempted, fallback_events };
         } catch (error: any) {
             console.warn(`[AI Proxy] ✗ ${provider.name} failed: ${error.message}`);
             providerErrors[provider.name] = error.message;
@@ -475,14 +486,14 @@ serve(async (req) => {
                 }
 
                 case 'generate-embedding': {
-                    const { text } = payload;
-                    result = { embedding: await generateEmbedding(text) };
+                    const { text, isQuery = true } = payload;
+                    result = { embedding: await generateEmbedding(text, isQuery) };
                     break;
                 }
 
                 case 'generate-and-store-embedding': {
                     const { entryId, entryText } = payload;
-                    const embedding = await generateEmbedding(entryText);
+                    const embedding = await generateEmbedding(entryText, false);
                     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
                     await supabaseAdmin
                         .from('entries')
@@ -514,7 +525,7 @@ serve(async (req) => {
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                         );
                     }
-                    const queryEmbedding = preGeneratedEmbedding ?? await generateEmbedding(queryText);
+                    const queryEmbedding = preGeneratedEmbedding ?? await generateEmbedding(queryText, true);
                     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
                     const { data, error } = await supabaseAdmin.rpc(
                         'match_entries',
@@ -535,37 +546,10 @@ serve(async (req) => {
                 }
 
                 case 'classify-intent': {
-                    const { prompt, userMessage } = payload;
-                    
-                    const classifierProviders = [
-                        { name: 'Groq 70B', fn: () => callGroqWithModel(GROQ_MODEL_PRIMARY, prompt), available: !!groqKey },
-                        { name: 'Groq 8B', fn: () => callGroqWithModel(GROQ_MODEL_BACKUP, prompt), available: !!groqKey },
-                        { name: 'Gemini Flash', fn: () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt), available: !!geminiKey },
-                        { name: 'Gemini Lite', fn: () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt), available: !!geminiKey }
-                    ];
-
-                    let classifyResult: any;
-                    const providerErrors: string[] = [];
-                    for (const provider of classifierProviders) {
-                        if (!provider.available) continue;
-                        try {
-                            const res = await provider.fn();
-                            classifyResult = { text: res, provider: provider.name, latency_ms: 0, attempted: [provider.name] };
-                            break;
-                        } catch (e: any) {
-                            console.warn(`[AI Proxy] Classifier ${provider.name} failed:`, e.message);
-                            providerErrors.push(`${provider.name}: ${e.message}`);
-                            continue;
-                        }
-                    }
-
-                    if (!classifyResult) {
-                        const err = new Error("All intent classifiers failed");
-                        (err as any).providerErrors = providerErrors;
-                        throw err;
-                    }
-                    aiMeta = classifyResult;
-                    result = { text: classifyResult.text };
+                    const { prompt } = payload;
+                    const aiResult = await callAI(prompt, action);
+                    aiMeta = aiResult;
+                    result = parseJSON(aiResult.text);
                     break;
                 }
 
@@ -754,7 +738,7 @@ Respond with ONLY JSON: {"keywords": ["term1", "term2"]}`;
                     }
                     context += `User: ${userPrompt}\n\nRespond as a helpful, empathetic assistant:`;
 
-                    const aiResult = await callAI(context, action);
+                    const aiResult = await callAI(context, action, false);
                     aiMeta = aiResult;
                     result = { response: aiResult.text };
                     break;
@@ -1020,7 +1004,6 @@ Return ONLY valid JSON:
   "answerRelevancy": 90,
   "contextPrecision": 75,
   "contextRecall": 80,
-  "fScore": 82,
   "summary": "One sentence assessment"
 }`;
 
@@ -1028,12 +1011,16 @@ Return ONLY valid JSON:
                     aiMeta = evalResult;
                     const scores = parseJSON<any>(evalResult.text);
 
+                    const precision = clamp(scores.contextPrecision, 0, 100);
+                    const recall = clamp(scores.contextRecall, 0, 100);
+                    const fScore = (precision + recall) === 0 ? 0 : Math.round((2 * precision * recall) / (precision + recall));
+
                     result = {
                         faithfulness: clamp(scores.faithfulness, 0, 100),
                         answerRelevancy: clamp(scores.answerRelevancy, 0, 100),
-                        contextPrecision: clamp(scores.contextPrecision, 0, 100),
-                        contextRecall: clamp(scores.contextRecall, 0, 100),
-                        fScore: clamp(scores.fScore, 0, 100),
+                        contextPrecision: precision,
+                        contextRecall: recall,
+                        fScore: fScore,
                         summary: scores.summary || ''
                     };
                     break;
@@ -1239,6 +1226,7 @@ If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
         // Build _meta from tracked AI call data
         const _meta = aiMeta ? {
             provider: aiMeta.provider,
+            model_name: aiMeta.model_name,
             latency_ms: aiMeta.latency_ms,
             attempted: aiMeta.attempted,
             fallback_events: (aiMeta as any).fallback_events,
@@ -1258,7 +1246,7 @@ If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
         // Parse action from request if possible
         try {
             const { action } = await req.clone().json();
-            if (action === 'classify-intent') {
+            if (action === 'classify-intent' || action === 'generate-embedding' || action === 'generate-and-store-embedding') {
                 return new Response(JSON.stringify({ 
                     success: false, 
                     error: error.message, 
@@ -1269,6 +1257,13 @@ If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
                 });
             }
             const fallback = getCachedResponse(action);
+            // If the cached response is just an error placeholder, don't pretend it was successful
+            if (fallback.error) {
+                return new Response(JSON.stringify({ success: false, error: fallback.error }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
             return new Response(JSON.stringify({ success: true, data: fallback }), {
                 status: 200,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }

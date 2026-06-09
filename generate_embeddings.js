@@ -22,7 +22,7 @@ async function generate() {
     console.log(`Found ${texts.length} entries.`);
 
     console.log("Loading model...");
-    const embedder = await pipeline('feature-extraction', 'Supabase/gte-small');
+    const embedder = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5');
     
     console.log("Generating embeddings...");
     const embeddings = [];

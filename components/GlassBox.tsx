@@ -90,11 +90,7 @@ interface EvalScores {
 
 const HIGH_CONFIDENCE = 0.85;
 
-const PROVIDER_CHAIN = [
-    { name: 'Groq 70B', model: 'llama-3.3-70b-versatile' },
-    { name: 'Groq 8B', model: 'llama-3.1-8b-instant' },
-    { name: 'Gemini Flash', model: 'gemini-2.0-flash' },
-];
+
 
 function detectTemporalLabel(msg: string): string | null {
     if (!msg) return null;
@@ -274,7 +270,7 @@ const StepContent: React.FC<{
         return (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/80 font-semibold">Classifier (Groq 8B)</span>
+                    <span className="text-xs text-white/80 font-semibold">Classifier ({queryIntent?.classifierProvider || 'Groq 8B'})</span>
                     {ms > 0 && <LatencyBadge ms={ms} />}
                 </div>
                 {queryIntent ? (
@@ -285,7 +281,7 @@ const StepContent: React.FC<{
                             <span className="text-xs text-white/60 italic">
                                 Topic: {queryIntent.detectedTopic}
                             </span>
-                        ) : queryIntent.topicKeywords.length > 0 ? (
+                        ) : queryIntent.topicKeywords?.length > 0 ? (
                             <span className="text-xs text-white/60 italic">
                                 Topics: {queryIntent.topicKeywords.join(', ')}
                             </span>
@@ -524,32 +520,37 @@ const StepContent: React.FC<{
         ];
         const maxMs = Math.max(...phases.map(p => p.ms), 1);
 
-        // Get the model ID for the used provider
-        const usedProviderInfo = PROVIDER_CHAIN.find(p => p.name === provider) ?? PROVIDER_CHAIN[0];
+        // Get the model ID for the used provider dynamically
+        const modelName = meta?.model_name ?? 'unknown-model';
 
         return (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-3.5">
                 {/* Provider name */}
                 <div>
                     <p className="text-sm font-bold text-teal-400">{provider}</p>
-                    <p className="text-xs text-white/50 font-mono mt-0.5">{usedProviderInfo.model}</p>
+                    <p className="text-xs text-white/50 font-mono mt-0.5">{modelName}</p>
                 </div>
 
                 {/* Provider chain */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                    {PROVIDER_CHAIN.map(p => {
-                        const used = p.name === provider;
-                        return (
-                            <span key={p.name} className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all ${
-                                used
-                                    ? 'bg-teal-400/15 text-teal-400 border-teal-400/30'
-                                    : 'bg-white/3 text-white/30 border-white/6'
-                            }`}>
-                                {p.name} {used ? '[USED]' : ''}
-                            </span>
-                        );
-                    })}
-                </div>
+                {meta?.attempted && meta.attempted.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {meta.attempted.map((attemptedName: string, i: number) => {
+                            const used = attemptedName === provider;
+                            const failed = !used && i < meta.attempted.length - 1;
+                            return (
+                                <span key={attemptedName} className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all ${
+                                    used
+                                        ? 'bg-teal-400/15 text-teal-400 border-teal-400/30'
+                                        : failed
+                                            ? 'bg-red-400/10 text-red-400 border-red-400/30 line-through'
+                                            : 'bg-white/3 text-white/30 border-white/6'
+                                }`}>
+                                    {attemptedName} {used ? '[USED]' : ''}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* Latency bar chart */}
                 {totalMs > 0 && (

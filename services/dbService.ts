@@ -629,10 +629,10 @@ export async function semanticSearchEntries(
       activeStartDate = temporal.startDate ? temporal.startDate.toISOString() : null;
       activeEndDate = temporal.endDate ? temporal.endDate.toISOString() : null;
     } else {
-      activeThreshold = 0.85;
+      activeThreshold = 0.50;
     }
   } else {
-    activeThreshold = 0.85; // lower threshold for explicit bounds
+    activeThreshold = 0.50; // lower threshold for explicit bounds
   }
   
   const payload: any = {

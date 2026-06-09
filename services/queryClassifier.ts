@@ -17,131 +17,82 @@ export interface ClassifiedQuery {
   hasTemporalIntent: boolean;
   temporalExpression: string | null;
   topicKeywords: string[];
-  detectedTopic: string | null;  // NEW
+  detectedTopic: string | null;
   startDate: Date | null;
   endDate: Date | null;
   confidence: number;
   reasoning: string;
   requiresStructuredContext?: boolean;
-}
-
-function applyPreChecks(query: string): string | null {
-  const q = query.toLowerCase();
-  if (/^(summarize?|summarise?|recap|overview|review|how did|how was)\s+(my\s+)?(last|past|recent|this)\s+(\d+\s+)?(day|week|month)s?/.test(q)) return 'TEMPORAL_SUMMARY';
-  
-  const hasTemporalWindow = /(last|past|recent|this)\s+(\d+\s+)?(day(s)?|week(s)?|month(s)?|year(s)?)/.test(q);
-  
-  if (!hasTemporalWindow) {
-    if (/when did i|when was i|when have i/.test(q)) return 'SEMANTIC_TOPIC';
-    
-    const isMixedEmotional = /(overwhelm|feel|mood|cope|sad|depress|anxious|stress|happy|low)/.test(q);
-    const hasHabitKeywords = /(how is my .* going|am i consistent with|how often do i|\bhabit(s)?\b|\bworkout(s)?\b|\bexercis(e|ing)\b|\bsleep(ing)?\b|\bdiet\b|\bstreak\b|\bconsisten(t|cy)\b|completion rate)/.test(q);
-    const hasGoalKeywords = /\b(goal(s)?|intention(s)?|target(s)?|milestone(s)?|progress|on track)\b/.test(q);
-
-    // We can't set requiresStructuredContext from this deterministic function easily without refactoring,
-    // so if it's mixed, we bypass pre-checks and let the LLM classify it properly with the flag.
-    if (isMixedEmotional && (hasHabitKeywords || hasGoalKeywords)) {
-       // Let the LLM handle it to set requiresStructuredContext: true
-    } else {
-        if (hasHabitKeywords) return 'HABIT_QUERY';
-        if (hasGoalKeywords) return 'GOAL_QUERY';
-    }
-
-    if (/\bpattern(s)?\b/.test(q)) return 'ANALYTICAL';
-    if (/(most common|what topics|trend(s)?|frequent(ly)?)/.test(q)) return 'ANALYTICAL';
-  }
-  
-  const wordCount = q.trim().split(/\s+/).length;
-  if (wordCount <= 5 && /^(tell me more|why|how|what about|and|so)/.test(q)) return 'CONVERSATIONAL';
-  
-  return null;
+  classifierProvider?: string;
 }
 
 export async function classifyQueryIntent(
   userMessage: string,
-  conversationHistory: string[]
+  conversationHistory: string[],
+  retries = 1
 ): Promise<ClassifiedQuery> {
-  const preCheckIntent = applyPreChecks(userMessage);
-  if (preCheckIntent) {
-    const temporal = parseTemporalIntent(userMessage);
-    const isTemporal = preCheckIntent === 'TEMPORAL_TOPIC' || preCheckIntent === 'TEMPORAL_SUMMARY';
-    return {
-      intent: preCheckIntent as QueryIntent,
-      hasTemporalIntent: isTemporal,
-      temporalExpression: isTemporal ? userMessage : null,
-      topicKeywords: [],
-      detectedTopic: null,
-      startDate: isTemporal ? temporal.startDate : null,
-      endDate: isTemporal ? temporal.endDate : null,
-      confidence: 1.0,
-      reasoning: 'Deterministic pre-check',
-      requiresStructuredContext: false
-    };
-  }
-
   // Build conversation context (last 2 messages maximum)
   const recentHistory = conversationHistory
     .slice(-2)
     .join('\n');
 
-  const prompt = `You are a query classifier for a personal AI journaling assistant.
+  const prompt = `You are a precision NLP intent classifier for an AI personal journaling assistant.
+Your job is to strictly categorize the user's query into one of the following intents.
 
-CRITICAL RULE FOR HISTORY CONTEXT:
-The "Recent conversation" history is provided ONLY for resolving ambiguity (such as "tell me more" or pronouns).
-You MUST weight the "Current query" heavily over the conversation history. Do NOT let previous queries bias the classification of the current query.
-For example, if the history contains a summary request like "summarise my week", but the current query is "what has been my running pattern last 15 days", the current query is asking about a specific topic ("running") over a time frame, so it MUST be classified as TEMPORAL_TOPIC, not TEMPORAL_SUMMARY.
+### INTENT CATEGORIES
 
-Recent conversation:
-${recentHistory || 'None'}
+1. SEMANTIC_TOPIC
+- The user is asking to retrieve specific memories, events, or emotions from their journal.
+- Example: "when do I feel happy?", "tell me about my run", "why was I anxious yesterday?", "who did I meet?".
+- NEVER classify these questions as CONVERSATIONAL. They are database queries.
 
-Current query: "${userMessage}"
+2. TEMPORAL_SUMMARY
+- The user wants a general recap or summary of a specific time period, without naming a specific topic.
+- Example: "how did my last 9 days go?", "summarize my week", "what happened this month?".
 
-PRE-CHECK RULES (apply in order before decision tree):
-0. MIXED QUERY: If the query mixes emotional/reflective content with habits or goals (e.g. "I'm overwhelmed, what have I been doing to cope?", "feeling low, how is my routine holding up?") -> classify as SEMANTIC_TOPIC AND set requiresStructuredContext: true. Stop.
-1. HABIT QUERY: If the query mentions specific habit names, exercise types, physical activities, sleep, diet, or asks "how is my [activity] going", "am I consistent with", "how often do I" -> classify as HABIT_QUERY. Stop.
-2. GOAL QUERY: If the query asks about goals, intentions, targets, milestones, progress toward something, whether they're on track -> classify as GOAL_QUERY. Stop.
-3. "when did I" pattern: If query contains "when did I", "when have I", "when was I", or "when did I last" -> ALWAYS SEMANTIC_TOPIC. hasTemporalIntent MUST be false, and temporalExpression MUST be null. Never classify as TEMPORAL_TOPIC. (Example: "when did I last feel proud" -> SEMANTIC_TOPIC with hasTemporalIntent: false, temporalExpression: null).
-4. "habit" + time window: If query contains the word "habit" or a specific activity name AND an explicit time period (like "last 2 weeks", "this week", "last month") but does NOT ask about "streak", "consistency", or "completion rate" -> ALWAYS TEMPORAL_TOPIC. hasTemporalIntent MUST be true. (Example: "my meditation habit last 2 weeks" -> TEMPORAL_TOPIC).
+3. TEMPORAL_TOPIC
+- The user asks about a SPECIFIC topic constrained to an EXPLICIT time window.
+- Example: "how was my sleep last week?", "my anxiety over the past 3 days".
 
-DECISION TREE (follow in order):
-1. CONVERSATIONAL: If query is a follow-up, acknowledgement, reaction (e.g. "interesting"), or conversational question (e.g. "what do you mean?", "tell me more") -> CONVERSATIONAL. Stop.
-2. BEHAVIORAL: If query asks about habit consistency, goal progress, streaks, completion rates, or tracking -> BEHAVIORAL. Stop.
-3. TEMPORAL_SUMMARY Special Rule: Any query starting/containing "summarise", "summarize", "recap", "catch me up", "how did", "how was", or "what happened" followed ONLY by a time expression with NO named activity/emotion/topic -> ALWAYS TEMPORAL_SUMMARY. (Examples: "how did my last 9 days went" -> TEMPORAL_SUMMARY; "summarise my last 7 days" -> TEMPORAL_SUMMARY; "what happened this week" -> TEMPORAL_SUMMARY). Stop.
-4. TEMPORAL_TOPIC: ONLY if BOTH: (a) an EXPLICIT time expression exists ("last N days", "this week", "last month", "in the past X days" - NOT "when", "last", or habit names on their own), AND (b) a SPECIFIC activity/emotion/topic is named (running, anxiety, sleep, work, etc.). Generic summary actions like "what happened", "summarise", "summarize", "recap", "catch me up", "how did" are NOT topics. If no specific topic is named, do NOT classify as TEMPORAL_TOPIC. Stop.
-5. TEMPORAL_SUMMARY: If explicit time expression exists but no specific topic -> TEMPORAL_SUMMARY. Stop.
-6. SEMANTIC_TOPIC: If specific topic/emotion is named but no explicit time expression -> SEMANTIC_TOPIC. Stop.
-7. ANALYTICAL: Pattern/insight questions with no specific time or topic -> ANALYTICAL. Stop.
+4. HABIT_QUERY
+- The user explicitly asks about their habits, workouts, sleep consistency, or exercise streaks.
+- Example: "how is my exercise going?", "am I consistent with meditation?".
 
-INTENT DEFINITIONS:
-- TEMPORAL_SUMMARY: BROAD OVERVIEW of a time period, generic query with no specific topic. (e.g., "what happened this week").
-- TEMPORAL_TOPIC: SPECIFIC topic within a time window. (e.g., "how has my anxiety been this week", "sleep quality over the last month").
-- SEMANTIC_TOPIC: Specific topic/emotion/memory lookup, no explicit time window. (e.g., "when did I last feel proud", "tell me about my running").
-- BEHAVIORAL: Habits, goals, streaks, tracking, consistency. (e.g., "am I hitting my goals").
-- HABIT_QUERY: Queries explicitly about specific habits, exercise, sleep, diet, consistency.
-- GOAL_QUERY: Queries explicitly about goals, milestones, progress, intentions.
-- ANALYTICAL: Patterns, trends, insights.
-- CONVERSATIONAL: Chat, follow-ups, acknowledgement, conversational questions. (e.g., "tell me more", "interesting", "what do you mean?").
+5. GOAL_QUERY
+- The user asks about their goals, targets, milestones, or progress tracking.
+- Example: "am I on track with my goals?", "progress on my writing target".
 
-EXTRACT:
-- hasTemporalIntent: true if an explicit time period is mentioned (e.g., "last 7 days", "this week"). Time of day words (like "morning", "night") or habit names (like "morning jog") are NOT explicit time periods and do NOT trigger hasTemporalIntent.
-- temporalExpression: exact time phrase (e.g., "this week", "last 2 weeks") or null. Do NOT extract words like "last" or "when" on their own, or habit names. You MUST ONLY extract a temporalExpression if it is explicitly written in the "Current query". NEVER extract placeholders like "last N days", and NEVER extract any time expression that is not present in the user's query.
-- topicKeywords: specific topics/keywords (e.g., ["running"], ["anxiety"]) or []
-- detectedTopic: single main noun representing topic (e.g., "running", "anxiety") or null
-- confidence: 0.0-1.0
-- reasoning: brief explanation of classification
-- requiresStructuredContext: boolean, true ONLY if the query mixes emotional/reflective content with habits or goals. Default false.
+6. ANALYTICAL
+- The user asks the AI to find overarching patterns, trends, or insights across their data.
+- Example: "what are my common stress triggers?", "do you see any patterns in my sleep?".
 
-Return ONLY a valid JSON object matching this schema. The "intent" field MUST be one of these exact strings: "TEMPORAL_SUMMARY", "TEMPORAL_TOPIC", "SEMANTIC_TOPIC", "BEHAVIORAL", "HABIT_QUERY", "GOAL_QUERY", "ANALYTICAL", "CONVERSATIONAL". Do NOT use typos like "SEMIC_TOPIC" or any other values.
+7. CONVERSATIONAL
+- The user is purely chatting, acknowledging, or asking a direct follow-up about the AI's previous message.
+- Example: "interesting", "tell me more", "thanks", "what do you mean by that?".
+- CRITICAL: "When do I...", "How did I...", "Why was I..." are NEVER conversational. They are SEMANTIC_TOPIC or ANALYTICAL.
+
+### EXTRACTION RULES
+- hasTemporalIntent: Set to true ONLY if there is an explicit time window mentioned (e.g., "last 7 days", "this week"). Time of day ("morning") or general words ("when", "last") do not count.
+- temporalExpression: Extract the exact time phrase (e.g., "last 2 weeks") or null.
+- requiresStructuredContext: Set to true ONLY if the query mixes emotional/reflective questions with habit/goal questions (e.g., "I feel low, how is my routine holding up?").
+
+Return ONLY a valid JSON object matching this schema. The "intent" field MUST be exactly one of the categories above.
 {
-  "intent": "TEMPORAL_TOPIC",
+  "intent": "SEMANTIC_TOPIC",
   "hasTemporalIntent": false,
   "temporalExpression": null,
   "topicKeywords": [],
   "detectedTopic": null,
-  "confidence": 0.95,
-  "reasoning": "Explanation based on classification rules.",
+  "confidence": 0.99,
+  "reasoning": "Brief explanation",
   "requiresStructuredContext": false
-}`;
+}
+
+Current query: "${userMessage}"
+
+Context (recent conversation):
+${recentHistory}
+`;
 
   try {
     // Use Groq 8B — fast and cheap for classification tasks
@@ -158,6 +109,9 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
     }
 
     const data = response.data.data || response.data;
+    const aiProxyMeta = response.data._meta;
+    const classifierProvider = aiProxyMeta?.provider || 'Groq 8B';
+    
     let textToParse = typeof data.text === 'string' ? data.text : '';
     if (textToParse) {
       const start = textToParse.indexOf('{');
@@ -201,10 +155,17 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
       detectedTopic,
       startDate,
       endDate,
-      requiresStructuredContext: classified.requiresStructuredContext ?? false
+      requiresStructuredContext: classified.requiresStructuredContext ?? false,
+      classifierProvider
     };
 
   } catch (error) {
+    if (retries > 0) {
+      console.warn(`[classifyQueryIntent] Retrying... (${retries} left)`);
+      await new Promise(r => setTimeout(r, 1000));
+      return classifyQueryIntent(userMessage, conversationHistory, retries - 1);
+    }
+    
     console.error('Intent classification failed:', error);
     // Fallback to SEMANTIC_TOPIC on error
     return {
@@ -217,7 +178,8 @@ Return ONLY a valid JSON object matching this schema. The "intent" field MUST be
       endDate: null,
       confidence: 0.5,
       reasoning: 'Classification failed, defaulting to semantic',
-      requiresStructuredContext: false
+      requiresStructuredContext: false,
+      classifierProvider: 'Fallback (SEMANTIC_TOPIC)'
     };
   }
 }

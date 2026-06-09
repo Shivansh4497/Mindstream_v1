@@ -1,8 +1,9 @@
-// Force deploy comment: v1.1.0 using native Supabase.ai.Session
+// Force deploy comment: v1.3.0 using native Supabase.ai.Session
 let session: any = null;
 
 export async function generateEmbedding(
-  text: string
+  text: string,
+  isQuery: boolean = false
 ): Promise<number[]> {
   if (!session) {
     // @ts-ignore
