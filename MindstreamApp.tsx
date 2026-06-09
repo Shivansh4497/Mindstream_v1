@@ -113,8 +113,13 @@ export const MindstreamApp: React.FC = () => {
     const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
     // Onboarding State
-    const onboardingKey = user ? `onboardingStep_${user.id}` : 'onboardingStep';
-    const [onboardingStep, setOnboardingStep] = useLocalStorage<number>(onboardingKey, ONBOARDING_NOT_STARTED);
+    const [onboardingStep, setOnboardingStep] = useState<number>(ONBOARDING_NOT_STARTED);
+
+    useEffect(() => {
+        if (profile?.ftue_completed) {
+            setOnboardingStep(ONBOARDING_GUIDED_COMPLETE);
+        }
+    }, [profile?.ftue_completed]);
     const [legacyPrivacy] = useLocalStorage('hasSeenPrivacy', false);
 
     // Track if Quick Start user has seen their first insight
@@ -299,6 +304,7 @@ export const MindstreamApp: React.FC = () => {
                 onQuickStart={() => {
                     setOnboardingStep(ONBOARDING_QUICK_START);
                     db.logEvent(user.id, 'onboarding_completed', { path: 'quick_start' });
+                    db.updateProfile(user.id, { ftue_completed: true }).catch(console.error);
                 }}
                 onGuidedSetup={async () => {
                     await db.resetAccountData(user.id);
@@ -313,6 +319,7 @@ export const MindstreamApp: React.FC = () => {
     if (onboardingStep >= 2 && onboardingStep < ONBOARDING_GUIDED_COMPLETE && user) {
         return <OnboardingWizard userId={user.id} onComplete={(dest, context, q) => {
             setOnboardingStep(ONBOARDING_GUIDED_COMPLETE);
+            db.updateProfile(user.id, { ftue_completed: true }).catch(console.error);
             db.logEvent(user.id, 'onboarding_completed', { path: 'guided' });
             if (dest === 'chat' && context) {
                 setView('chat');
