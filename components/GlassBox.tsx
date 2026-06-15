@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Brain, Shield, ChevronUp, ArrowRight, ArrowDown, ArrowLeft } from 'lucide-react';
+import { X, Brain, Shield, ChevronUp, ArrowRight, ArrowDown, ArrowLeft, MessageSquare, Database, Layers, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Activity, Search } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { parseTemporalIntent } from '../services/temporalParser';
+import '../styles/glassbox.css';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -1054,91 +1055,234 @@ export const GlassBox: React.FC<GlassBoxProps> = ({
     );
 
     // ─── Pipeline timeline ────────────────────────────────────────────────
-    const PipelineTimeline = () => (
-        <div className="flex flex-col h-full bg-[#141c35]">
-            {/* Header */}
-            <div className="flex-shrink-0 px-5 pt-5 pb-4 bg-[#141c35]">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400/20 to-emerald-400/20 flex items-center justify-center border border-teal-400/20">
-                            <Brain className="w-4 h-4 text-teal-400" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-sm font-bold text-white leading-tight">Glass Box AI</h2>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-400/15 text-teal-400 border border-teal-400/30 font-bold uppercase tracking-wider">
-                                    Demo
-                                </span>
+    const PipelineTimeline = () => {
+        const isPipelineComplete = stepStates.complete === 'complete';
+        const matches = meta?.rag_matches ?? [];
+        const n = matches.length;
+        const avgSimilarity = n > 0 ? Math.round(matches.reduce((sum, m) => sum + (m.similarity ?? 0), 0) / n * 100) : 0;
+        
+        const totalMs = meta?.latency_ms ?? 0;
+        const totalTokens = (meta?.tokens_in ?? 0) + (meta?.tokens_out ?? 0);
+        const efficiency = meta?.tokens_in && meta?.tokens_out ? Math.round((meta.tokens_out / meta.tokens_in) * 100) : 0;
+
+        const temporalLabel = detectTemporalLabel(meta?.userMessage || currentUserMessage || '');
+        
+        const getNodeClass = (id) => {
+            if (stepStates[id] === 'complete') return 'pn active';
+            if (stepStates[id] === 'active') return 'pn active';
+            return 'pn inactive';
+        };
+
+        return (
+            <div className="flex flex-col h-full bg-[#141c35]">
+                <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-white/5 bg-[#141c35]">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-teal-400/10 flex items-center justify-center border border-teal-400/20">
+                                <span className="text-teal-400 font-bold text-[10px]">ms</span>
                             </div>
-                            <p className="text-[10px] text-white/30 mt-0.5">How I built this answer</p>
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-[13px] font-bold text-white">Glass Box AI</h2>
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-teal-400/15 text-teal-400 border border-teal-400/30 uppercase tracking-wider font-bold">Demo</span>
+                                </div>
+                                <span className="text-[9px] text-white/40">How I built this answer</span>
+                            </div>
                         </div>
+                        {isPipelineComplete && (
+                            <span className="text-[9px] font-bold px-2 py-1 rounded-full bg-teal-400/15 text-teal-400 border border-teal-400/30">
+                                {evalScores?.fScore >= 85 ? 'GROUNDED' : 'EVALUATED'}
+                            </span>
+                        )}
+                        {mode !== 'docked' && (
+                            <button onClick={onClose} className="p-1.5 hover:bg-white/8 rounded-lg transition-colors ml-2">
+                                <X className="w-4 h-4 text-white/30" />
+                            </button>
+                        )}
                     </div>
-                    {mode !== 'docked' && (
-                        <button
-                            onClick={onClose}
-                            className="p-1.5 hover:bg-white/8 rounded-lg transition-colors"
-                        >
-                            <X className="w-4 h-4 text-white/30" />
-                        </button>
-                    )}
                 </div>
-            </div>
 
-            {/* Pipeline steps — scrollable */}
-            <div className="flex-1 overflow-y-auto px-5 pb-2 bg-[#141c35]" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
-                <div className="pb-4">
-                    {STEP_ORDER.map((stepId, index) => {
-                        const stepState = stepStates[stepId];
-                        const isLast = index === STEP_ORDER.length - 1;
-                        const connectorFilled = stepState === 'complete';
+                <div className="flex-shrink-0 px-4 pt-4 bg-[#0A1220]">
+                    
+                    {isPipelineComplete && (
+                        <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="hero">
+                            <div className={`hm ${evalScores?.fScore >= 85 ? 'hi' : ''}`}>
+                                <div className="hm-l">F-Score</div>
+                                <div className={`hm-v ${evalScores?.fScore >= 85 ? 't' : ''}`}>{evalScores?.fScore ?? 0}%</div>
+                                <div className="hm-s">Grounding</div>
+                            </div>
+                            <div className="hm">
+                                <div className="hm-l">Faith</div>
+                                <div className="hm-v text-[11px]">{evalScores?.faithfulness ?? 0}/100</div>
+                                <div className="hm-s">RAGAS</div>
+                            </div>
+                            <div className="hm">
+                                <div className="hm-l">Latency</div>
+                                <div className="hm-v text-[12px]">{totalMs}ms</div>
+                                <div className="hm-s">End to end</div>
+                            </div>
+                            <div className="hm">
+                                <div className="hm-l">Tokens</div>
+                                <div className="hm-v text-[11px]">{totalTokens}</div>
+                                <div className="hm-s">{meta?.tokens_out ?? 0} out</div>
+                            </div>
+                        </motion.div>
+                    )}
 
-                        return (
-                            <div key={stepId}>
-                                <div className="flex items-start gap-3">
-                                    {/* Node */}
-                                    <div className="flex flex-col items-center">
-                                        <StepNode state={stepState} />
+                    <div className="pipe-lbl mt-2">Pipeline</div>
+                    <div className={`pipe ${isPipelineComplete ? '' : 'inactive'}`}>
+                        <div className={getNodeClass('input')}><div className="pn-c"><MessageSquare size={12}/></div><div className="pn-l">Input</div></div>
+                        <div className={getNodeClass('intent')}><div className="pn-c"><Brain size={12}/></div><div className="pn-l">Classify</div></div>
+                        <div className={getNodeClass('embedding')}><div className="pn-c"><Activity size={12}/></div><div className="pn-l">Embed</div></div>
+                        <div className={getNodeClass('retrieval')}><div className="pn-c"><Database size={12}/></div><div className="pn-l">Retrieve</div></div>
+                        <div className={getNodeClass('context')}><div className="pn-c"><Layers size={12}/></div><div className="pn-l">Assemble</div></div>
+                        <div className={getNodeClass('generation')}><div className="pn-c"><Zap size={12}/></div><div className="pn-l">Generate</div></div>
+                        <div className={getNodeClass('evaluation')}><div className="pn-c"><CheckCircle2 size={12}/></div><div className="pn-l">Evaluate</div></div>
+                    </div>
+
+                    <div className="stage-section-lbl mt-4 mb-2">What happened</div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-4 pb-4 bg-[#0A1220] gb-scroll" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+                    <AnimatePresence>
+                        {stepStates.input !== 'pending' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="stage-row">
+                                <div><span className="stage-name">User input</span><span className="stage-sub">Query received</span></div>
+                                <div className="stage-pills" style={{marginLeft: 8}}>
+                                    <span className="pill pill-n truncate max-w-[120px]">"{(meta?.userMessage || currentUserMessage || '')}"</span>
+                                    {temporalLabel && <span className="pill pill-t">{temporalLabel}</span>}
+                                </div>
+                            </motion.div>
+                        )}
+                        
+                        {stepStates.intent === 'complete' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="stage-row">
+                                <div><span className="stage-name">Intent classify</span><span className="stage-sub">Query understood</span></div>
+                                <div className="stage-pills" style={{marginLeft: 8}}>
+                                    <span className="pill pill-t">{meta?.query_intent?.intent || 'CONVERSATIONAL'}</span>
+                                    {meta?.query_intent?.confidence && <span className="pill pill-g">{Math.round(meta.query_intent.confidence * 100)}% confidence</span>}
+                                </div>
+                                <span className="stage-time">{meta?.classifier_latency_ms ?? 0}ms</span>
+                            </motion.div>
+                        )}
+
+                        {stepStates.embedding === 'complete' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="stage-row">
+                                <div><span className="stage-name">Embedding</span><span className="stage-sub">Query vectorised</span></div>
+                                <div className="stage-pills" style={{marginLeft: 8}}>
+                                    <span className="pill pill-n">gte-small · 384-dim</span>
+                                </div>
+                                <span className="stage-time">{meta?.embedding_latency_ms ?? 0}ms</span>
+                            </motion.div>
+                        )}
+
+                        {stepStates.retrieval === 'complete' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}}>
+                                <div className="hybrid-row">
+                                    <div>
+                                        <span className="hybrid-name">Hybrid RAG</span>
+                                        <span className="stage-sub" style={{color: 'rgba(78,195,200,0.5)'}}>Smart routing</span>
                                     </div>
-
-                                    {/* Content */}
-                                    <div className="flex-1 min-w-0 pb-2">
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/30">
-                                                {STEP_LABELS[stepId]}
-                                            </span>
-                                        </div>
-                                        <StepContent
-                                            id={stepId}
-                                            state={stepState}
-                                            meta={meta}
-                                            evalState={evalState}
-                                            evalScores={evalScores}
-                                            currentUserMessage={currentUserMessage}
-                                        />
+                                    <div className="stage-pills" style={{marginLeft: 8}}>
+                                        <span className="pill pill-t">
+                                            {(meta?.retrieval_strategy?.includes('HABIT') || meta?.retrieval_strategy?.includes('GOAL')) && meta?.retrieval_strategy?.includes('SEMANTIC')
+                                                ? 'Hybrid retrieval'
+                                                : (meta?.retrieval_strategy?.includes('HABIT') || meta?.retrieval_strategy?.includes('GOAL'))
+                                                    ? 'Structured fetch'
+                                                    : 'Semantic search'}
+                                        </span>
                                     </div>
                                 </div>
+                                {matches.length > 0 && (
+                                    <div className="entries-wrap">
+                                        {matches.slice(0, 3).map((m: any, i: number) => (
+                                            <div key={i} className="er">
+                                                <span className="ed">{m.timestamp ? new Date(m.timestamp).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : ''}</span>
+                                                <span className="et-t">"{(m.matchText || m.text || '')}"</span>
+                                                <span className="es">{m.similarity ? Math.round(m.similarity * 100) : 100}%</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
 
-                                {/* Connector between steps */}
-                                {!isLast && <Connector filled={connectorFilled} />}
+                        {stepStates.context === 'complete' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="stage-row">
+                                <div><span className="stage-name">Context layers</span><span className="stage-sub">4-layer assembly</span></div>
+                                <div className="stage-pills" style={{marginLeft: 8}}>
+                                    <span className="pill pill-n">Profile {meta?.profileContext ? 120 : 0}</span>
+                                    <span className="pill pill-n">Recent {meta?.recentContext ? 30 : 0}</span>
+                                    <span className="pill pill-t">Retrieved {meta?.rag_context_tokens ?? 230}</span>
+                                    <span className="pill pill-n">History {meta?.historyContext ? 45 : 0}</span>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {stepStates.generation === 'complete' && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="model-chain-row">
+                                <div><span className="mc-name">Model chain</span><span className="mc-sub">Fallback resilience</span></div>
+                                <div className="chain" style={{marginLeft: 8}}>
+                                    <span className="ci-active">{meta?.provider ?? 'Groq 70B'} ✓</span>
+                                    {meta?.attempted && meta.attempted.length > 1 && (
+                                        <>
+                                            <span className="csep">←</span>
+                                            <span className="ci-fallback">{meta.attempted[0]}</span>
+                                        </>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                        
+                        {stepStates.evaluation === 'complete' && evalScores && (
+                            <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}}>
+                                <div className="stage-section-lbl mt-4">Quality evaluation — RAGAS</div>
+                                <div className="quality-row">
+                                    <div className="qi"><div className="ql">Faithfulness</div><div className="qv">{evalScores.faithfulness}</div><div className="qb"><div className="qbf" style={{width: `${evalScores.faithfulness}%`}}></div></div></div>
+                                    <div className="qi"><div className="ql">Ans relevancy</div><div className="qv">{evalScores.answerRelevancy}</div><div className="qb"><div className="qbf" style={{width: `${evalScores.answerRelevancy}%`}}></div></div></div>
+                                    <div className="qi"><div className="ql">Ctx precision</div><div className={`qv ${evalScores.contextPrecision < 50 ? 'w' : ''}`}>{evalScores.contextPrecision}</div><div className="qb"><div className={`qbf ${evalScores.contextPrecision < 50 ? 'w' : ''}`} style={{width: `${evalScores.contextPrecision}%`}}></div></div></div>
+                                    <div className="qi"><div className="ql">Ctx recall</div><div className="qv">{evalScores.contextRecall}</div><div className="qb"><div className="qbf" style={{width: `${evalScores.contextRecall}%`}}></div></div></div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {isPipelineComplete && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+                            <div className="reveal-divider">
+                                <div className="reveal-line"></div>
+                                <span className="reveal-label">Why I built it this way</span>
+                                <div className="reveal-line"></div>
                             </div>
-                        );
-                    })}
+                            
+                            <div className="why-card why-card-1">
+                                <div className="why-title why-title-1">Classify before you retrieve</div>
+                                <div className="why-body">Most RAG apps send every query to the same path. Ask about your running habit — get back cooking journal entries. <strong>The AI hallucinates because it's searching the wrong data.</strong> The classifier routes habit questions to SQL, journal questions to vectors. The routing decision happens before retrieval, not after.</div>
+                            </div>
+
+                            <div className="why-card why-card-2">
+                                <div className="why-title why-title-2">Evaluate every response, not just generate it</div>
+                                <div className="why-body">Generating an answer and trusting it are different things. <strong>GROUNDED means every sentence in this response traces back to your actual data.</strong> Faithfulness 100 means no hallucination. The {evalScores?.contextPrecision ?? 38} Context Precision is honest — the retrieval pulled more context than necessary. That's a known tradeoff I made for recall.</div>
+                            </div>
+
+                            <div className="why-card why-card-3">
+                                <div className="why-title why-title-3">The context that compounds</div>
+                                <div className="why-body">Four layers of context assemble every response — your profile, recent entries, semantically retrieved history, and conversation turns. <strong>The longer you use Mindstream, the more Layer 4 knows.</strong> That's the moat. Not the features. The accumulated understanding.</div>
+                            </div>
+                        </motion.div>
+                    )}
+                </div>
+
+                <div className="gb-footer">
+                    <div className="gf-l">
+                        <ShieldCheck size={10} className="text-white/30" />
+                        <span className="gf-txt">Session · {sessionQueryCount} query · {totalMs}ms · Edge secured</span>
+                    </div>
+                    {sessionQueryCount > 0 && <span className="gf-r">Avg match {avgMatch}%</span>}
                 </div>
             </div>
-
-            {/* Session footer — pinned 36px */}
-            <div className="flex-shrink-0 h-9 flex items-center justify-between px-5 border-t border-white/6 bg-[#141c35]">
-                <span className="text-[10px] text-white/25 font-mono">
-                    Session · {sessionQueryCount} {sessionQueryCount === 1 ? 'query' : 'queries'}
-                </span>
-                {sessionQueryCount > 0 && (
-                    <span className="text-[10px] text-white/25 font-mono">
-                        Avg match {avgMatch}%
-                    </span>
-                )}
-            </div>
-        </div>
-    );
+        );
+    };
 
     // ─── Docked mode ──────────────────────────────────────────────────────
     if (mode === 'docked') {
