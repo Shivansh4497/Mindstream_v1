@@ -119,11 +119,11 @@ const TodayView: React.FC<TodayViewProps> = ({
           <div className="mb-6">
             <LifeEmptyState />
           </div>
-          <h2 className="text-[16px] font-medium text-[rgba(255,255,255,0.88)] mb-2">
-            Design your ideal day
+          <h2 className="text-[16px] font-medium text-[rgba(255,255,255,0.88)] mb-2 px-4">
+            Small actions become patterns. Patterns become progress.
           </h2>
-          <p className="text-[13px] text-[rgba(255,255,255,0.5)] leading-[1.5] max-w-[240px] mx-auto">
-            Add habits and tasks to start building momentum.
+          <p className="text-[13px] text-[rgba(255,255,255,0.5)] leading-[1.5] max-w-[260px] mx-auto">
+            Track the habits behind your best days.
           </p>
         </div>
         <div className="absolute bottom-0 left-0 right-0 pb-16 bg-gradient-to-t from-[#0D1520] to-transparent pt-10 pointer-events-none"></div>
@@ -247,6 +247,42 @@ const GoalsView: React.FC<LifeViewProps> = ({ intentions, onToggleIntention, onD
     });
     return groups;
   }, [pendingIntentions]);
+
+  if (pendingIntentions.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-8 text-center animate-fade-in-up">
+          <div className="mb-6">
+            <LifeEmptyState />
+          </div>
+          <h2 className="text-[16px] font-medium text-[rgba(255,255,255,0.88)] mb-2 px-4">
+            Set intentions. Create your future.
+          </h2>
+          <p className="text-[13px] text-[rgba(255,255,255,0.5)] leading-[1.5] max-w-[260px] mx-auto">
+            What do you want to achieve? Every big change starts with a single goal.
+          </p>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 pb-16 bg-gradient-to-t from-[#0D1520] to-transparent pt-10 pointer-events-none"></div>
+        <SharedInputBar
+          actionContext="life-goals"
+          placeholder="Add a goal..."
+          onSubmit={(text) => setPendingGoalText(text)}
+        />
+        {pendingGoalText && (
+          <EntryTypeModal
+            text={pendingGoalText}
+            context="goals"
+            onClose={() => setPendingGoalText(null)}
+            onSaveHabit={() => {}} // Not used in goals context
+            onSaveTask={(text, deadline, isLifeGoal) => {
+              onAddIntention(text, deadline ? new Date(deadline) : null, isLifeGoal);
+              setPendingGoalText(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">

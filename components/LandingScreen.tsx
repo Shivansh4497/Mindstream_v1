@@ -13,8 +13,8 @@ interface LandingScreenProps {
 export const LandingScreen: React.FC<LandingScreenProps> = ({ onQuickStart, onGuidedSetup }) => {
     return (
         <div className="h-screen w-screen bg-brand-indigo flex flex-col items-center justify-center p-6 relative overflow-hidden">
-            {/* Ambient gradient background */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900/20 via-brand-indigo to-brand-indigo" />
+            {/* Ambient background glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] opacity-10 pointer-events-none bg-brand-teal" />
 
             {/* Floating orbs for ambiance */}
             <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-brand-teal/5 rounded-full blur-3xl animate-pulse" />
@@ -40,6 +40,9 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onQuickStart, onGu
                 <h1 className="text-4xl md:text-5xl font-bold font-display text-white mb-4">
                     Think Out Loud.<br />Spot the Patterns.
                 </h1>
+                <p className="text-xl text-white/80 font-medium mb-2">
+                    Discover what influences your mood, energy, habits, and goals over time.
+                </p>
                 <p className="text-lg text-gray-300 mb-12 leading-relaxed">
                     Mindstream is a journaling companion that helps you understand your patterns—not a general-purpose chatbot.
                 </p>
@@ -51,20 +54,20 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onQuickStart, onGu
                         whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={onQuickStart}
-                        className="flex-1 group relative bg-brand-teal text-brand-indigo p-6 rounded-2xl text-left transition-all shadow-lg shadow-brand-teal/20 hover:shadow-brand-teal/30"
+                        className="flex-1 group relative bg-white/10 text-white border border-white/20 p-6 rounded-2xl text-left transition-all hover:bg-white/20 shadow-lg backdrop-blur-md"
                     >
                         <div className="flex items-start gap-4">
-                            <div className="p-2 bg-brand-indigo/10 rounded-lg">
+                            <div className="p-2 bg-white/10 rounded-lg">
                                 <ArrowRightIcon className="w-6 h-6" />
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold mb-1">Quick Start</h3>
-                                <p className="text-brand-indigo/70 text-sm">
+                                <p className="text-gray-300 text-sm">
                                     Jump straight to journaling. No setup needed.
                                 </p>
                             </div>
                         </div>
-                        <div className="absolute top-3 right-3 px-2 py-0.5 bg-brand-indigo/10 rounded text-xs font-bold uppercase">
+                        <div className="absolute top-0 right-6 -translate-y-1/2 px-2 py-0.5 bg-brand-indigo border border-white/10 rounded-full text-[9px] font-bold uppercase tracking-widest text-gray-400 z-10">
                             Fast
                         </div>
                     </motion.button>
@@ -74,7 +77,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onQuickStart, onGu
                         whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={onGuidedSetup}
-                        className="flex-1 group relative bg-dark-surface/50 backdrop-blur-sm border border-white/10 text-white p-6 rounded-2xl text-left transition-all hover:border-brand-teal/50 hover:bg-dark-surface/70"
+                        className="flex-1 group relative bg-white/5 backdrop-blur-sm border border-white/10 text-white p-6 rounded-2xl text-left transition-all hover:border-white/30 hover:bg-white/10"
                     >
                         <div className="flex items-start gap-4">
                             <div className="p-2 bg-brand-teal/10 rounded-lg">
@@ -87,7 +90,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onQuickStart, onGu
                                 </p>
                             </div>
                         </div>
-                        <div className="absolute top-3 right-3 px-2 py-0.5 bg-brand-teal/10 text-brand-teal rounded text-xs font-bold uppercase">
+                        <div className="absolute top-0 right-6 -translate-y-1/2 px-2 py-0.5 bg-brand-indigo border border-white/20 rounded-full text-[9px] font-bold uppercase tracking-widest text-white shadow-[0_0_10px_rgba(255,255,255,0.1)] z-10">
                             Recommended
                         </div>
                     </motion.button>

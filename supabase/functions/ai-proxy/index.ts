@@ -669,14 +669,15 @@ Rules:
 
                 case 'instant-insight': {
                     const { text, sentiment, lifeArea, trigger } = payload;
-                    const prompt = `You are a wise coach. Respond with ONLY JSON (no markdown):
+                    const prompt = `You are a perceptive behavioral analyst. Respond with ONLY JSON (no markdown).
 User feeling: ${sentiment}
 Life area: ${lifeArea}
 Trigger: ${trigger}
 Entry: "${text}"
 
-Provide an empathetic insight and follow-up question. Rate confidence 0.0-1.0 based on entry quality.
-Return: {"insight": "Your insight...", "followUpQuestion": "Your question?", "confidence": 0.8}`;
+Provide a highly specific, evidence-backed, and actionable insight based on the exact words in their entry. Do not use generic empathy. Point out a specific pattern, assumption, or connection they might have missed. Make them think "How did it notice that?".
+Also provide a follow-up reflection question. Rate confidence 0.0-1.0 based on entry quality.
+Return: {"insight": "Your specific, evidence-backed insight...", "followUpQuestion": "Your specific reflection question?", "confidence": 0.8}`;
 
                     const aiResult = await callAI(prompt, action);
                     aiMeta = aiResult;

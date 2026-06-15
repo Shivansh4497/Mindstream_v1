@@ -42,7 +42,7 @@ import { useAppLogic } from './hooks/useAppLogic';
 import { useChatSeed } from './hooks/useChatSeed';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useFTUE, isFTUECompletedLocally } from './hooks/useFTUE';
-import { FTUETour } from './components/FTUETour';
+
 import * as reflections from './services/reflectionService';
 import * as db from './services/dbService';
 import type { Entry, Habit, HabitFrequency, Intention, Reflection } from './types';
@@ -853,16 +853,6 @@ export const MindstreamApp: React.FC = () => {
                     )}
                 </AnimatePresence>
 
-                {/* FTUE Guided Tour */}
-                <FTUETour
-                    isActive={ftue.isActive}
-                    currentStep={ftue.currentStep}
-                    onNext={ftue.nextStep}
-                    onBack={ftue.prevStep}
-                    onSkip={ftue.skipTour}
-                    onComplete={ftue.completeTour}
-                    onNavigate={(tab) => setView(tab)}
-                />
 
                 {/* DEMO LIMIT MODAL */}
                 <DemoLimitModal

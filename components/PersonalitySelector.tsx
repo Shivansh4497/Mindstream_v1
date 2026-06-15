@@ -89,8 +89,8 @@ export const PersonalitySelector: React.FC<PersonalitySelectorProps> = ({
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         className={`relative p-6 rounded-xl border text-left transition-all duration-300 ${selectedId === p.id
-                            ? 'bg-brand-indigo/50 border-brand-teal shadow-lg shadow-brand-teal/10'
-                            : 'bg-dark-surface border-white/10 hover:border-white/20 hover:bg-white/5'
+                            ? 'bg-white/10 border-white/30 shadow-[0_0_15px_rgba(255,255,255,0.1)]'
+                            : 'bg-dark-surface-light border-white/10 hover:border-white/20 hover:bg-white/5'
                             }`}
                     >
                         {selectedId === p.id && (

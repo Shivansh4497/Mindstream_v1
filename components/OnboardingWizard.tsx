@@ -26,17 +26,16 @@ const sentiments: Sentiment[] = [
   'Tired', 'Inspired', 'Frustrated', 'Grateful'
 ];
 
-// Updated to Monochromatic Radial Gradients for a cleaner "Spotlight" effect.
-// No mixing colors (e.g., no Yellow in Teal) to avoid muddy transitions.
-const sentimentGradients: Record<Sentiment, string> = {
-  Anxious: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 via-slate-950 to-black',
-  Excited: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-teal-950 to-black',
-  Overwhelmed: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gray-800 via-gray-950 to-black',
-  Calm: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-blue-950 to-black',
-  Tired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-800 via-zinc-950 to-black',
-  Inspired: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-violet-900 via-violet-950 to-black',
-  Frustrated: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-900 via-red-950 to-black',
-  Grateful: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900 via-amber-950 to-black',
+// Soft background glows to complement the dark-glassy theme
+const sentimentGlows: Record<Sentiment, string> = {
+  Anxious: 'bg-slate-500',
+  Excited: 'bg-teal-500',
+  Overwhelmed: 'bg-gray-500',
+  Calm: 'bg-blue-500',
+  Tired: 'bg-zinc-500',
+  Inspired: 'bg-violet-500',
+  Frustrated: 'bg-red-500',
+  Grateful: 'bg-amber-500',
 };
 
 const lifeAreas: { id: LifeArea; label: string; icon: string }[] = [
@@ -383,12 +382,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
   // Processing Steps Logic
   useEffect(() => {
     if (step === 'processing') {
-      const steps = [
-        `Connecting '${selectedArea}' context...`,
-        `Analyzing '${selectedTrigger}' patterns...`,
-        "Formulating perspective shift...",
-        "Almost there..."
+      const approvedMessages = [
+        "Looking for patterns...",
+        "Connecting relevant moments...",
+        "Reflecting on what you've shared...",
+        "Building your context...",
+        "Finding meaningful connections...",
+        "Understanding what matters most..."
       ];
+      const steps = [...approvedMessages].sort(() => 0.5 - Math.random()).slice(0, 4);
       let i = 0;
       setProcessingText(steps[0]);
 
@@ -581,16 +583,18 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     }
   };
 
-  const bgClass = selectedSentiment
-    ? sentimentGradients[selectedSentiment]
-    : 'bg-brand-indigo';
+  const glowColor = selectedSentiment
+    ? sentimentGlows[selectedSentiment]
+    : 'bg-brand-teal';
 
   return (
-    <div className={`h-screen w-screen transition-colors duration-1000 ease-in-out ${bgClass} flex flex-col items-center justify-center p-6 overflow-hidden relative`}>
+    <div className="h-screen w-screen bg-brand-indigo flex flex-col items-center justify-center p-6 overflow-hidden relative">
+      {/* Subtle background glow based on sentiment */}
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] opacity-10 transition-colors duration-1000 pointer-events-none ${glowColor}`} />
 
       {/* Persistent Logo Header */}
       <div className="absolute top-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
-        <div className="flex items-center gap-2 bg-dark-surface/30 backdrop-blur-sm px-4 py-2 rounded-full border border-white/5">
+        <div className="flex items-center gap-2 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-sm">
           <img src="/mindstream-logo.svg" alt="Mindstream" className="w-8 h-8" />
           <span className="text-white font-display font-bold text-lg">Mindstream</span>
         </div>
@@ -604,7 +608,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {/* Step 1: Sanctuary */}
       {step === 'sanctuary' && (
         <div className="text-center animate-fade-in flex flex-col items-center relative z-10">
-          <div className="bg-dark-surface p-4 rounded-full mb-6 animate-pulse-ring">
+          <div className="bg-white/5 border border-white/10 p-4 rounded-full mb-6 animate-pulse-ring backdrop-blur-sm">
             <LockIcon className="w-12 h-12 text-brand-teal" />
           </div>
           <h1 className="text-3xl font-bold font-display text-white mb-4">Your Private Sanctuary</h1>
@@ -618,7 +622,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
           </p>
           <button
             onClick={handleEnterSanctuary}
-            className="group relative inline-flex items-center gap-3 bg-brand-teal text-white font-bold py-4 px-8 rounded-full hover:bg-teal-300 transition-all duration-300 shadow-lg hover:shadow-brand-teal/20 hover:-translate-y-1"
+            className="group relative inline-flex items-center gap-3 bg-white/10 text-white font-bold py-4 px-8 rounded-full border border-white/20 hover:bg-white/20 transition-all duration-300 shadow-lg backdrop-blur-md hover:-translate-y-1"
           >
             <span>Enter Sanctuary</span>
             <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -644,7 +648,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
               <button
                 key={sentiment}
                 onClick={() => handleSentimentSelect(sentiment)}
-                className="py-4 px-6 rounded-xl bg-dark-surface/50 hover:bg-white/10 border border-white/5 hover:border-brand-teal/50 text-white font-medium transition-all duration-200 hover:-translate-y-1 backdrop-blur-sm"
+                className="py-4 px-6 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white font-medium transition-all duration-200 hover:-translate-y-1 backdrop-blur-sm shadow-sm"
               >
                 {sentiment}
               </button>
@@ -656,15 +660,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
       {/* Step 3: Container */}
       {step === 'container' && (
         <div className="flex flex-col items-center w-full animate-fade-in relative z-10">
-          <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center">
-            Where is this feeling living right now?
+          <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-8 text-center animate-fade-in-up">
+            What area of life is this affecting most?
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl w-full">
             {lifeAreas.map((area) => (
               <button
                 key={area.id}
                 onClick={() => handleAreaSelect(area.id)}
-                className="flex items-center gap-4 py-6 px-8 rounded-xl bg-dark-surface/50 hover:bg-white/10 border border-white/5 hover:border-brand-teal/50 text-white font-medium transition-all duration-200 hover:-translate-y-1 text-left backdrop-blur-sm"
+                className="flex items-center gap-4 py-6 px-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white font-medium transition-all duration-200 hover:-translate-y-1 text-left backdrop-blur-sm shadow-sm"
               >
                 <span className="text-3xl">{area.icon}</span>
                 <span className="text-lg">{area.label}</span>
@@ -687,7 +691,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
               <button
                 key={trigger}
                 onClick={() => handleTriggerSelect(trigger)}
-                className="py-3 px-6 rounded-full bg-dark-surface/50 hover:bg-brand-teal/20 border border-white/5 hover:border-brand-teal text-white text-lg transition-all duration-200 hover:-translate-y-1 backdrop-blur-sm"
+                className="py-3 px-6 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white text-lg transition-all duration-200 hover:-translate-y-1 backdrop-blur-sm shadow-sm"
               >
                 {trigger}
               </button>
@@ -702,7 +706,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
           <FloatingBubbles sentiment={selectedSentiment} visible={elaboration.length === 0 && !isListening} />
 
           <div className="max-w-xl w-full animate-fade-in-up flex flex-col items-center relative z-10">
-            <div className="flex items-center gap-2 mb-6 text-sm text-brand-teal/80 font-mono uppercase tracking-widest bg-dark-surface/30 px-3 py-1 rounded-full backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-6 text-sm text-white/70 font-mono uppercase tracking-widest bg-white/5 border border-white/10 px-3 py-1 rounded-full backdrop-blur-md shadow-sm">
               <span>{selectedSentiment}</span>
               <span>•</span>
               <span>{selectedArea}</span>
@@ -719,7 +723,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
                 value={elaboration}
                 onChange={(e) => setElaboration(e.target.value)}
                 placeholder={isListening ? "Listening..." : "Type here or tap the mic..."}
-                className="w-full h-40 bg-dark-surface/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all"
+                className="w-full h-40 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-brand-teal focus:outline-none resize-none transition-all shadow-lg"
                 autoFocus
               />
               <button
@@ -736,17 +740,22 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
               </button>
             </div>
 
-            <div className="mt-8 flex justify-between items-center w-full">
-              <span className={`text-sm font-medium transition-colors ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
+            <div className="mt-8 flex flex-col w-full gap-6">
+              <span className={`text-sm font-medium transition-colors text-center ${elaboration.length < 10 ? 'text-white/50' : 'text-brand-teal'}`}>
                 {elaboration.length < 10 ? 'Just one sentence is enough...' : 'Ready to analyze'}
               </span>
-              <button
-                onClick={handleAnalyze}
-                disabled={elaboration.length < 10}
-                className="bg-white text-brand-indigo font-bold py-3 px-8 rounded-full hover:bg-brand-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-              >
-                Analyze
-              </button>
+              <div className="flex flex-col items-center w-full">
+                <button
+                  onClick={handleAnalyze}
+                  disabled={elaboration.length < 10}
+                  className="bg-white/10 text-white border border-white/20 font-bold py-3 px-8 rounded-full hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg backdrop-blur-md w-full max-w-[200px]"
+                >
+                  Find Patterns
+                </button>
+                <p className="text-gray-400 text-sm mt-3 text-center">
+                  Share something that's been on your mind lately.
+                </p>
+              </div>
             </div>
           </div>
         </>
@@ -770,14 +779,14 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       {/* Step 8: Awe (Typewriter Reveal) */}
       {step === 'awe' && insight && (
-        <div className="max-w-md w-full bg-dark-surface/30 backdrop-blur-xl border border-white/10 p-6 rounded-2xl shadow-2xl animate-fade-in-up relative z-10 max-h-[85vh] overflow-y-auto">
+        <div className="max-w-md w-full bg-white/5 backdrop-blur-2xl border border-white/20 p-6 rounded-2xl shadow-2xl animate-fade-in-up relative z-10 max-h-[85vh] overflow-y-auto">
           <div className="flex items-center gap-3 mb-4">
-            <SparklesIcon className="w-6 h-6 text-brand-teal animate-pulse" />
-            <h3 className="text-sm font-bold uppercase tracking-wider text-brand-teal">Instant Insight</h3>
+            <SparklesIcon className="w-6 h-6 text-white/70 animate-pulse" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white/70">Instant Insight</h3>
           </div>
 
           <p className="text-lg md:text-xl text-white font-display leading-relaxed mb-4">
-            "{displayedInsight}"<span className="animate-pulse text-brand-teal">|</span>
+            "{displayedInsight}"<span className="animate-pulse text-white/50">|</span>
           </p>
 
           {/* Why This Insight - Evidence for trust */}
@@ -788,9 +797,9 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
           {/* Follow-up Question */}
           {insight.followUpQuestion && displayedInsight.length === insight.insight.length && (
-            <div className="bg-mindstream-bg-elevated/50 rounded-xl p-4 mb-6 border-l-4 border-brand-teal">
+            <div className="bg-black/20 rounded-xl p-4 mb-6 border border-white/10 backdrop-blur-sm">
               <p className="text-sm text-gray-400 mb-1">Something to reflect on:</p>
-              <p className="text-white font-medium text-sm">{insight.followUpQuestion}</p>
+              <p className="text-white/90 font-medium text-sm">{insight.followUpQuestion}</p>
             </div>
           )}
 
@@ -798,9 +807,9 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
             <div className="flex flex-col gap-3 animate-fade-in">
               <button
                 onClick={() => onComplete('chat', elaboration, insight.followUpQuestion)}
-                className="w-full flex items-center justify-center gap-2 bg-brand-teal text-brand-indigo font-bold py-4 rounded-xl hover:bg-teal-300 transition-all shadow-lg"
+                className="group relative w-full flex items-center justify-center gap-3 bg-white/10 text-white font-bold py-4 rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300 shadow-lg backdrop-blur-md"
               >
-                <ChatBubbleIcon className="w-5 h-5" />
+                <ChatBubbleIcon className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" />
                 Unpack this with Mindstream
               </button>
               <button
@@ -809,6 +818,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
               >
                 Go to my Stream
               </button>
+              
+              <p className="mt-2 text-xs text-center text-gray-500 leading-relaxed px-2">
+                The more you reflect, the better Mindstream understands what matters to you.
+              </p>
             </div>
           )}
         </div>

@@ -27,7 +27,14 @@ export const Login: React.FC = () => {
                         <h1 className="text-5xl font-bold font-display">Mindstream</h1>
                     </div>
                     <p className="text-xl text-gray-300">Your thoughts. Finally understood.</p>
+                    <p className="mt-4 text-sm text-gray-400 max-w-sm mx-auto leading-relaxed">
+                        Mindstream connects your journals, habits, goals, and conversations to help you discover patterns you might otherwise miss.
+                    </p>
                 </div>
+
+                <p className="text-xs text-brand-teal/80 mb-5 px-4 text-center">
+                    Mindstream gets smarter as you use it. Even a few reflections each week help uncover meaningful patterns over time.
+                </p>
 
                 {/* Auth Buttons */}
                 <div className="flex flex-col items-center gap-3 w-full">
@@ -35,7 +42,7 @@ export const Login: React.FC = () => {
                     <button
                         onClick={handleTryDemo}
                         disabled={isDemoLoading}
-                        className="w-full bg-brand-teal text-white font-bold py-3.5 px-6 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full bg-white/10 border border-white/20 text-white font-bold py-3.5 px-6 rounded-xl hover:bg-white/20 active:scale-[0.98] transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 backdrop-blur-md"
                     >
                         {isDemoLoading ? (
                             <>
@@ -70,23 +77,22 @@ export const Login: React.FC = () => {
                     </button>
                 </div>
 
-                {/* Feature Highlights */}
-                <div className="mt-10 grid grid-cols-3 gap-4 text-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                        <Sparkles className="w-5 h-5 text-brand-teal" />
-                        <span className="text-xs text-gray-400">AI Insights</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <svg className="w-5 h-5 text-brand-coral" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-                        </svg>
-                        <span className="text-xs text-gray-400">Journaling</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                        </svg>
-                        <span className="text-xs text-gray-400">Habit Tracking</span>
+                {/* How Mindstream Works Preview Card */}
+                <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl p-5 text-left backdrop-blur-sm">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 text-center">How Mindstream Works</h3>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0">1</div>
+                            <span className="text-sm text-gray-300">Capture your thoughts</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0">2</div>
+                            <span className="text-sm text-gray-300">Connect your goals, habits, and reflections</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-brand-teal/20 flex items-center justify-center text-xs font-bold text-brand-teal shrink-0">3</div>
+                            <span className="text-sm text-white font-medium">Discover patterns that help you grow</span>
+                        </div>
                     </div>
                 </div>
             </div>

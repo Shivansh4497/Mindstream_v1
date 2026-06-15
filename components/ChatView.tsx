@@ -338,14 +338,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
     <>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Header with TTS and Sharing toggles */}
-        <div className="flex-shrink-0 flex flex-col border-b border-white/5 bg-brand-indigo">
+        <div className="flex-shrink-0 flex flex-col border-b border-white/5 bg-transparent">
           <div className="flex justify-end gap-2 p-3">
             {/* Chat Sharing Toggle - hidden in demo mode */}
             {!isDemo && (
               <button
                 onClick={toggleChatSharing}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${chatSharingEnabled
-                  ? 'bg-brand-teal/20 text-brand-teal border border-brand-teal/30'
+                  ? 'bg-white/10 text-white border border-white/20 shadow-sm backdrop-blur-sm'
                   : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
                   }`}
                 title={chatSharingEnabled ? 'Chat sharing enabled' : 'Chat sharing disabled'}
@@ -368,7 +368,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <button
               onClick={toggleTTS}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${ttsEnabled
-                ? 'bg-brand-teal/20 text-brand-teal border border-brand-teal/30'
+                ? 'bg-white/10 text-white border border-white/20 shadow-sm backdrop-blur-sm'
                 : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
                 }`}
               title={ttsEnabled ? 'Voice enabled' : 'Voice disabled'}
@@ -498,7 +498,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         
         {/* Session resume indicator */}
         {isResumed && (
-          <div className="flex-shrink-0 text-xs text-center text-brand-teal py-2 border-t border-white/5 bg-brand-indigo/40 animate-fade-out">
+          <div className="flex-shrink-0 text-xs text-center text-gray-500 py-2 border-t border-white/5 bg-transparent animate-fade-out">
             ↩ Continuing from where you left off
           </div>
         )}
