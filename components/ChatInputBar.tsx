@@ -34,6 +34,7 @@ interface SpeechRecognitionErrorEvent extends Event {
 interface ChatInputBarProps {
   onSendMessage: (text: string) => void;
   isLoading: boolean;
+  hasMessages?: boolean;
 }
 
 // Initialize Speech Recognition
@@ -45,7 +46,7 @@ if (recognition) {
   recognition.lang = 'en-US';
 }
 
-export const ChatInputBar: React.FC<ChatInputBarProps> = ({ onSendMessage, isLoading }) => {
+export const ChatInputBar: React.FC<ChatInputBarProps> = ({ onSendMessage, isLoading, hasMessages = false }) => {
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(recognition);
@@ -124,8 +125,8 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({ onSendMessage, isLoa
   };
 
   return (
-    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-20">
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+    <div className="flex-shrink-0 z-20 w-full pb-4">
+      <form onSubmit={handleSubmit} className="flex items-center gap-[10px] bg-[#1A3352] border-[0.5px] border-[rgba(255,255,255,0.09)] rounded-[14px] p-[11px_14px] mx-[12px] mt-[8px]">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -135,35 +136,40 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({ onSendMessage, isLoa
               handleSubmit();
             }
           }}
-          placeholder={isListening ? "Listening..." : "What's on your mind?"}
-          className="w-full bg-dark-surface-light rounded-lg p-3 text-white placeholder-gray-400 resize-none focus:ring-2 focus:ring-brand-teal focus:outline-none transition-shadow"
+          placeholder={isListening ? "Listening..." : hasMessages ? "Reply..." : "What's on your mind?"}
+          className="flex-1 bg-transparent text-white placeholder-[rgba(255,255,255,0.35)] resize-none focus:outline-none text-[14px] leading-[20px] max-h-[100px] overflow-y-auto min-h-[20px]"
           rows={1}
           disabled={isLoading}
         />
-        <div className="relative">
-          <button
-            type="button"
-            onClick={toggleListening}
-            className={`p-3 rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'hover:bg-white/10'}`}
-            aria-label={isListening ? "Stop listening" : "Start voice input"}
-            disabled={isLoading}
-          >
-            <MicIcon className={`w-6 h-6 ${isListening ? 'text-brand-indigo' : 'text-white'}`} />
-          </button>
-          {isListening && (
-            <div className="absolute top-0 left-0 w-full h-full rounded-full border-2 border-brand-teal animate-pulse-ring pointer-events-none"></div>
+        <div className="flex items-center gap-2">
+          {text.trim() ? (
+            <button
+              type="submit"
+              className="w-[36px] h-[36px] flex items-center justify-center bg-brand-teal rounded-full hover:bg-teal-300 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+              aria-label="Send message"
+              disabled={isLoading || !text.trim()}
+            >
+              <SendIcon className="w-5 h-5 text-white" />
+            </button>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`w-[36px] h-[36px] flex items-center justify-center rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'bg-transparent hover:bg-white/10'}`}
+                aria-label={isListening ? "Stop listening" : "Start voice input"}
+                disabled={isLoading}
+              >
+                <MicIcon className={`w-5 h-5 ${isListening ? 'text-brand-indigo' : 'text-white/50'}`} />
+              </button>
+              {isListening && (
+                <div className="absolute top-0 left-0 w-[36px] h-[36px] rounded-full border-2 border-brand-teal animate-pulse-ring pointer-events-none"></div>
+              )}
+            </div>
           )}
         </div>
-        <button
-          type="submit"
-          className="bg-brand-teal p-3 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
-          aria-label="Send message"
-          disabled={isLoading || !text.trim()}
-        >
-          <SendIcon className="w-6 h-6 text-white" />
-        </button>
       </form>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={hideToast} />}
-    </footer>
+    </div>
   );
 };

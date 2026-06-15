@@ -87,7 +87,7 @@ export const EditHabitModal: React.FC<EditHabitModalProps> = ({ habit, onSave, o
           <button
             onClick={handleSave}
             disabled={!hasChanged || isSaving || !name.trim()}
-            className="flex-1 bg-brand-teal text-white font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            className="flex-1 bg-white/10 text-white font-bold py-3 px-6 rounded-full hover:bg-white/20 transition-colors border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>

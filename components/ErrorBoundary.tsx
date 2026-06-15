@@ -61,17 +61,15 @@ export class ErrorBoundary extends Component<Props, State> {
                             Reload App
                         </button>
 
-                        {process.env.NODE_ENV === 'development' && this.state.error && (
-                            <details className="mt-8 text-left">
-                                <summary className="text-gray-500 text-sm cursor-pointer hover:text-gray-400">
-                                    Show error details
-                                </summary>
-                                <pre className="mt-2 p-4 bg-red-900/20 rounded-lg text-red-300 text-xs overflow-auto max-h-48">
+                        {this.state.error && (
+                            <div className="mt-8 text-left">
+                                <p className="text-red-400 font-bold mb-2">Error Details:</p>
+                                <pre className="mt-2 p-4 bg-red-900/20 rounded-lg text-red-300 text-xs overflow-auto max-h-48 whitespace-pre-wrap">
                                     {this.state.error.toString()}
                                     {'\n\n'}
                                     {this.state.error.stack}
                                 </pre>
-                            </details>
+                            </div>
                         )}
                     </div>
                 </div>

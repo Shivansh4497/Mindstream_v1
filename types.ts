@@ -38,6 +38,7 @@ export interface Entry {
   suggestions?: EntrySuggestion[] | null;
   source?: 'manual' | 'voice' | 'chat_takeaway';
   source_meta?: Record<string, unknown>;
+  chat_seed?: string | null;
 }
 
 export interface AISuggestion {
@@ -109,6 +110,17 @@ export interface Habit {
   current_streak: number;
   longest_streak: number;
   created_at: string;
+  is_active?: boolean;
+}
+
+export interface HabitChange {
+  id?: string;
+  habit_id: string;
+  user_id: string;
+  changed_at?: string;
+  field_changed: 'frequency' | 'name' | 'category' | 'emoji';
+  old_value: string;
+  new_value: string;
 }
 
 export interface HabitLog {

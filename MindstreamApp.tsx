@@ -7,13 +7,12 @@ import { useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { NavBar, View } from './components/NavBar';
 import { Stream } from './components/Stream';
-import { InputBar } from './components/InputBar';
+import { SharedInputBar } from './components/SharedInputBar';
 import { LandingScreen } from './components/LandingScreen';
 import { DemoWelcomeModal } from './components/DemoWelcomeModal';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { SearchModal } from './components/SearchModal';
 import { ChatView } from './components/ChatView';
-import { ChatInputBar } from './components/ChatInputBar';
 import { IntentionsView } from './components/IntentionsView';
 
 // reflections view unused?
@@ -29,6 +28,7 @@ import { HabitsView } from './components/HabitsView';
 import { HabitsInputBar } from './components/HabitsInputBar';
 import { IntentionsInputBar } from './components/IntentionsInputBar';
 import { SettingsView } from './components/SettingsView';
+import { LifeView } from './components/LifeView';
 // LifeAreaDashboard unused?
 import { InsightsView } from './components/InsightsView';
 import { YearlyReview } from './components/YearlyReview';
@@ -39,6 +39,7 @@ import { InfoModal } from './components/InfoModal';
 import { generateYearlyReview, YearlyReviewData } from './services/yearlyReviewService';
 
 import { useAppLogic } from './hooks/useAppLogic';
+import { useChatSeed } from './hooks/useChatSeed';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useFTUE, isFTUECompletedLocally } from './hooks/useFTUE';
 import { FTUETour } from './components/FTUETour';
@@ -59,7 +60,7 @@ const ONBOARDING_GUIDED_COMPLETE = 5;
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
 
 export const MindstreamApp: React.FC = () => {
-    const { user, isSeeding, isDemo } = useAuth();
+    const { user, isSeeding, isDemo, profile } = useAuth();
     const isDemoUser = isDemo || user?.is_anonymous === true;
 
     // Demo Mode — GlassBox toggle only visible for demo users
@@ -67,14 +68,17 @@ export const MindstreamApp: React.FC = () => {
 
     // App Logic — same pipeline for regular and demo users
     const { state, actions } = useAppLogic();
+    const { ftueState, markFTUECompleted } = useFTUE(state.entries, state.habits, state.intentions, state.isDataLoaded);
+
+    const chatSeed = useChatSeed(user?.id);
 
     // Track current user query message text for GlassBox loading states
     const [currentUserMessage, setCurrentUserMessage] = useState('');
 
     const handleSendMessageWithTracking = useCallback((text: string, initialContext?: any) => {
         setCurrentUserMessage(text);
-        actions.handleSendMessage(text, initialContext);
-    }, [actions.handleSendMessage]);
+        actions.handleSendMessage(text, initialContext, state.messages.length === 0 ? (chatSeed ?? undefined) : undefined);
+    }, [actions.handleSendMessage, state.messages.length, chatSeed]);
 
     // Glass Box metadata state
     const [glassBoxMeta, setGlassBoxMeta] = useState<GlassBoxMeta | null>(null);
@@ -126,9 +130,6 @@ export const MindstreamApp: React.FC = () => {
     const hasSeenInsightKey = user ? `hasSeenFirstInsight_${user.id}` : 'hasSeenFirstInsight';
     const [hasSeenFirstInsight, setHasSeenFirstInsight] = useLocalStorage<boolean>(hasSeenInsightKey, false);
 
-    // Progressive disclosure: track if user has visited Insights tab after unlock
-    const hasVisitedInsightsKey = user ? `hasVisitedInsights_${user.id}` : 'hasVisitedInsights';
-    const [hasVisitedInsights, setHasVisitedInsights] = useLocalStorage<boolean>(hasVisitedInsightsKey, false);
 
     // Demo Mode welcome modal tracking
     const [showDemoWelcome, setShowDemoWelcome] = useState(false);
@@ -136,7 +137,6 @@ export const MindstreamApp: React.FC = () => {
 
     // Count real entries (exclude temp entries)
     const realEntryCount = state.entries.filter(e => !e.id.startsWith('temp-')).length;
-    const insightsUnlocked = realEntryCount >= 5;
 
 
 
@@ -219,13 +219,6 @@ export const MindstreamApp: React.FC = () => {
         }
     }, [state.isDataLoaded]);
 
-    // Progressive disclosure toast
-    useEffect(() => {
-        if (insightsUnlocked && !hasVisitedInsights && user) {
-            actions.setToast({ message: '🎉 Insights tab unlocked!', id: Date.now() });
-            db.logEvent(user.id, 'insights_unlocked', {});
-        }
-    }, [insightsUnlocked]);
 
     // Chat Starters
     useEffect(() => {
@@ -272,7 +265,7 @@ export const MindstreamApp: React.FC = () => {
         if (pendingUnlockType === 'daily') setSeenDailyUnlock(true);
         if (pendingUnlockType === 'weekly') setSeenWeeklyUnlock(true);
         if (pendingUnlockType === 'monthly') setSeenMonthlyUnlock(true);
-        setView('insights');
+        setView('stream' as any);
         if (user) {
             db.logEvent(user.id, 'reflection_generated', { type: pendingUnlockType, action: 'navigated_from_unlock' });
         }
@@ -416,7 +409,11 @@ export const MindstreamApp: React.FC = () => {
                                             isLoading={!state.isDataLoaded}
                                         />
                                     </div>
-                                    <InputBar onAddEntry={actions.handleAddEntry} />
+                                        <SharedInputBar 
+                                            actionContext="stream"
+                                            placeholder="What's on your mind?"
+                                            onSubmit={(text, _, usedVoice) => actions.handleAddEntry(text, usedVoice)}
+                                        />
                                 </motion.div>
                             )}
 
@@ -440,47 +437,75 @@ export const MindstreamApp: React.FC = () => {
                                         isResumed={state.isResumed}
                                         onConfirmExtraction={actions.handleConfirmExtraction}
                                         onUndoExtraction={actions.handleUndoExtraction}
+                                        seed={state.messages.length === 0 ? chatSeed : null}
                                     />
-                                    <div className="p-4 bg-brand-indigo border-t border-white/5">
-                                        {/* GlassBox toggle for demo users */}
                                         {isDemoMode && !isDesktopViewport && (
-                                            <div className="flex justify-end mb-2">
-                                                <button
-                                                    onClick={() => {
-                                                        // Merge real AI metadata with chat context
-                                                        const realMeta = getLastAIMeta();
-                                                        setGlassBoxMeta({
-                                                            ...realMeta,
-                                                            action: 'chat',
-                                                            userMessage: state.messages.filter(m => m.sender === 'user').pop()?.text,
-                                                            provider: realMeta?.provider || 'Groq 70B',
-                                                            fallback_chain: realMeta?.attempted,
-                                                        });
-                                                        toggleEngineerView();
-                                                    }}
-                                                    className={`group flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all duration-300 border ${isEngineerViewOpen
-                                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                                                        : 'bg-gradient-to-r from-emerald-900/40 to-teal-900/40 text-emerald-100 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_20px_rgba(52,211,153,0.4)] hover:-translate-y-0.5'
-                                                        }`}
-                                                >
-                                                    <Brain className={`w-4 h-4 ${!isEngineerViewOpen && 'animate-pulse text-emerald-300'}`} />
-                                                    <span>{isEngineerViewOpen ? 'Close Glass Box' : 'Open Glass Box'}</span>
-                                                    <span className="text-[10px] font-normal opacity-70 ml-1 bg-emerald-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                                        Demo
-                                                    </span>
-                                                </button>
+                                            <div className="p-4 bg-brand-indigo border-t border-white/5">
+                                                <div className="flex justify-end mb-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            const realMeta = getLastAIMeta();
+                                                            setGlassBoxMeta({
+                                                                ...realMeta,
+                                                                action: 'chat',
+                                                                userMessage: state.messages.filter(m => m.sender === 'user').pop()?.text,
+                                                                provider: realMeta?.provider || 'Groq 70B',
+                                                                fallback_chain: realMeta?.attempted,
+                                                            });
+                                                            toggleEngineerView();
+                                                        }}
+                                                        className={`group flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all duration-300 border ${isEngineerViewOpen
+                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                                                            : 'bg-gradient-to-r from-emerald-900/40 to-teal-900/40 text-emerald-100 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_20px_rgba(52,211,153,0.4)] hover:-translate-y-0.5'
+                                                            }`}
+                                                    >
+                                                        <Brain className={`w-4 h-4 ${!isEngineerViewOpen && 'animate-pulse text-emerald-300'}`} />
+                                                        <span>{isEngineerViewOpen ? 'Close Glass Box' : 'Open Glass Box'}</span>
+                                                        <span className="text-[10px] font-normal opacity-70 ml-1 bg-emerald-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                            Demo
+                                                        </span>
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
-                                        <ChatInputBar
-                                            onSendMessage={handleSendMessageWithTracking}
+                                    <SharedInputBar
+                                            actionContext="chat"
+                                            placeholder={state.messages.length > 0 ? "Reply..." : "What's on your mind?"}
+                                            onSubmit={(text) => handleSendMessageWithTracking(text)}
                                             isLoading={state.isChatLoading}
                                         />
-                                    </div>
                                 </motion.div>
                             )}
 
-                            {/* Habits View */}
-                            {view === 'habits' && (
+                            {/* Life View */}
+                            {view === 'life' && (
+                                <motion.div
+                                    key="life"
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -20 }}
+                                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                                    className="absolute inset-0 flex flex-col"
+                                >
+                                    <LifeView
+                                        habits={state.habits}
+                                        habitLogs={state.habitLogs}
+                                        intentions={state.intentions}
+                                        onToggleHabit={actions.handleToggleHabit}
+                                        onAddHabit={(text, freq) => actions.handleAddHabit(text, freq || 'daily')}
+                                        onAddIntention={(text, dueDate, isLifeGoal) => actions.handleAddIntention(text, dueDate, isLifeGoal)}
+                                        onToggleIntention={actions.handleToggleIntention}
+                                        onDeleteIntention={(id) => actions.handleDeleteIntention(id)}
+                                        onUpdateIntention={actions.handleUpdateIntention}
+                                        onEditHabit={actions.handleEditHabit}
+                                        onDeleteHabit={actions.handleDeleteHabit}
+                                        onStarToggleIntention={actions.handleToggleStar}
+                                    />
+                                </motion.div>
+                            )}
+
+                            {/* Legacy — kept as backup
+                            {view === 'habits' as any && (
                                 <motion.div
                                     key="habits"
                                     initial={{ opacity: 0, x: 20 }}
@@ -507,8 +532,7 @@ export const MindstreamApp: React.FC = () => {
                                 </motion.div>
                             )}
 
-                            {/* Intentions View */}
-                            {view === 'goals' && (
+                            {view === 'goals' as any && (
                                 <motion.div
                                     key="intentions"
                                     initial={{ opacity: 0, x: 20 }}
@@ -529,9 +553,10 @@ export const MindstreamApp: React.FC = () => {
                                     <IntentionsInputBar onAddIntention={actions.handleAddIntention} />
                                 </motion.div>
                             )}
+                            */}
 
                             {/* Insights View */}
-                            {view === 'insights' && (
+                            {view === 'insights' as any && (
                                 <motion.div
                                     key="insights"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -722,11 +747,8 @@ export const MindstreamApp: React.FC = () => {
                     <NavBar
                         activeView={view}
                         onViewChange={(newView) => {
-                            if (newView === 'insights' && !hasVisitedInsights) setHasVisitedInsights(true);
                             setView(newView);
                         }}
-                        entryCount={realEntryCount}
-                        showInsightsBadge={insightsUnlocked && !hasVisitedInsights}
                     />
                 )}
 
@@ -771,7 +793,7 @@ export const MindstreamApp: React.FC = () => {
                         const isFirstAction = !hasSeenFirstInsight;
                         setHasSeenFirstInsight(true);
                         actions.setPendingInsight(null);
-                        setView('habits');
+                        setView('stream' as any);
                         if (user) {
                             db.logEvent(user.id, 'insight_modal_action', { action: 'habit' });
                             if (isFirstAction) db.logEvent(user.id, 'first_action_taken', { type: 'habit' });
@@ -785,7 +807,7 @@ export const MindstreamApp: React.FC = () => {
                         const isFirstAction = !hasSeenFirstInsight;
                         setHasSeenFirstInsight(true);
                         actions.setPendingInsight(null);
-                        setView('goals');
+                        setView('stream' as any);
                         if (user) {
                             db.logEvent(user.id, 'insight_modal_action', { action: 'goal' });
                             if (isFirstAction) db.logEvent(user.id, 'first_action_taken', { type: 'goal' });

@@ -386,11 +386,32 @@ export const useAppLogic = () => {
         }, 500); // 500ms debounce (reduced from 1000ms for better persistence)
     };
 
-    const handleEditHabit = async (habitId: string, name: string, emoji: string, category: HabitCategory) => {
-
+    const handleEditHabit = async (habitId: string, updates: Partial<Habit>) => {
         if (!user) return;
         try {
-            const updated = await db.updateHabit(habitId, { name, emoji, category });
+            const existingHabit = habits.find(h => h.id === habitId);
+            if (!existingHabit) return;
+
+            const changesToLog: any[] = [];
+            const trackableFields = ['name', 'emoji', 'category', 'frequency'] as const;
+
+            trackableFields.forEach(field => {
+                if (updates[field] && updates[field] !== existingHabit[field]) {
+                    changesToLog.push({
+                        habit_id: habitId,
+                        user_id: user.id,
+                        field_changed: field,
+                        old_value: String(existingHabit[field]),
+                        new_value: String(updates[field])
+                    });
+                }
+            });
+
+            if (changesToLog.length > 0) {
+                await db.logHabitChanges(changesToLog);
+            }
+
+            const updated = await db.updateHabit(habitId, updates);
             if (updated && isMounted.current) {
                 setHabits(prev => prev.map(h => h.id === habitId ? updated : h));
                 showToast("Habit updated.");
@@ -401,9 +422,14 @@ export const useAppLogic = () => {
         }
     };
 
-        const handleSendMessage = async (text: string, initialContext?: UserContext) => {
+        const handleSendMessage = async (text: string, initialContext?: UserContext, seed?: string) => {
         const newUserMsg: Message = { sender: 'user', text };
-        setMessages(prev => [...prev, newUserMsg]);
+        let newMessages = [...messages];
+        if (seed && messages.length === 0) {
+            newMessages.push({ sender: 'ai', text: seed });
+        }
+        newMessages.push(newUserMsg);
+        setMessages(newMessages);
         setIsChatLoading(true);
         // Increment queryId so GlassBox resets its pipeline
         setQueryId(id => id + 1);
@@ -423,7 +449,7 @@ export const useAppLogic = () => {
             }
 
             // Call AI Service
-            const stream = await gemini.getChatResponseStream(user!.id, [...messages, newUserMsg], isDemoUser);
+            const stream = await gemini.getChatResponseStream(user!.id, newMessages, isDemoUser);
 
             let fullResponse = '';
             setMessages(prev => [...prev, { sender: 'ai', text: '' }]);
@@ -632,6 +658,17 @@ export const useAppLogic = () => {
     };
 
     const handleDeleteIntention = async (id: string) => { setIntentions(prev => prev.filter(i => i.id !== id)); db.deleteIntention(id); };
+    
+    const handleUpdateIntention = async (id: string, updates: Partial<Intention>) => {
+        setIntentions(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+        try {
+            await db.updateIntention(id, updates);
+        } catch (error) {
+            console.error("Failed to update intention:", error);
+            showToast("Failed to update goal.");
+        }
+    };
+
     const handleDeleteHabit = async (id: string) => { setHabits(prev => prev.filter(h => h.id !== id)); db.deleteHabit(id); };
     const handleEditEntry = async (e: Entry, t: string) => {
         const updated = await db.updateEntry(e.id, { text: t });
@@ -794,6 +831,6 @@ export const useAppLogic = () => {
 
     return {
         state: { entries, reflections, intentions, habits, habitLogs, insights, nudges, correlationInsight, autoReflections, messages, isDataLoaded, aiStatus, aiError, toast, isGeneratingReflection, isAddingHabit, isChatLoading, hasMore, isLoadingMore, pendingInsight, accountCreatedAt, showDemoLimitModal, queryId, isResumed },
-        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleToggleStar, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, handleDismissCorrelation, handleConfirmExtraction, handleUndoExtraction, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections, setPendingInsight, setIntentions, refreshAllData, setIsChatLoading, setShowDemoLimitModal }
+        actions: { handleAddEntry, handleToggleHabit, handleEditHabit, handleAddHabit, handleAddIntention, handleSendMessage, handleToggleIntention, handleToggleStar, handleUpdateIntention, handleDeleteIntention, handleDeleteHabit, handleEditEntry, handleDeleteEntry, handleAcceptSuggestion, handleDismissInsight, handleAcceptNudge, handleDismissNudge, handleDismissCorrelation, handleConfirmExtraction, handleUndoExtraction, setToast, setMessages, setIsGeneratingReflection, handleLoadMore, setReflections, setPendingInsight, setIntentions, refreshAllData, setIsChatLoading, setShowDemoLimitModal }
     };
 };

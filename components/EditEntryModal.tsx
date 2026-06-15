@@ -46,7 +46,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ entry, onSave, o
           <button
             onClick={handleSave}
             disabled={!hasChanged || isSaving}
-            className="bg-brand-teal text-white font-bold py-3 px-6 rounded-full hover:bg-teal-300 transition-colors shadow-lg disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="bg-white/10 text-white font-bold py-3 px-6 rounded-full hover:bg-white/20 transition-colors border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isSaving && <div className="w-5 h-5 border-2 border-brand-indigo border-t-transparent rounded-full animate-spin"></div>}
             {isSaving ? 'Saving...' : 'Save Changes'}

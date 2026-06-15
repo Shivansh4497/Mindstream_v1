@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MicIcon } from './icons/MicIcon';
-import { SendIcon } from './icons/SendIcon';
 import { celebrate, CelebrationType } from '../utils/celebrations';
 import { triggerHaptic } from '../utils/haptics';
 import { useToast, Toast } from './Toast';
-import { getStreamPrompt } from '../services/smartDefaults';
 
 import { useSpeechRecognition } from '../utils/useSpeechRecognition';
 
@@ -19,13 +17,10 @@ const GUIDED_PROMPTS = [
   "A small win from today was..."
 ];
 
-
-
 export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   const [text, setText] = useState('');
   const [usedVoice, setUsedVoice] = useState(false);
   const { toast, showToast, hideToast } = useToast();
-  const [placeholder, setPlaceholder] = useState(getStreamPrompt());
 
   const { isListening, startListening, stopListening, isSupported } = useSpeechRecognition({
     onResult: (transcript) => {
@@ -88,19 +83,21 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
   };
 
   return (
-    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-3 border-t border-white/10 z-20">
-      <div className="flex gap-2 mb-2 overflow-x-auto pb-2 -mx-3 px-3">
+    <footer className="flex-shrink-0 bg-brand-indigo/80 backdrop-blur-sm p-[14px_16px] border-t border-white/10 z-20 w-full">
+      <div className="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar hide-scrollbars">
         {GUIDED_PROMPTS.map((prompt, index) => (
           <button
             key={index}
             onClick={() => handlePromptClick(prompt)}
-            className="flex-shrink-0 text-sm bg-white/10 hover:bg-white/20 text-white py-1 px-3 rounded-full transition-colors whitespace-nowrap"
+            className="flex-shrink-0 text-[12px] bg-white/5 hover:bg-white/10 text-white/50 py-1.5 px-3 rounded-full transition-colors whitespace-nowrap max-w-[80vw] truncate"
+            style={{ width: 'max-content', maxWidth: '30%' }}
+            title={prompt}
           >
-            {prompt}
+            <span className="truncate block">{prompt}</span>
           </button>
         ))}
       </div>
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 relative">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -110,26 +107,23 @@ export const InputBar: React.FC<InputBarProps> = ({ onAddEntry }) => {
               handleSubmit();
             }
           }}
-          placeholder={isListening ? "Listening..." : placeholder}
-          className="w-full bg-dark-surface-light rounded-lg p-3 text-white placeholder-gray-400 resize-none focus:ring-2 focus:ring-brand-teal focus:outline-none transition-shadow"
+          placeholder={isListening ? "Listening..." : "What's on your mind?"}
+          className="w-full bg-dark-surface-light rounded-xl p-[14px_16px] pr-12 text-[14px] text-white placeholder-white/30 resize-none focus:ring-1 focus:ring-brand-teal focus:outline-none transition-shadow"
           rows={1}
         />
-        <div className="relative">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
           <button
             type="button"
             onClick={toggleListening}
-            className={`p-3 rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'hover:bg-white/10'}`}
+            className={`w-[36px] h-[36px] flex items-center justify-center rounded-full transition-colors ${isListening ? 'bg-brand-teal' : 'bg-transparent hover:bg-white/10'}`}
             aria-label={isListening ? "Stop listening" : "Start voice input"}
           >
-            <MicIcon className={`w-6 h-6 ${isListening ? 'text-brand-indigo' : 'text-white'}`} />
+            <MicIcon className={`w-5 h-5 ${isListening ? 'text-brand-indigo' : 'text-white/50'}`} />
           </button>
           {isListening && (
-            <div className="absolute top-0 left-0 w-full h-full rounded-full border-2 border-brand-teal animate-pulse-ring pointer-events-none"></div>
+            <div className="absolute top-0 left-0 w-[36px] h-[36px] rounded-full border-2 border-brand-teal animate-pulse-ring pointer-events-none"></div>
           )}
         </div>
-        <button type="submit" className="bg-brand-teal p-3 rounded-full hover:bg-teal-300 transition-colors shadow-lg" aria-label="Send thought">
-          <SendIcon className="w-6 h-6 text-white" />
-        </button>
       </form>
       <Toast
         message={toast.message}

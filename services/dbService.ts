@@ -1174,7 +1174,8 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
         .from('habits')
         .select('*')
         .eq('user_id', userId)
-        .is('deleted_at', null);
+        .is('deleted_at', null)
+        .eq('is_active', true);
 
 
 
@@ -1307,11 +1308,21 @@ export const deleteHabit = async (habitId: string): Promise<boolean> => {
     // Soft Delete
     const { error } = await (supabase as any)
         .from('habits')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ is_active: false, deleted_at: new Date().toISOString() })
         .eq('id', habitId);
     if (error) return false;
     return true;
 }
+
+export const logHabitChanges = async (changes: any[]): Promise<void> => {
+    if (!supabase || changes.length === 0) return;
+    const { error } = await (supabase as any)
+        .from('habit_changes')
+        .insert(changes);
+    if (error) {
+        console.error('Error logging habit changes:', error);
+    }
+};
 
 /**
  * IDEMPOTENT SYNC:

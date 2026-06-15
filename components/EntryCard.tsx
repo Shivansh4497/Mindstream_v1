@@ -9,6 +9,18 @@ import { TrashIcon } from './icons/TrashIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { PlusCircleIcon } from './icons/PlusCircleIcon';
 import { ChatBubbleIcon } from './icons/ChatBubbleIcon';
+import { glass } from '../styles/glass';
+import { Tag } from './Tag';
+
+const mapSentiment = (s: string | null | undefined): 'proud' | 'joyful' | 'frustrated' | 'reflective' | 'content' | undefined => {
+  if (!s) return undefined;
+  const l = s.toLowerCase();
+  if (['proud', 'joyful', 'frustrated', 'reflective', 'content'].includes(l)) return l as any;
+  if (['grateful', 'hopeful'].includes(l)) return 'joyful';
+  if (['anxious', 'overwhelmed', 'sad', 'confused'].includes(l)) return 'frustrated';
+  if (['inquisitive', 'observational'].includes(l)) return 'reflective';
+  return undefined;
+};
 
 interface EntryCardProps {
   entry: Entry;
@@ -16,6 +28,7 @@ interface EntryCardProps {
   onEdit: (entry: Entry) => void;
   onDelete: (entry: Entry) => void;
   onAcceptSuggestion?: (entryId: string, suggestion: EntrySuggestion) => void;
+  isMostRecentOfDay?: boolean;
 }
 
 const SENTIMENT_COLORS: Record<string, string> = {
@@ -60,9 +73,9 @@ const getSentimentClasses = (sentiment: GranularSentiment | null | undefined): s
 };
 
 
-export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit, onDelete, onAcceptSuggestion }) => {
+export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit, onDelete, onAcceptSuggestion, isMostRecentOfDay }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isProcessing = entry.emoji === "⏳";
@@ -83,68 +96,53 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const sentimentBorderClass = entry.primary_sentiment ? (SENTIMENT_COLORS[entry.primary_sentiment] ?? 'border-gray-600') : (isChatTakeaway ? 'border-purple-400' : 'border-gray-600');
-
   return (
-    <div className={`bg-dark-surface rounded-lg p-5 mb-4 shadow-lg animate-fade-in-up transition-transform hover:scale-[1.02] border-l-4 ${sentimentBorderClass} ${isProcessing ? 'opacity-70' : ''}`}>
-
-      <div className="flex justify-between items-start mb-3 gap-4">
-        <div className="flex-grow">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            {entry.emoji && <span>{entry.emoji}</span>}
-            <span>{entry.title}</span>
-            {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
-            {isChatTakeaway && (
-              <span className="text-xs font-normal text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full ml-2">
-                💬 From Chat
-              </span>
-            )}
-          </h3>
-          {isUnprocessed && (
-            <div className="text-xs text-gray-400 mt-1 italic">
-              Processing unavailable. Saved as draft.
-            </div>
+    <div 
+      className={`rounded-[12px] p-[14px] px-4 mb-4 mx-3 shadow-lg animate-fade-in-up transition-transform ${isProcessing ? 'opacity-70' : ''} cursor-pointer`}
+      style={isMostRecentOfDay ? glass.highlighted : glass.regular}
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      {/* Title + Timestamp Row */}
+      <div className="flex justify-between items-start mb-2 gap-4">
+        <h3 className="flex items-center gap-2">
+          {entry.emoji && <span className="text-[20px]">{entry.emoji}</span>}
+          <span className="text-[14px] font-medium text-[rgba(255,255,255,0.88)]">{entry.title}</span>
+          {isProcessing && <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin ml-2"></div>}
+          {isChatTakeaway && (
+            <span className="text-xs font-normal text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full ml-2">
+              💬 From Chat
+            </span>
           )}
-        </div>
-
+        </h3>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {hasSuggestions && !isProcessing && (
-            <button
-              onClick={() => setIsSuggestionsOpen(!isSuggestionsOpen)}
-              className={`p-2 rounded-full transition-all duration-300 ${isSuggestionsOpen ? 'bg-brand-teal/20 text-brand-teal rotate-12' : 'text-brand-teal hover:bg-brand-teal/10 hover:scale-110 animate-pulse'}`}
-              aria-label="View Suggestions"
-            >
-              <SparklesIcon className="w-5 h-5" />
-            </button>
-          )}
-
-          <time className="text-sm text-gray-300">{entryTime}</time>
-
-          {!isProcessing && (
+          <time className="text-[11px] text-[rgba(255,255,255,0.22)]">{entryTime}</time>
+          {/* Only show menu when expanded */}
+          {isExpanded && !isProcessing && (
             <div className="relative" ref={menuRef}>
               <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 -m-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMenuOpen(!isMenuOpen);
+                }}
+                className="p-1 -m-1 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
                 aria-label="More options"
               >
-                <MoreOptionsIcon className="w-5 h-5" />
+                <MoreOptionsIcon className="w-4 h-4" />
               </button>
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-40 bg-dark-surface-light rounded-md shadow-lg py-1 z-10 animate-fade-in">
                   <button
-                    onClick={() => { onEdit(entry); setIsMenuOpen(false); }}
+                    onClick={(e) => { e.stopPropagation(); onEdit(entry); setIsMenuOpen(false); }}
                     className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-white hover:bg-white/10"
                   >
                     <PencilIcon className="w-4 h-4" />
                     Edit Entry
                   </button>
                   <button
-                    onClick={() => { onDelete(entry); setIsMenuOpen(false); }}
+                    onClick={(e) => { e.stopPropagation(); onDelete(entry); setIsMenuOpen(false); }}
                     className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                   >
                     <TrashIcon className="w-4 h-4" />
@@ -157,38 +155,45 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
         </div>
       </div>
 
-      <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">
+      {isUnprocessed && (
+        <div className="text-xs text-gray-400 mb-2 italic">
+          Processing unavailable. Saved as draft.
+        </div>
+      )}
+
+      {/* Body Text */}
+      <p className={`text-[13px] text-white/50 leading-[1.5] whitespace-pre-wrap mb-3 ${!isExpanded ? 'line-clamp-2' : ''}`}>
         {entry.text}
       </p>
 
+      {/* Tags Row */}
       {!isProcessing && ((entry.tags && entry.tags.length > 0) || entry.primary_sentiment) && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-[6px]">
           {entry.primary_sentiment && (
-            <div className={`text-xs font-bold py-1 px-2 rounded-full ring-1 ring-inset ${getSentimentClasses(entry.primary_sentiment)}`}>
-              {entry.primary_sentiment}
-            </div>
+            <Tag label={entry.primary_sentiment} sentiment={mapSentiment(entry.primary_sentiment)} />
           )}
           {entry.secondary_sentiment && (
-            <div className="text-xs font-medium py-1 px-2 rounded-full ring-1 ring-inset ring-gray-500/50 text-gray-300">
-              {entry.secondary_sentiment}
-            </div>
+            <Tag label={entry.secondary_sentiment} sentiment={mapSentiment(entry.secondary_sentiment)} />
           )}
           {entry.tags?.map((tag, index) => (
             <button
               key={index}
-              onClick={() => tag !== "Unprocessed" && onTagClick?.(tag)}
-              className={`text-xs font-medium py-1 px-2 rounded-full transition-colors ${tag === "Unprocessed" ? 'bg-gray-700 text-gray-400 cursor-default' : 'bg-brand-teal/20 text-brand-teal hover:bg-brand-teal/40'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tag !== "Unprocessed") onTagClick?.(tag);
+              }}
+              className="appearance-none p-0 bg-transparent border-none cursor-pointer"
             >
-              {tag}
+              <Tag label={tag} />
             </button>
           ))}
         </div>
       )}
 
-      {/* Suggestions Drawer */}
-      {isSuggestionsOpen && hasSuggestions && (
-        <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in-up">
-          <div className="text-xs font-bold text-brand-teal uppercase tracking-wider mb-2 flex items-center gap-1">
+      {/* Expanded State: Suggestions */}
+      {isExpanded && hasSuggestions && !isProcessing && (
+        <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+          <div className="text-[10px] font-bold text-brand-teal uppercase tracking-wider mb-2 flex items-center gap-1">
             <SparklesIcon className="w-3 h-3" />
             Mindstream Suggests
           </div>
@@ -196,7 +201,10 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
             {entry.suggestions!.map((suggestion, index) => (
               <button
                 key={index}
-                onClick={() => onAcceptSuggestion?.(entry.id, suggestion)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAcceptSuggestion?.(entry.id, suggestion);
+                }}
                 className="flex items-center justify-between w-full p-3 rounded-lg bg-brand-indigo/50 hover:bg-brand-indigo border border-brand-teal/20 hover:border-brand-teal/50 transition-all group text-left"
               >
                 <div className="flex items-center gap-3">
@@ -205,7 +213,7 @@ export const EntryCard: React.FC<EntryCardProps> = ({ entry, onTagClick, onEdit,
                   {suggestion.type === 'reflection' && <div className="p-1.5 rounded-full bg-sky-500/20 text-sky-400"><ChatBubbleIcon className="w-4 h-4" /></div>}
 
                   <div>
-                    <div className="text-sm font-medium text-white group-hover:text-brand-teal transition-colors">
+                    <div className="text-[13px] font-medium text-white group-hover:text-brand-teal transition-colors">
                       {suggestion.label}
                     </div>
                     <div className="text-[10px] text-gray-400 capitalize">

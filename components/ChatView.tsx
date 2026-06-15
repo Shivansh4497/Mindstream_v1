@@ -6,6 +6,8 @@ import { speak, stopSpeaking, initializeTTS } from '../utils/tts';
 import { ChatSharingModal } from './ChatSharingModal';
 import { createChatFeedback, updateChatFeedback, logEvent, EntryPoint, ChatMessage, saveChatTakeaway, updateChatTakeaway } from '../services/dbService';
 import { callAIProxy } from '../services/geminiClient';
+import { ChatEmptyState as ChatIllustration } from './illustrations/ChatEmptyState';
+import { glass } from '../styles/glass';
 
 interface ChatViewProps {
   messages: Message[];
@@ -20,6 +22,7 @@ interface ChatViewProps {
   isResumed?: boolean;
   onConfirmExtraction?: (chip: ExtractionChip) => void;
   onUndoExtraction?: (chip: ExtractionChip) => void;
+  seed?: string | null;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -34,7 +37,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   isDemo = false,
   isResumed = false,
   onConfirmExtraction,
-  onUndoExtraction
+  onUndoExtraction,
+  seed
 }) => {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [ttsEnabled, setTtsEnabled] = useState(() => {
@@ -406,7 +410,49 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
         </div>
 
-        <main className="flex-1 overflow-y-auto p-4 min-h-0">
+        <main className="flex-1 overflow-y-auto p-4 min-h-0 flex flex-col">
+          {messages.length === 0 && !seed && (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-fade-in-up my-auto">
+              <div className="mb-6">
+                <ChatIllustration />
+              </div>
+              <h2 className="text-[16px] font-medium text-[rgba(255,255,255,0.88)] mb-2">
+                Let's talk about it
+              </h2>
+              <p className="text-[13px] text-[rgba(255,255,255,0.5)] leading-[1.5] max-w-[240px] mx-auto">
+                Your AI coach is ready to explore your thoughts and help you find clarity.
+              </p>
+            </div>
+          )}
+          {seed && messages.length === 0 && (
+            <div className="flex flex-col w-full">
+              <div className="flex items-start gap-3 my-4 justify-start animate-fade-in-up">
+                <div 
+                  className="flex-shrink-0 flex items-center justify-center"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '0.5px solid rgba(255,255,255,0.12)',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.5)'
+                  }}
+                  aria-label="Mindstream avatar"
+                >ms</div>
+                <div className="flex flex-col gap-1 items-start">
+                  <div 
+                    className="p-[11px_13px] max-w-[85%] text-[13px] text-[rgba(255,255,255,0.75)] leading-[1.55]"
+                    style={{ ...glass.regular, borderRadius: '0 12px 12px 12px' }}
+                  >
+                    {seed}
+                  </div>
+                  <div className="text-[10px] text-[rgba(255,255,255,0.25)] text-center mt-1">continuing from your last entry</div>
+                </div>
+              </div>
+            </div>
+          )}
           {messages.map((msg, index) => (
             <MessageBubble
               key={msg.id || index}
@@ -421,8 +467,24 @@ export const ChatView: React.FC<ChatViewProps> = ({
           ))}
           {isLoading && messages[messages.length - 1]?.text !== '' && (
             <div className="flex items-start gap-3 my-4 justify-start animate-fade-in-up">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-800 to-indigo-900 flex-shrink-0" aria-label="Mindstream avatar"></div>
-              <div className="max-w-md lg:max-w-2xl rounded-2xl p-4 text-white bg-dark-surface-light rounded-bl-lg">
+              <div 
+                  className="flex-shrink-0 flex items-center justify-center"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '0.5px solid rgba(255,255,255,0.12)',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.5)'
+                  }}
+                  aria-label="Mindstream avatar"
+                >ms</div>
+              <div 
+                className="max-w-md lg:max-w-2xl p-[11px_13px] text-white"
+                style={{ ...glass.regular, borderRadius: '0 12px 12px 12px' }}
+              >
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>

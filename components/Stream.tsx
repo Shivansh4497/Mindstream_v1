@@ -119,14 +119,13 @@ export const Stream: React.FC<StreamProps> = ({
   if (feedItems.length === 0) {
     return (
       <div className="h-full flex flex-col">
-        {todaysIntentions.length > 0 && <TodaysFocusBanner intentions={todaysIntentions} />}
         <EmptyStreamState />
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="pb-20">
       {todayEntries.length > 0 && dominantSentiment && (
         <div className={`h-16 flex items-center px-4 bg-gradient-to-b ${gradientClass}`}>
           <span className="text-gray-300 font-medium text-sm flex items-center gap-2">
@@ -134,15 +133,18 @@ export const Stream: React.FC<StreamProps> = ({
           </span>
         </div>
       )}
-      {todaysIntentions.length > 0 && <TodaysFocusBanner intentions={todaysIntentions} />}
 
-      <div className="p-4">
+      <div className="px-4 pt-2">
         {sortedDates.map(date => {
           const itemsForDay = groupedFeed[date];
 
           return (
-            <div key={date} className="mb-8">
-              <h2 className="text-xl font-bold text-white font-display mb-4">{getDisplayDate(date)}</h2>
+            <div key={date} className="mb-4">
+              <h2 
+                className="text-[10px] font-semibold tracking-[0.12em] uppercase text-[rgba(255,255,255,0.45)] pt-[16px] pb-[6px] px-[16px] border-t-[0.5px] border-[rgba(255,255,255,0.07)]"
+              >
+                {getDisplayDate(date)}
+              </h2>
               {itemsForDay.map((item, index) => {
                 if (item.type === 'entry') {
                   return (
@@ -153,80 +155,16 @@ export const Stream: React.FC<StreamProps> = ({
                       onEdit={onEditEntry}
                       onDelete={onDeleteEntry}
                       onAcceptSuggestion={onAcceptSuggestion}
+                      isMostRecentOfDay={index === 0}
                     />
                   );
                 }
-
-                if (item.type === 'insight') {
-                  const getColor = (t: string) => {
-                    switch (t) {
-                      case 'correlation': return 'bg-purple-500';
-                      case 'pattern': return 'bg-blue-500';
-                      case 'milestone': return 'bg-amber-500';
-                      default: return 'bg-brand-teal';
-                    }
-                  };
-
-                  return (
-                    <div key={`insight-${item.data.id}`} className="mb-4 relative group">
-                      {/* Dismiss Button (Absolute positioned) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDismissInsight(item.data.id);
-                        }}
-                        className="absolute top-2 right-2 p-1 text-gray-500 hover:text-white z-10 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <span className="sr-only">Dismiss</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
-                      <InsightCardComponent
-                        title={item.data.title}
-                        insight={item.data.content}
-                        color={getColor(item.data.type)}
-                      >
-                        <div className="p-4 text-sm text-gray-400 italic bg-white/5 rounded-lg">
-                          Analysis Source: {Array.isArray(item.data.metadata?.tags) ? item.data.metadata?.tags.join(', ') : 'Mindstream AI'}
-                        </div>
-                      </InsightCardComponent>
-                    </div>
-                  );
-                }
-
-                if (item.type === 'reflection') {
-                  return (
-                    <AutoReflectionCard
-                      key={`reflection-${item.data.id}`}
-                      reflection={item.data}
-                    />
-                  );
-                }
-
                 return null;
               })}
             </div>
           );
         })}
 
-        {/* Load More Button */}
-        {hasMore && (
-          <div className="flex justify-center mt-6 pb-20">
-            <button
-              onClick={onLoadMore}
-              disabled={isLoadingMore}
-              className="px-6 py-2 bg-dark-surface hover:bg-white/10 text-brand-teal text-sm font-semibold rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait"
-            >
-              {isLoadingMore ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-brand-teal border-t-transparent rounded-full animate-spin"></div>
-                  <span>Loading older thoughts...</span>
-                </div>
-              ) : (
-                "Load older thoughts"
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
