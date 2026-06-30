@@ -20,15 +20,12 @@ const geminiKey = Deno.env.get('GEMINI_API_KEY');
 // Groq models (primary - most capacity)
 const GROQ_API_BASE = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL_120B = 'openai/gpt-oss-120b';
-const GROQ_MODEL_70B = 'llama-3.3-70b-versatile';
-const GROQ_MODEL_17B = 'meta-llama/llama-4-scout-17b-16e-instruct';
 const GROQ_MODEL_20B = 'openai/gpt-oss-20b';
-const GROQ_MODEL_8B = 'llama-3.1-8b-instant';
 
 // Gemini models (fallback)
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_MODEL_PRIMARY = 'gemini-1.5-flash';
-const GEMINI_MODEL_BACKUP = 'gemini-1.5-flash-8b';
+const GEMINI_MODEL_PRIMARY = 'gemini-2.5-flash';
+const GEMINI_MODEL_BACKUP = 'gemini-2.5-flash-lite';
 
 // Startup logging
 console.log('[AI Proxy] Initializing multi-provider system...');
@@ -36,7 +33,7 @@ console.log('[AI Proxy] GROQ_API_KEY present:', !!groqKey);
 console.log('[AI Proxy] GEMINI_API_KEY present:', !!geminiKey);
 
 interface AIRequest {
-    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response' | 'build-ai-profile';
+    action: 'process-entry' | 'chat' | 'suggestions' | 'instant-insight' | 'analyze-habit' | 'analyze-intention' | 'extract-keywords' | 'daily-reflection' | 'weekly-reflection' | 'monthly-reflection' | 'chat-summary' | 'list-models' | 'evaluate-response' | 'build-ai-profile' | 'test-models';
     payload: Record<string, any>;
 }
 
@@ -200,19 +197,15 @@ function estimateTokens(text: string): number {
 async function callAI(prompt: string, action: string, isJson: boolean = true): Promise<AICallResult> {
     const providers = [
         { name: 'Groq 120B', model: GROQ_MODEL_120B, fn: async () => callGroqWithModel(GROQ_MODEL_120B, prompt, isJson), available: !!groqKey },
-        { name: 'Groq 70B', model: GROQ_MODEL_70B, fn: async () => callGroqWithModel(GROQ_MODEL_70B, prompt, isJson), available: !!groqKey },
-        { name: 'Groq 17B Scout', model: GROQ_MODEL_17B, fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt, isJson), available: !!groqKey },
-        { name: 'Groq 8B', model: GROQ_MODEL_8B, fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt, isJson), available: !!groqKey },
         { name: 'Gemini Flash', model: GEMINI_MODEL_PRIMARY, fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt, isJson), available: !!geminiKey },
+        { name: 'Groq 20B', model: GROQ_MODEL_20B, fn: async () => callGroqWithModel(GROQ_MODEL_20B, prompt, isJson), available: !!groqKey }
     ];
 
-    if (action === 'evaluate-response' || action === 'extract-keywords' || action === 'classify-intent') {
+    if (action === 'evaluate-response' || action === 'extract-keywords' || action === 'classify-intent' || action === 'process-entry' || action === 'suggestions' || action === 'analyze-habit' || action === 'analyze-intention') {
         // Clear standard providers and set background-optimized chain
         providers.length = 0;
         providers.push(
-            { name: 'Groq 17B Scout', model: GROQ_MODEL_17B, fn: async () => callGroqWithModel(GROQ_MODEL_17B, prompt, isJson), available: !!groqKey },
             { name: 'Groq 20B', model: GROQ_MODEL_20B, fn: async () => callGroqWithModel(GROQ_MODEL_20B, prompt, isJson), available: !!groqKey },
-            { name: 'Groq 8B', model: GROQ_MODEL_8B, fn: async () => callGroqWithModel(GROQ_MODEL_8B, prompt, isJson), available: !!groqKey },
             { name: 'Gemini Lite', model: GEMINI_MODEL_BACKUP, fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, prompt, isJson), available: !!geminiKey },
             { name: 'Gemini Flash', model: GEMINI_MODEL_PRIMARY, fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, prompt, isJson), available: !!geminiKey }
         );
@@ -391,7 +384,7 @@ serve(async (req) => {
 
         // Authenticate user
         let user: any = null;
-        if (action !== 'generate-and-store-embedding') {
+        if (action !== 'generate-and-store-embedding' && action !== 'test-models') {
             const authHeader = req.headers.get('Authorization');
             if (!authHeader) {
                 return new Response(JSON.stringify({ success: false, error: 'Missing authorization' }), {
@@ -430,7 +423,9 @@ serve(async (req) => {
         if (action !== 'list-models' && 
             action !== 'generate-embedding' && 
             action !== 'generate-and-store-embedding' && 
-            action !== 'semantic-search') {
+            action !== 'semantic-search' &&
+            action !== 'test-models' && 
+            user) {
             const adminClient = createClient(supabaseUrl, supabaseKey);
             const { data: profile } = await adminClient
                 .from('profiles')
@@ -462,11 +457,36 @@ serve(async (req) => {
                 case 'list-models': {
                     result = {
                         providers: {
-                            groq: { available: !!groqKey, models: [GROQ_MODEL_PRIMARY, GROQ_MODEL_BACKUP] },
+                            groq: { available: !!groqKey, models: [GROQ_MODEL_120B, GROQ_MODEL_20B] },
                             gemini: { available: !!geminiKey, models: [GEMINI_MODEL_PRIMARY, GEMINI_MODEL_BACKUP] },
                             cached: { available: true, models: ['fallback-templates'] }
                         }
                     };
+                    break;
+                }
+
+                case 'test-models': {
+                    const results: any[] = [];
+                    const allProviders = [
+                        { name: 'Groq 120B', model: GROQ_MODEL_120B, fn: async () => callGroqWithModel(GROQ_MODEL_120B, 'Say hello', false), available: !!groqKey },
+                        { name: 'Groq 20B', model: GROQ_MODEL_20B, fn: async () => callGroqWithModel(GROQ_MODEL_20B, 'Say hello', false), available: !!groqKey },
+                        { name: 'Gemini Flash', model: GEMINI_MODEL_PRIMARY, fn: async () => callGeminiWithModel(GEMINI_MODEL_PRIMARY, 'Say hello', false), available: !!geminiKey },
+                        { name: 'Gemini Lite', model: GEMINI_MODEL_BACKUP, fn: async () => callGeminiWithModel(GEMINI_MODEL_BACKUP, 'Say hello', false), available: !!geminiKey }
+                    ];
+                    
+                    for (const p of allProviders) {
+                        if (!p.available) {
+                            results.push({ name: p.name, model: p.model, status: 'Skipped', error: 'API key not configured' });
+                            continue;
+                        }
+                        try {
+                            const res = await p.fn();
+                            results.push({ name: p.name, model: p.model, status: 'Success', response: res.substring(0, 100) });
+                        } catch (e: any) {
+                            results.push({ name: p.name, model: p.model, status: 'Failed', error: e.message });
+                        }
+                    }
+                    result = { models: results };
                     break;
                 }
 
@@ -1271,7 +1291,7 @@ If no pattern found: { "pattern_text": "", "confidence": 0.0 }`;
             const fallback = getCachedResponse(action);
             // If the cached response is just an error placeholder, don't pretend it was successful
             if (fallback.error) {
-                return new Response(JSON.stringify({ success: false, error: fallback.error }), {
+                return new Response(JSON.stringify({ success: false, error: fallback.error, innerError: error.message, stack: error.stack }), {
                     status: 500,
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
